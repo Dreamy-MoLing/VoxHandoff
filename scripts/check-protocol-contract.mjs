@@ -36,9 +36,10 @@ function camelCase(value) {
   return value.replace(/_([a-z])/gu, (_, letter) => letter.toUpperCase());
 }
 
-const [model, commonProto, eventProto] = await Promise.all([
+const [model, commonProto, controlProto, eventProto] = await Promise.all([
   read("packages/core/src/model.ts"),
   read("packages/protocol/proto/agent_talk/v1/common.proto"),
+  read("packages/protocol/proto/agent_talk/v1/control.proto"),
   read("packages/protocol/proto/agent_talk/v1/event.proto"),
 ]);
 
@@ -79,5 +80,10 @@ const expectedCapabilities = [
   "requestTimeoutMs",
 ];
 assert.deepEqual(protocolCapabilities, expectedCapabilities, "protocol capability fields must match the fixed contract");
+
+const clientCommandFields = messageFields(controlProto, "ClientCommand");
+for (const identityField of ["command_id", "idempotency_key", "conversation_id", "request_id"]) {
+  assert(clientCommandFields.includes(identityField), `ClientCommand must carry ${identityField}`);
+}
 
 process.stdout.write("protocol contract matches core taxonomy and capabilities\n");

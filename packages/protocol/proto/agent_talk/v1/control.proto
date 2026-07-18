@@ -105,6 +105,7 @@ message ClientCommand {
   string conversation_id = 3;
   string lease_id = 4;
   uint64 lease_revision = 5;
+  string request_id = 6;
   oneof command {
     SendRequest send = 10;
     InterruptRequest interrupt = 11;

@@ -176,7 +176,7 @@ message Envelope {
 规则：
 
 - `sequence` 在 conversation 内由 Gateway 严格递增；
-- Client command 另带 `commandId` 和 `idempotencyKey`；
+- Client command 另带客户端生成的 opaque `requestId`、`commandId` 和 `idempotencyKey`；即使 acceptance proof 在断线中丢失，Client 仍能按已知 request identity 查询状态而不重新执行；
 - Gateway 先事务持久化，后广播 `request.accepted`；
 - Client 以 event ID 去重、以 sequence 检测缺口；
 - 未知字段可忽略，缺少必需 capability 必须拒绝并报告；

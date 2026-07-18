@@ -1,6 +1,6 @@
 # Agent Talk 正式开发基线
 
-> 基线版本：1.14<br>
+> 基线版本：1.15<br>
 > 生效日期：2026-07-18<br>
 > 状态：Active
 
@@ -29,6 +29,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.15 | 2026-07-18 | 固定 Client 预生成 request identity，使 acceptance 丢失后可查询而不重提 |
 | 1.14 | 2026-07-18 | 建立 Buf 公共 schema、TS/Dart 生成、握手协商和协议一致性/兼容门 |
 | 1.13 | 2026-07-18 | 固定 Hermes 非优雅断线到 `connection.lost`/uncertain 的真链路并关闭 M0 |
 | 1.12 | 2026-07-18 | 固定隔离 Hermes 10 轮、stop、manual approval 与跨 gateway 重启恢复证据 |

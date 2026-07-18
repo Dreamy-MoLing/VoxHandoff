@@ -1206,6 +1206,7 @@ class ClientCommand extends $pb.GeneratedMessage {
     $core.String? conversationId,
     $core.String? leaseId,
     $fixnum.Int64? leaseRevision,
+    $core.String? requestId,
     SendRequest? send,
     InterruptRequest? interrupt,
     ResolveApproval? resolveApproval,
@@ -1221,6 +1222,7 @@ class ClientCommand extends $pb.GeneratedMessage {
     if (conversationId != null) result.conversationId = conversationId;
     if (leaseId != null) result.leaseId = leaseId;
     if (leaseRevision != null) result.leaseRevision = leaseRevision;
+    if (requestId != null) result.requestId = requestId;
     if (send != null) result.send = send;
     if (interrupt != null) result.interrupt = interrupt;
     if (resolveApproval != null) result.resolveApproval = resolveApproval;
@@ -1266,6 +1268,7 @@ class ClientCommand extends $pb.GeneratedMessage {
     ..a<$fixnum.Int64>(
         5, _omitFieldNames ? '' : 'leaseRevision', $pb.PbFieldType.OU6,
         defaultOrMaker: $fixnum.Int64.ZERO)
+    ..aOS(6, _omitFieldNames ? '' : 'requestId')
     ..aOM<SendRequest>(10, _omitFieldNames ? '' : 'send',
         subBuilder: SendRequest.create)
     ..aOM<InterruptRequest>(11, _omitFieldNames ? '' : 'interrupt',
@@ -1369,93 +1372,102 @@ class ClientCommand extends $pb.GeneratedMessage {
   @$pb.TagNumber(5)
   void clearLeaseRevision() => $_clearField(5);
 
+  @$pb.TagNumber(6)
+  $core.String get requestId => $_getSZ(5);
+  @$pb.TagNumber(6)
+  set requestId($core.String value) => $_setString(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasRequestId() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearRequestId() => $_clearField(6);
+
   @$pb.TagNumber(10)
-  SendRequest get send => $_getN(5);
+  SendRequest get send => $_getN(6);
   @$pb.TagNumber(10)
   set send(SendRequest value) => $_setField(10, value);
   @$pb.TagNumber(10)
-  $core.bool hasSend() => $_has(5);
+  $core.bool hasSend() => $_has(6);
   @$pb.TagNumber(10)
   void clearSend() => $_clearField(10);
   @$pb.TagNumber(10)
-  SendRequest ensureSend() => $_ensure(5);
+  SendRequest ensureSend() => $_ensure(6);
 
   @$pb.TagNumber(11)
-  InterruptRequest get interrupt => $_getN(6);
+  InterruptRequest get interrupt => $_getN(7);
   @$pb.TagNumber(11)
   set interrupt(InterruptRequest value) => $_setField(11, value);
   @$pb.TagNumber(11)
-  $core.bool hasInterrupt() => $_has(6);
+  $core.bool hasInterrupt() => $_has(7);
   @$pb.TagNumber(11)
   void clearInterrupt() => $_clearField(11);
   @$pb.TagNumber(11)
-  InterruptRequest ensureInterrupt() => $_ensure(6);
+  InterruptRequest ensureInterrupt() => $_ensure(7);
 
   @$pb.TagNumber(12)
-  ResolveApproval get resolveApproval => $_getN(7);
+  ResolveApproval get resolveApproval => $_getN(8);
   @$pb.TagNumber(12)
   set resolveApproval(ResolveApproval value) => $_setField(12, value);
   @$pb.TagNumber(12)
-  $core.bool hasResolveApproval() => $_has(7);
+  $core.bool hasResolveApproval() => $_has(8);
   @$pb.TagNumber(12)
   void clearResolveApproval() => $_clearField(12);
   @$pb.TagNumber(12)
-  ResolveApproval ensureResolveApproval() => $_ensure(7);
+  ResolveApproval ensureResolveApproval() => $_ensure(8);
 
   @$pb.TagNumber(13)
-  ResolveClarification get resolveClarification => $_getN(8);
+  ResolveClarification get resolveClarification => $_getN(9);
   @$pb.TagNumber(13)
   set resolveClarification(ResolveClarification value) => $_setField(13, value);
   @$pb.TagNumber(13)
-  $core.bool hasResolveClarification() => $_has(8);
+  $core.bool hasResolveClarification() => $_has(9);
   @$pb.TagNumber(13)
   void clearResolveClarification() => $_clearField(13);
   @$pb.TagNumber(13)
-  ResolveClarification ensureResolveClarification() => $_ensure(8);
+  ResolveClarification ensureResolveClarification() => $_ensure(9);
 
   @$pb.TagNumber(14)
-  AcquireControlLease get acquireLease => $_getN(9);
+  AcquireControlLease get acquireLease => $_getN(10);
   @$pb.TagNumber(14)
   set acquireLease(AcquireControlLease value) => $_setField(14, value);
   @$pb.TagNumber(14)
-  $core.bool hasAcquireLease() => $_has(9);
+  $core.bool hasAcquireLease() => $_has(10);
   @$pb.TagNumber(14)
   void clearAcquireLease() => $_clearField(14);
   @$pb.TagNumber(14)
-  AcquireControlLease ensureAcquireLease() => $_ensure(9);
+  AcquireControlLease ensureAcquireLease() => $_ensure(10);
 
   @$pb.TagNumber(15)
-  RenewControlLease get renewLease => $_getN(10);
+  RenewControlLease get renewLease => $_getN(11);
   @$pb.TagNumber(15)
   set renewLease(RenewControlLease value) => $_setField(15, value);
   @$pb.TagNumber(15)
-  $core.bool hasRenewLease() => $_has(10);
+  $core.bool hasRenewLease() => $_has(11);
   @$pb.TagNumber(15)
   void clearRenewLease() => $_clearField(15);
   @$pb.TagNumber(15)
-  RenewControlLease ensureRenewLease() => $_ensure(10);
+  RenewControlLease ensureRenewLease() => $_ensure(11);
 
   @$pb.TagNumber(16)
-  ReplayEvents get replay => $_getN(11);
+  ReplayEvents get replay => $_getN(12);
   @$pb.TagNumber(16)
   set replay(ReplayEvents value) => $_setField(16, value);
   @$pb.TagNumber(16)
-  $core.bool hasReplay() => $_has(11);
+  $core.bool hasReplay() => $_has(12);
   @$pb.TagNumber(16)
   void clearReplay() => $_clearField(16);
   @$pb.TagNumber(16)
-  ReplayEvents ensureReplay() => $_ensure(11);
+  ReplayEvents ensureReplay() => $_ensure(12);
 
   @$pb.TagNumber(17)
-  GetRequest get getRequest => $_getN(12);
+  GetRequest get getRequest => $_getN(13);
   @$pb.TagNumber(17)
   set getRequest(GetRequest value) => $_setField(17, value);
   @$pb.TagNumber(17)
-  $core.bool hasGetRequest() => $_has(12);
+  $core.bool hasGetRequest() => $_has(13);
   @$pb.TagNumber(17)
   void clearGetRequest() => $_clearField(17);
   @$pb.TagNumber(17)
-  GetRequest ensureGetRequest() => $_ensure(12);
+  GetRequest ensureGetRequest() => $_ensure(13);
 }
 
 class RequestStatus extends $pb.GeneratedMessage {
