@@ -4,6 +4,8 @@
 
 基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2。
 
+当前阶段：M-1 前期准备。先固定部署权威、离线命令、身份配对、审批恢复、数据生命周期、协议兼容、版本治理和可重复验收，再继续 M0 功能闭环。
+
 已完成：
 
 - TypeScript workspace、strict 编译和 Node test 基线；
@@ -63,6 +65,7 @@ scripts/                # 协议、质量与构建脚本
 - 依赖只有在明显改善正确性、五端覆盖或维护成本时加入；
 - 版本写入 lockfile，升级单独评审 breaking change 和许可证；
 - fixture/fake 测试离线运行，live test 显式开启且默认只读/低风险。
+- 规格未覆盖的问题不得由实现默默决定；先在对应 `spec/` 文档写明选择、拒绝方案、迁移/回滚和验收影响。
 
 ### 3.2 TypeScript
 
@@ -97,7 +100,33 @@ scripts/                # 协议、质量与构建脚本
 - PowerSync sync rules 进入版本控制并做最小授权测试；
 - Drift/PowerSync schema 变更做旧版本 Client 兼容和离线升级测试。
 
+### 3.6 Git 与版本治理
+
+- `main` 保持可构建、可测试；不在 `main` 上强制改写已提交历史，修正使用新提交或 `revert`；
+- 提交采用 `feat:`、`fix:`、`spec:`、`test:`、`refactor:`、`build:`、`chore:` 等清晰前缀，一个提交只包含一个可解释、可回退的逻辑变化；
+- 提交前至少运行与改动相关的 check/test，规格或脚本变化额外运行 repository consistency check；失败证据不得通过跳过测试隐藏；
+- 自动化 Agent 可以在验证后创建聚焦的本地提交，但 push、PR、tag、发布和远程部署仍需明确授权；
+- 产品发行使用 SemVer 和 annotated tag `vX.Y.Z`；首个公开稳定协议前保持 `0.y.z`，但任何已发布 wire/data breaking change 仍须提升 protocol major 并提供迁移说明；
+- protocol major/minor、数据库 migration 序号和产品版本分别管理，不从显示版本推导兼容性；
+- 每个发布 tag 对应变更记录、依赖/许可证快照、SBOM、migration/rollback 说明和已通过的发布门；
+- 不提交 secret、`.env`、原始 live payload、原始录音、临时生成的 Codex binding 或设备专属产物。
+
 ## 4. 里程碑
+
+### M-1 — 前期准备与基线治理
+
+目标：在扩展实现前，把安全、一致性、版本和验收问题变成明确契约。
+
+- 固定 Embedded/Self-hosted/Hybrid 的耐久权威与迁移边界；
+- 固定离线草稿、发送、acceptance、uncertain 和禁止自动重发语义；
+- 固定 owner bootstrap、设备配对、scope、轮换、撤销和恢复流程；
+- 固定 approval/control lease 状态机、并发和重启恢复；
+- 固定数据分类、默认保留、删除、远程 STT 同意和附件范围；
+- 固定 protocol 兼容窗口、滚动升级、Git/SemVer 和 benchmark 口径；
+- 建立 repository consistency check、CI 入口和安全威胁模型；
+- 创建已验证、可回退的 Git 基线。
+
+退出条件：上述 P0 决策进入正式规格；本地统一质量命令可重复运行；威胁模型覆盖信任边界和高风险数据流；工作树在聚焦提交后保持干净。
 
 ### M0 — 协议核心完成
 
@@ -214,6 +243,15 @@ scripts/                # 协议、质量与构建脚本
 - 50 次端到端和各 Agent 10 轮验收通过；
 - 安装、升级、卸载不删除未明确选择删除的用户数据。
 
+### 5.5 可重复性能口径
+
+- 每份结果记录 exact OS/build、CPU/GPU/RAM、设备型号、电源模式、组件版本、冷/热状态和网络 profile；“中档设备”在 M3/M4 gate 前必须替换为至少一台具名 Android 参考设备，不能仅凭开发机推断；
+- local profile：RTT ≤ 2 ms、无人工丢包；normal remote profile：RTT 80 ms、jitter 20 ms、loss 0.5%、下行 20 Mbps、上行 5 Mbps；degraded profile：RTT 250 ms、jitter 50 ms、loss 2%；
+- stage latency 的 P50/P95 至少采集 50 个成功样本，先做 5 次不计入的 warmup；cold start 另采至少 10 次并单独报告，不与 warm 数据合并；
+- 50 次端到端成功率把 Client/Gateway/adapter/STT/TTS 导致的失败计入，把用户拒绝审批和 Agent 明确业务失败单列，不能从分母删除超时；
+- 同进程阶段使用 monotonic clock；跨进程通过 trace ID 记录各自 monotonic duration，不用未校时的 wall clock 直接相减；
+- 所有基准保存脱敏原始测量、汇总脚本和 pass/fail 结论；变更目标必须先修改 `PRODUCT.md` 并说明实测依据。
+
 ## 6. PoC 规范
 
 PoC 是验收工具，不是一次性脚本。每次 live PoC 记录：
@@ -267,6 +305,12 @@ UI 不展示虚构完成百分比。诊断页面显示最后真实事件、同�
 
 | 风险 | 当前处置 | 触发动作 |
 | --- | --- | --- |
+| Embedded 与同步模式语义分叉 | 两种账本实现共享 request/sequence/idempotency 契约 | 同一 failure fixture 结果不同即阻止 M1/M2 |
+| 设备配对或撤销失效 | 单 owner、本机 bootstrap、短期 token、轮换和逐流撤销检查 | 未授权设备可建流或撤销后仍可操作即阻止发布 |
+| approval 并发或迟到响应 | 耐久状态机、CAS、lease/scope 和 idempotency | 任一重复/迟到批准到达 Agent 即 Critical |
+| Client 离线命令自动执行 | Client 只保存草稿，恢复连接必须重新确认 | 任何自动排空可执行命令即阻止发布 |
+| protocol 滚动升级不兼容 | major/minor handshake、前一 minor fixtures、expand-first migration | N/N-1 组合失败即阻止升级 |
+| 远程 STT 泄露音频 | 默认关闭、provider 同意、目标/TLS/保留提示 | 未确认上传或目标变化后继续上传即 Critical |
 | Codex app-server 协议变化 | 当前版本生成 schema + 12 项兼容检查 | CI/live matrix 失败即阻止升级 |
 | Hermes 真链路未验证 | fake SSE 已覆盖，完整 gateway 不擅自启动 | 建隔离 profile 后完成 M0 gate |
 | PowerSync FSL 与 Drift beta | Sync Adapter 隔离 + contract test | 许可/稳定性失败切 cursor sync |
@@ -289,4 +333,5 @@ UI 不展示虚构完成百分比。诊断页面显示最后真实事件、同�
 - 五端影响和降级路径已评估；
 - 新依赖的维护、许可证、体积和退出路径已记录；
 - 用户可见变化有可访问性和无动画路径；
-- 必要的迁移、回滚和诊断信息可用。
+- 必要的 migration、protocol compatibility、回滚和诊断信息可用；
+- 改动形成聚焦、说明清楚且工作树干净的本地提交；远程写入仍按授权执行。

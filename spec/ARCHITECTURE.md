@@ -60,6 +60,18 @@ Windows / Linux / macOS / iOS / Android
 
 Embedded 桌面模式可以把 Gateway 和 Node 打包为本地 sidecar，通过 stdio 与 Flutter host 通信，不监听固定入站端口。同步模式必须使用持续在线 Gateway；移动端永不启动本地 Agent 进程。
 
+### 3.1 部署模式与耐久权威
+
+| 模式 | 命令/事件权威 | Client 读模型 | 认证边界 | 远程设备 |
+| --- | --- | --- | --- | --- |
+| Embedded standalone | bundled sidecar 的应用私有 SQLite 账本 | Client 本地 SQLite | Flutter desktop host 启动的专用 stdio；每次启动完成一次随机 challenge 握手 | 不支持 |
+| Self-hosted | Gateway PostgreSQL | PowerSync/Drift 或 cursor-sync SQLite | 设备密钥、短期 access token、scope、TLS | 支持 |
+| Hybrid | Self-hosted Gateway PostgreSQL | 同 Self-hosted | 同 Self-hosted；每个请求额外固定 `nodeId` | 支持 |
+
+Embedded SQLite 必须实现与 PostgreSQL 路径相同的 request ID、idempotency uniqueness、conversation sequence、accepted 事务和恢复语义；区别只在存储与传输，不在领域行为。sidecar 在同一事务写入 request、`request.accepted` 和本地 dispatch outbox，提交后才能驱动 Agent。Flutter Client 自身的 SQLite 仍只是读模型和草稿库，不能充当执行账本。
+
+Embedded host 与 sidecar 只使用父进程创建的私有 stdio。sidecar 启动后先交换一次性随机 challenge 和协议版本，握手完成前拒绝业务帧；challenge 不写入命令行、日志或持久配置。若用户要从手机或另一台电脑访问，必须显式将部署提升为 Self-hosted，完成 Gateway 配对和数据迁移，不能临时开放 Embedded sidecar 的未认证端口。
+
 ## 4. 代码和进程边界
 
 ### 4.1 Flutter Client
@@ -69,7 +81,7 @@ Embedded 桌面模式可以把 Gateway 和 Node 打包为本地 sidecar，通过
 - 页面、可访问性、动画和用户输入；
 - 麦克风、音频播放、本地 STT/TTS 调度；
 - gRPC live stream 与 HTTPS 配对；
-- PowerSync/Drift 本地读取和 outbox UX；
+- PowerSync/Drift 本地读取、草稿和低风险元数据 outbox UX；
 - OS 安全存储、通知和平台入口。
 
 不得：
@@ -123,7 +135,7 @@ Gateway 需要看到请求明文才能驱动 Agent，因此首版不宣称端到
 ### 5.1 传输
 
 - Client/Node ↔ Gateway live：gRPC bidirectional streaming；
-- 配对、登录、健康、配置、大附件：HTTPS；
+- 配对、登录、健康和配置：HTTPS；大附件 HTTPS 路径仅为当前禁用的协议扩展点；
 - Desktop host ↔ bundled sidecar：JSON-RPC 2.0 over stdio/JSONL；
 - Node ↔ Codex：app-server stdio；
 - Node ↔ Hermes：HTTPS/SSE，或同机 TUI Gateway 协议；
@@ -137,8 +149,13 @@ WebRTC 不进入默认主链路，因为不持续上传原始音频。未来远�
 公共 schema 至少表达：
 
 ```proto
+message ProtocolVersion {
+  uint32 major = 1;
+  uint32 minor = 2;
+}
+
 message Envelope {
-  uint32 protocol_version = 1;
+  ProtocolVersion protocol = 1;
   string event_id = 2;
   string connection_id = 3;
   string device_id = 4;
@@ -147,6 +164,7 @@ message Envelope {
   uint64 sequence = 7;
   google.protobuf.Timestamp occurred_at = 8;
   oneof body {
+    Handshake handshake = 10;
     ClientCommand command = 20;
     AgentEvent event = 21;
     Ack ack = 22;
@@ -164,6 +182,7 @@ message Envelope {
 - 未知字段可忽略，缺少必需 capability 必须拒绝并报告；
 - Protobuf 字段号永久保留，删除字段进入 `reserved`；
 - Adapter 原始 payload 只保留在受限诊断中，不作为 UI 协议。
+- handshake 完成前只接受 handshake、heartbeat 和明确的协议错误，拒绝业务命令。
 
 ### 5.3 Capability
 
@@ -171,13 +190,24 @@ message Envelope {
 
 - stream/history/session create-resume；
 - interrupt/clarification/approval/tool events；
-- attachment 与大小限制；
+- attachment 与大小限制（M0-M5 必须协商为不支持）；
 - idempotency/replay/sequence recovery；
 - append-only delta 或可修订 delta；
 - Agent、adapter、protocol 版本；
 - 实际执行主机和可用 scope。
 
 UI 由 capability 决定功能是否出现，不通过失败探测能力。
+
+### 5.4 版本协商与滚动升级
+
+Handshake 必须携带：当前 protocol major/minor、可接受的 minor 范围、schema build/hash、组件版本、组件角色和 capability revision。规则如下：
+
+- major 不同直接拒绝连接，并返回双方版本和可行动的升级提示；
+- 同一 major 内选择双方共同支持的最高 minor；当前 release 必须兼容当前和前一个 minor；
+- 新增字段保持 optional/可忽略，删除字段永久 `reserved`；未知事件不能映射成成功或失败，必须以 `unsupported_event` 保留关联并提示升级；
+- capability revision 在请求接受时快照并绑定 request；处理中 capability 变化不追溯修改已接受请求；
+- Gateway 数据 migration 先兼容旧二进制，再部署 Gateway、Node、Client，最后清理旧字段；任一步失败都允许回退到上一个应用版本而不回滚已提交 migration；
+- Buf breaking check、生成物一致性和前一个 minor 的 fixture replay 属于合并门；不能只测试最新组件全套同版本组合。
 
 ## 6. 状态机
 
@@ -205,6 +235,18 @@ draft
 
 只有适配器声明 delta 为 append-only，且句子已稳定、通过安全过滤时，才允许边生成边播报。可修订 delta 必须等待 `message.completed`。审批、部分完成和 uncertain 永远不能提前播报为成功。
 
+### 6.4 审批与澄清状态机
+
+每个 approval 必须绑定 opaque approval/request/conversation/agent/node ID、原生审批 ID、操作摘要 hash、所需 scope、创建时间和 Agent 提供的 expiry。状态只允许：
+
+```text
+pending → approved | rejected | expired | cancelled
+```
+
+终态不可更改。响应事务必须同时校验当前 control lease、`approve` scope、device identity、操作摘要 hash 和 approval 仍为 pending，再以 compare-and-set 写入终态和审计事件。相同 device/idempotency key 的重试返回原结果；其他并发或迟到响应返回 `approval_already_resolved`，不得转发给 Agent。
+
+Gateway/Client 重启或重连时从耐久账本恢复 pending approval。Agent 原始超时到达、请求结束或 Agent 明确撤回时写入 `expired`/`cancelled`；网络断开、lease 到期、TTS/语音事件和 UI 消失都不能产生批准。澄清可以提交文字，但仍绑定 request 和控制设备，不复用 approval 的 `approve` 权限。
+
 ## 7. 数据架构
 
 ### 7.1 权威关系
@@ -224,8 +266,9 @@ draft
 - `requests`：command/idempotency/acceptance/final state；
 - `approvals`、`clarifications`；
 - `device_cursors`、`control_leases`；
-- `command_outbox`、`gateway_outbox`；
-- `attachments`：hash、metadata、encrypted object reference；
+- `gateway_dispatch_outbox`：已接受 request 到固定 Node 的耐久投递；
+- `gateway_event_outbox`：已提交事件到实时流/同步层的耐久投递；
+- `attachments`：仅保留未来扩展的 hash、metadata、encrypted object reference；M0-M5 capability 固定为 false；
 - `stage_metrics`、`diagnostic_events`。
 
 原始录音和合成音频不进入这些同步表。
@@ -243,9 +286,23 @@ draft
 
 重连时 Client 发送每个活跃 conversation 的 `lastAckSequence`。Gateway 在短期窗口续传；游标过旧或存在缺口时，Client 先以 PowerSync 本地快照收敛，再订阅最新事件。未知请求只按 request ID 查询，绝不自动复制提交。
 
+Client 离线时只能保存草稿和明确列入 allowlist 的低风险元数据变更。可执行 Agent command 不进入自动排空的 Client outbox；用户点击发送但尚未建立可认证 live stream 时仍保持草稿并显示“未发送”。写出 command 后连接中断且未收到耐久 acceptance proof 时进入 `uncertain`，重连只执行 `GetRequest(requestId)` 或 replay，不重新调用 Send。
+
 ### 7.4 多设备冲突
 
-会话消息只追加，不做 CRDT。每个 conversation 使用短期 control lease；另一设备必须显式接管。标题和标签等低风险元数据用 revision 乐观锁。一个 Agent 会话默认串行请求。
+会话消息只追加，不做 CRDT。每个 conversation 使用 30 秒 control lease，控制设备至多每 10 秒续租；另一设备必须通过带 revision 的 compare-and-set 显式接管。lease 过期或被接管后，旧设备的新 send/interrupt/approval 命令以 `control_lease_lost` 拒绝，已运行 Agent 请求不受影响。标题和标签等低风险元数据用 revision 乐观锁。一个 Agent 会话默认串行请求。
+
+路由只使用 opaque `nodeId`、`agentId` 和原生 session identity。Gateway 在 acceptance 事务内固定这些值及 capability revision；显示名变化不影响路由。接受前目标离线可以失败，接受后不得自动改投另一 Node/Agent。只有适配器能证明同一原生执行上下文可恢复时才续传，否则进入明确失败或 `uncertain`。
+
+### 7.5 数据分类、保留与删除
+
+持久数据至少标记为 `content`、`security_audit`、`diagnostic_metadata`、`secret_reference` 或 `ephemeral_media`。日志管线只接受脱敏后的 diagnostic metadata；正文、原始 Agent payload 和音频不能因异常对象序列化而落入普通日志。
+
+- 原始录音、provisional 音频和 TTS 缓存只在录制/播放设备按 `PRODUCT.md` 默认期限保存；
+- 原始 STT transcript 是 local-only content，不通过 PowerSync 或 Gateway event payload 同步；
+- 同步消息删除先提交 tombstone 和 content access revocation，再异步清理活动数据库与对象存储；
+- security audit 可以保留 opaque ID、动作类型和结果，但删除正文后不得保留可还原正文的 payload/hash 组合；
+- 部署配置必须公开活动数据、诊断和备份各自保留期限；恢复备份后必须重新应用 tombstone、凭据吊销和设备撤销记录。
 
 ## 8. 同步方案及退出路径
 
@@ -300,6 +357,8 @@ Flutter `record` 位于 AudioCapture adapter 后。统一输出 PCM/WAV 或 STT 
 - language、timing、confidence（若后端可用）；
 - 分阶段指标和无音频错误。
 
+本地 STT 是默认路径。远程 STT adapter 只有在用户完成 provider 级显式同意后才能接收音频，并必须报告目标 origin、TLS 验证状态、是否流式上传及已知服务端保留策略；这些信息变化时暂停上传并要求重新确认。远程 STT 音频不得复用 Agent/Gateway 管理凭据。
+
 首轮测试集至少 30 条中文技术请求，覆盖中英混合、路径、版本号、噪声和自我修正。
 
 ### 10.3 TTS 与播放
@@ -329,6 +388,16 @@ shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值�
 - control lease 不能替代高风险审批 scope；
 - 令牌只存 OS 安全存储，数据库保存引用或不可逆标识。
 
+当前一个 Gateway 只有一个 owner。首次 owner bootstrap 只能在 Gateway 本机交互控制台、Embedded 私有 stdio 或部署时显式提供的一次性恢复流程完成，不能通过未认证公网请求创建。后续配对流程为：
+
+1. Gateway 生成最长 10 分钟、单次使用并限速的 pairing challenge；
+2. 新设备生成本地密钥对并提交公钥、challenge 和所请求 scope；
+3. 已授权 `administer` 设备或本机控制台同时显示并核对 Gateway/设备 fingerprint、实际 Gateway 地址和 scope；
+4. Gateway 校验 proof-of-possession 后签发绑定 audience、device ID、公钥和 scope 的凭据，并消费 challenge；
+5. 新设备通过签名 challenge 完成读回测试，配对才显示成功。
+
+普通 access token 最长 15 分钟；可续期设备凭据最长 30 天并在使用时轮换。Gateway 在每次建流、续期和高风险命令时检查设备/凭据撤销状态；撤销后关闭现有流并使 refresh 失效。恢复 owner 必须通过本机显式流程并撤销旧 owner 凭据，不能依赖邮件、显示名或可猜测共享秘密。所有 pairing、scope 变更、轮换、失败和撤销写入无正文安全审计。
+
 ### 12.3 TLS 与秘密
 
 - 公网 TLS 证书必须验证；
@@ -341,7 +410,7 @@ shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值�
 
 - gRPC 故障：停止 live delta，以耐久快照恢复；
 - PowerSync 故障：本地历史可读，live 事件标记等待持久化；
-- Gateway/PostgreSQL 故障：草稿保留，未确认命令不发送；
+- Gateway/耐久账本（PostgreSQL 或 Embedded SQLite）故障：草稿保留，未确认命令不发送；
 - Agent 故障：完整已接收文字保留，request 进入明确失败或 uncertain；
 - STT/TTS/视觉故障：退化为文字交互。
 
