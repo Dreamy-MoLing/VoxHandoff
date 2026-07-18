@@ -1,0 +1,5 @@
+event: assistant.delta
+data: {"delta":"完成","diagnostic":"[REDACTED]"}
+
+event: run.completed
+data: {"type":"run.completed","seq":8}

@@ -5,6 +5,17 @@ export interface SseMessage {
   retry?: number;
 }
 
+export interface SseParserOptions {
+  maxEventBytes?: number;
+}
+
+const defaultMaxEventBytes = 256 * 1024;
+const textEncoder = new TextEncoder();
+
+function byteLength(value: string): number {
+  return textEncoder.encode(value).byteLength;
+}
+
 function parseBlock(block: string): SseMessage | undefined {
   const message: SseMessage = { data: "" };
   const data: string[] = [];
@@ -25,7 +36,13 @@ function parseBlock(block: string): SseMessage | undefined {
 
 export async function* parseSseStream(
   body: ReadableStream<Uint8Array>,
+  options: SseParserOptions = {},
 ): AsyncGenerator<SseMessage> {
+  const maxEventBytes = options.maxEventBytes ?? defaultMaxEventBytes;
+  if (!Number.isSafeInteger(maxEventBytes) || maxEventBytes <= 0) {
+    throw new Error("SSE maxEventBytes must be a positive safe integer");
+  }
+
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -36,12 +53,21 @@ export async function* parseSseStream(
       let boundary: number;
       while ((boundary = buffer.search(/\r?\n\r?\n/)) !== -1) {
         const block = buffer.slice(0, boundary);
+        if (byteLength(block) > maxEventBytes) {
+          throw new Error(`SSE event exceeds ${maxEventBytes} bytes`);
+        }
         const delimiter = buffer.slice(boundary).match(/^\r?\n\r?\n/)?.[0] ?? "\n\n";
         buffer = buffer.slice(boundary + delimiter.length);
         const message = parseBlock(block);
         if (message) yield message;
       }
+      if (byteLength(buffer) > maxEventBytes) {
+        throw new Error(`SSE event exceeds ${maxEventBytes} bytes`);
+      }
       if (done) break;
+    }
+    if (byteLength(buffer) > maxEventBytes) {
+      throw new Error(`SSE event exceeds ${maxEventBytes} bytes`);
     }
     const finalMessage = parseBlock(buffer);
     if (finalMessage) yield finalMessage;

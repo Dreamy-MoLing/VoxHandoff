@@ -39,6 +39,7 @@ const textExtensions = new Set([
   ".py",
   ".sh",
   ".sql",
+  ".sse",
   ".toml",
   ".ts",
   ".tsx",

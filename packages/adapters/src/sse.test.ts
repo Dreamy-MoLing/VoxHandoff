@@ -20,3 +20,34 @@ test("SSE parser handles chunk boundaries and multiline data", async () => {
     { data: "line one\nline two" },
   ]);
 });
+
+test("SSE parser rejects an event that exceeds its configured byte limit", async () => {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode("data: 123456789\n\n"));
+      controller.close();
+    },
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _message of parseSseStream(stream, { maxEventBytes: 8 })) {
+        // No message should be yielded.
+      }
+    },
+    /exceeds 8 bytes/,
+  );
+});
+
+test("SSE parser rejects invalid limits before reading", async () => {
+  const stream = new ReadableStream<Uint8Array>();
+  await assert.rejects(
+    async () => {
+      for await (const _message of parseSseStream(stream, { maxEventBytes: 0 })) {
+        // No message should be yielded.
+      }
+    },
+    /positive safe integer/,
+  );
+});

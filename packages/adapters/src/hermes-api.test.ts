@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { HermesApiClient } from "./hermes-api.js";
@@ -11,6 +12,24 @@ test("Hermes client rejects plaintext non-local endpoints by default", () => {
         token: "test",
       }),
     /require HTTPS/,
+  );
+});
+
+test("Hermes HTTP failures do not expose upstream response bodies", async () => {
+  const client = new HermesApiClient({
+    baseUrl: "https://hermes.example.test",
+    token: "test",
+    fetch: async () => new Response("upstream-secret-value", { status: 500 }),
+  });
+
+  await assert.rejects(
+    () => client.health(),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /Hermes HTTP 500/);
+      assert.doesNotMatch(error.message, /upstream-secret-value/);
+      return true;
+    },
   );
 });
 
@@ -54,16 +73,15 @@ test("Hermes client probes capabilities and preserves idempotency keys", async (
 
 test("Hermes SSE events normalize into the shared event contract", async () => {
   const encoder = new TextEncoder();
+  const fixture = await readFile(
+    new URL("../test-fixtures/hermes-run.sse", import.meta.url),
+    "utf8",
+  );
   const fakeFetch: typeof fetch = async () =>
     new Response(
       new ReadableStream<Uint8Array>({
         start(controller) {
-          controller.enqueue(
-            encoder.encode(
-              'event: assistant.delta\ndata: {"delta":"完成"}\n\n' +
-                'event: run.completed\ndata: {"type":"run.completed","seq":8}\n\n',
-            ),
-          );
+          controller.enqueue(encoder.encode(fixture));
           controller.close();
         },
       }),

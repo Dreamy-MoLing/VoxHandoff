@@ -15,7 +15,7 @@
 - CLI doctor、Codex/Hermes PoC 入口；
 - Codex 当前安装版本的 12 项协议兼容检查；
 - Codex 真链路新建线程、turn、delta、完成、进程重启和 thread resume；
-- Hermes fake HTTP/SSE 契约测试；
+- Hermes fake HTTP/SSE 契约测试、脱敏 fixture、事件大小上限与错误正文隔离；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
