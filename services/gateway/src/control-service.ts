@@ -48,7 +48,7 @@ export interface NodeMessageContext {
 }
 
 export interface GatewayStreamHandlers {
-  onClientCommand(command: ClientCommand, context: ClientCommandContext): Promise<ClientResponseInit | undefined>;
+  onClientCommand(command: ClientCommand, context: ClientCommandContext): Promise<readonly ClientResponseInit[]>;
   onClientAck(ack: Ack, context: ClientCommandContext): Promise<void>;
   onNodeRegistration(registration: NodeRegistration, context: NodeMessageContext): Promise<void>;
   onNodeDispatchAck(ack: DispatchAck, context: NodeMessageContext): Promise<void>;
@@ -171,8 +171,8 @@ async function* connectClient(
         await options.handlers.onClientAck(body.value, commandContext);
         break;
       case "command": {
-        const response = await options.handlers.onClientCommand(body.value, commandContext);
-        if (response !== undefined) {
+        const responses = await options.handlers.onClientCommand(body.value, commandContext);
+        for (const response of responses) {
           yield response;
         }
         break;

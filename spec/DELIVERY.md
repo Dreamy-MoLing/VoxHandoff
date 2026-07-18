@@ -29,7 +29,9 @@
 - 30 秒 control lease 状态机：只允许带 `send|interrupt|approve` scope 的 active device 获取控制；续租递增 revision，其他设备必须带当前 lease/revision 显式 CAS 接管，过期不推导隐式接管，成功变化写无正文安全审计；
 - `0002_approval_rejected_state.sql` 以只向前 migration 将初始数据库约束的 `denied` 修正为规格唯一名称 `rejected`，不改写已提交的 `0001`；
 - Buf Connect-ES/Node gRPC 双向流入口：Client/Node 身份由认证上下文绑定，握手前只接受 heartbeat/明确协议错误，role/version/metadata/attachments 逐项验证，每帧复核撤销，Node registration 必须匹配 opaque principal；
-- 真实随机 loopback HTTP/2 gRPC 测试已通过；无 TLS server 只允许显式测试模式绑定字面量 `127.0.0.1`/`::1`，非 loopback 或隐式明文监听在构造期拒绝。command/replay/outbox 仍待接入，不把握手入口计为完整 Gateway；
+- 真实随机 loopback HTTP/2 gRPC 测试已通过；无 TLS server 只允许显式测试模式绑定字面量 `127.0.0.1`/`::1`，非 loopback 或隐式明文监听在构造期拒绝。Node dispatch/outbox/live event 仍待接入，不把握手入口计为完整 Gateway；
+- Client 流已接通 `send`、lease acquire/renew、`GetRequest`、有界 replay（1-500）和精确 Ack；acceptance proof 来自耐久请求，未知事件以 `UNSPECIFIED + unsupported` 保留关联，不映射为成功/失败，Ack 只有命中 eventId/conversation/sequence 才单调推进 device cursor；
+- `0003_request_failure_details.sql` 只向前增加 stage/category/code/safe message/retryable 完整失败事实；GetRequest 不再猜测失败分类。真实 PostgreSQL 已覆盖 status、顺序 replay、合法/非法 Ack 和 cursor upsert；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 

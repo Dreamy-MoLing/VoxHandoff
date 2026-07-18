@@ -77,7 +77,7 @@ function setup() {
       calls.clientCommands += 1;
       assert.equal(context.principal.principalId, "device-1");
       assert.equal(context.connectionId, "connection-1");
-      return {
+      return [{
         body: {
           case: "requestStatus",
           value: {
@@ -90,7 +90,7 @@ function setup() {
             acceptedSequence: 1n,
           },
         },
-      };
+      }];
     },
     async onClientAck() {
       calls.clientAcks += 1;

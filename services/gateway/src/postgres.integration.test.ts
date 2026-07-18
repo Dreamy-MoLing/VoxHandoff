@@ -34,6 +34,7 @@ test(
       assert.deepEqual(await runMigrations(pool, migrationDirectory), [
         "0001_gateway_ledger.sql",
         "0002_approval_rejected_state.sql",
+        "0003_request_failure_details.sql",
       ]);
       assert.deepEqual(await runMigrations(pool, migrationDirectory), []);
 
@@ -155,6 +156,36 @@ test(
         publications: "2",
         last_sequence: "2",
       });
+      const storedStatus = await recreatedGatewayLedger.getRequestStatus(makeInput(1).requestId, conversationId);
+      assert.equal(storedStatus?.state, "accepted");
+      const replayed = await recreatedGatewayLedger.replayEvents(conversationId, 0n, 10);
+      assert.deepEqual(
+        replayed.map((event) => [event.sequence, event.eventType]),
+        [
+          [1n, "request.accepted"],
+          [2n, "request.accepted"],
+        ],
+      );
+      assert.equal(
+        await recreatedGatewayLedger.acknowledgeEvent(
+          deviceId,
+          conversationId,
+          replayed[1]!.sequence,
+          replayed[1]!.eventId,
+          new Date("2030-01-01T00:00:15.000Z"),
+        ),
+        true,
+      );
+      assert.equal(
+        await recreatedGatewayLedger.acknowledgeEvent(
+          deviceId,
+          conversationId,
+          999n,
+          "missing-event",
+          new Date("2030-01-01T00:00:16.000Z"),
+        ),
+        false,
+      );
 
       await pool.query("UPDATE agent_talk.agents SET max_request_bytes = 1 WHERE agent_id = $1", [agentId]);
       await assert.rejects(

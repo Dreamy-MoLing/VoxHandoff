@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 
+import type { ClientLedger, GatewayRequestStatusRecord, PersistedEventRecord } from "./client-ledger.js";
 import type {
   ControlLeaseChange,
   ControlLeaseLedger,
@@ -59,6 +60,14 @@ function bigintAt(value: UnknownRow, key: string): bigint {
 
 function nullableBigintAt(value: UnknownRow, key: string): bigint | null {
   return value[key] === null ? null : bigintAt(value, key);
+}
+
+function booleanAt(value: UnknownRow, key: string): boolean {
+  const field = value[key];
+  if (typeof field !== "boolean") {
+    throw new Error(`invalid PostgreSQL ${key}`);
+  }
+  return field;
 }
 
 function dateAt(value: UnknownRow, key: string): Date {
@@ -338,7 +347,7 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
   }
 }
 
-export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger {
+export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger, ClientLedger {
   constructor(private readonly pool: Pool) {}
 
   async transaction<T>(work: (transaction: GatewayLedgerTransaction) => Promise<T>): Promise<T> {
@@ -347,6 +356,91 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger 
 
   async leaseTransaction<T>(work: (transaction: ControlLeaseTransaction) => Promise<T>): Promise<T> {
     return this.runTransaction(work);
+  }
+
+  async getRequestStatus(
+    requestId: string,
+    conversationId: string,
+  ): Promise<GatewayRequestStatusRecord | undefined> {
+    const result = await this.pool.query<UnknownRow>(
+      `SELECT ${requestColumns}, state, failure_stage, failure_category, failure_code,
+              failure_safe_message, failure_retryable
+       FROM agent_talk.requests WHERE request_id = $1 AND conversation_id = $2`,
+      [requestId, conversationId],
+    );
+    if (result.rows[0] === undefined) {
+      return undefined;
+    }
+    const data = row(result.rows[0]);
+    return {
+      ...parseRequest(data),
+      state: stringAt(data, "state"),
+      failure:
+        data.failure_code === null
+          ? null
+          : {
+              stage: stringAt(data, "failure_stage"),
+              category: stringAt(data, "failure_category"),
+              code: stringAt(data, "failure_code"),
+              safeMessage: stringAt(data, "failure_safe_message"),
+              retryable: booleanAt(data, "failure_retryable"),
+            },
+    };
+  }
+
+  async replayEvents(
+    conversationId: string,
+    afterSequence: bigint,
+    maximumEvents: number,
+  ): Promise<readonly PersistedEventRecord[]> {
+    if (!Number.isInteger(maximumEvents) || maximumEvents < 1 || maximumEvents > 500) {
+      throw new Error("maximumEvents must be between 1 and 500");
+    }
+    const result = await this.pool.query<UnknownRow>(
+      `SELECT event_id, connection_id, device_id, conversation_id, session_id, request_id,
+              sequence, event_type, safe_payload, occurred_at
+       FROM agent_talk.events
+       WHERE conversation_id = $1 AND sequence > $2
+       ORDER BY sequence
+       LIMIT $3`,
+      [conversationId, afterSequence.toString(), maximumEvents],
+    );
+    return result.rows.map((value) => {
+      const data = row(value);
+      return {
+        eventId: stringAt(data, "event_id"),
+        connectionId: stringAt(data, "connection_id"),
+        deviceId: stringAt(data, "device_id"),
+        conversationId: stringAt(data, "conversation_id"),
+        sessionId: nullableStringAt(data, "session_id"),
+        requestId: nullableStringAt(data, "request_id"),
+        sequence: bigintAt(data, "sequence"),
+        eventType: stringAt(data, "event_type"),
+        safePayload: data.safe_payload,
+        occurredAt: dateAt(data, "occurred_at"),
+      };
+    });
+  }
+
+  async acknowledgeEvent(
+    deviceId: string,
+    conversationId: string,
+    sequence: bigint,
+    eventId: string,
+    now: Date,
+  ): Promise<boolean> {
+    const result = await this.pool.query(
+      `INSERT INTO agent_talk.device_cursors (device_id, conversation_id, sequence, updated_at)
+       SELECT $1, e.conversation_id, e.sequence, $5
+       FROM agent_talk.events e
+       WHERE e.conversation_id = $2 AND e.sequence = $3 AND e.event_id = $4
+       ON CONFLICT (device_id, conversation_id) DO UPDATE
+       SET sequence = GREATEST(agent_talk.device_cursors.sequence, EXCLUDED.sequence),
+           updated_at = EXCLUDED.updated_at
+       RETURNING sequence`,
+      [deviceId, conversationId, sequence.toString(), eventId, now],
+    );
+    return result.rowCount === 1;
   }
 
   private async runTransaction<T>(work: (transaction: PostgresGatewayTransaction) => Promise<T>): Promise<T> {
