@@ -1,6 +1,6 @@
 # Agent Talk 正式开发基线
 
-> 基线版本：1.21<br>
+> 基线版本：1.22<br>
 > 生效日期：2026-07-18<br>
 > 状态：Active
 
@@ -29,6 +29,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.22 | 2026-07-18 | 接通耐久 approval pending/CAS/expiry/audit/dispatch，禁止摘要替换、迟到或并发重复决定 |
 | 1.21 | 2026-07-18 | 建立交互控制命令账本并接通显式 interrupt 的 lease/scope/idempotency/outbox 路径 |
 | 1.20 | 2026-07-18 | 接通 Node 注册、固定 dispatch、Ack/失败和单调事件入账，拒绝旧连接与乱序事件 |
 | 1.19 | 2026-07-18 | 接通 send/lease/GetRequest/replay/Ack 账本路径，并保存完整失败分类 |

@@ -36,6 +36,8 @@
 - `0004_dispatch_ack_facts.sql` 保存 dispatch Ack/失败和 Node 源 sequence；旧连接 Ack/event、乱序或重复 source sequence、eventId 换 payload、终态后事件均拒绝。拒收 dispatch 同事务写完整 `request.failed`、Gateway sequence 与 event outbox；
 - `0005_interaction_commands.sql` 建立 control command、clarification 和 approval resolution 事实约束；interrupt 只有当前 lease、`interrupt` scope、非终态 request 和固定 capability 允许，同事务写 `request.interrupting`、dispatch/event outbox，同 idempotency 精确重试不重投；
 - Node stream 将 interrupt outbox 映射为 `DispatchInterrupt`；换连接仍使用原 command/request/idempotency identity，Ack 单独推进 control command，不把停止 TTS 或本地取消混成 Agent interrupt；
+- Node `approval.required` 在事件同事务创建绑定 request/node/agent、摘要 hash 和 expiry 的 pending approval；expired/cancelled/resolved 只允许与耐久状态机一致，request 终态只取消仍 pending 的交互，不改写既有用户决定；
+- Client approval 决策必须同时通过 active device、`approve` scope、当前 lease、非终态 request、pending/未过期状态和原摘要 hash；CAS 同事务写 approved/rejected、device/idempotency/command、无正文安全审计与固定 Node outbox，精确重试返回原决定，其他并发或迟到决定不投递；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 

@@ -4,6 +4,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import {
   AgentCapabilitiesSchema,
   AgentEventType,
+  ApprovalDecision,
   ConnectNodeResponseSchema,
   FailureCategory,
   FailureStage,
@@ -178,21 +179,26 @@ function requestState(type: AgentEventType): "working" | "completed" | "failed" 
   }
 }
 
-function normalizePayload(event: NonNullable<EventEnvelope["event"]>): { safePayload: unknown; failure: StoredFailure | null } {
+type NodeInteraction = import("./node-ledger.js").NodeEventInput["interaction"];
+
+function normalizePayload(
+  event: NonNullable<EventEnvelope["event"]>,
+  now: Date,
+): { safePayload: unknown; failure: StoredFailure | null; interaction: NodeInteraction } {
   const payload = event.payload;
   switch (event.type) {
     case AgentEventType.CONNECTION_READY:
     case AgentEventType.CONNECTION_LOST:
       if (payload.case !== "connection") invalid("Connection event payload is required.");
-      return { safePayload: { safeMessage: payload.value.safeMessage }, failure: null };
+      return { safePayload: { safeMessage: payload.value.safeMessage }, failure: null, interaction: null };
     case AgentEventType.AGENT_WORKING:
     case AgentEventType.REQUEST_INTERRUPTING:
       if (payload.case !== "requestProgress") invalid("Request progress payload is required.");
-      return { safePayload: { safeMessage: payload.value.safeMessage }, failure: null };
+      return { safePayload: { safeMessage: payload.value.safeMessage }, failure: null, interaction: null };
     case AgentEventType.MESSAGE_DELTA:
     case AgentEventType.MESSAGE_COMPLETED:
       if (payload.case !== "message") invalid("Message payload is required.");
-      return { safePayload: { text: payload.value.text, revision: payload.value.revision.toString() }, failure: null };
+      return { safePayload: { text: payload.value.text, revision: payload.value.revision.toString() }, failure: null, interaction: null };
     case AgentEventType.TOOL_STARTED:
     case AgentEventType.TOOL_COMPLETED:
     case AgentEventType.TOOL_FAILED:
@@ -204,33 +210,99 @@ function normalizePayload(event: NonNullable<EventEnvelope["event"]>): { safePay
           safeSummary: payload.value.safeSummary,
         },
         failure: null,
+        interaction: null,
       };
     case AgentEventType.APPROVAL_REQUIRED:
     case AgentEventType.APPROVAL_RESOLVED:
     case AgentEventType.APPROVAL_EXPIRED:
     case AgentEventType.APPROVAL_CANCELLED:
       if (payload.case !== "approval") invalid("Approval payload is required.");
+      requireOpaqueId(payload.value.approvalId, "approvalId");
+      if (!/^[0-9a-f]{64}$/u.test(payload.value.operationSummarySha256)) {
+        invalid("Approval operationSummarySha256 must be a lowercase SHA-256 digest.");
+      }
+      if (payload.value.safeSummary.length === 0 || payload.value.safeSummary.length > 4096) {
+        invalid("Approval safeSummary must be between 1 and 4096 characters.");
+      }
+      if (payload.value.expiresAt === undefined) invalid("Approval expiry is required.");
+      const approvalExpiresAt = timestampDate(payload.value.expiresAt);
+      if (Number.isNaN(approvalExpiresAt.getTime())) invalid("Approval expiry is invalid.");
+      if (event.type === AgentEventType.APPROVAL_REQUIRED && approvalExpiresAt.getTime() <= now.getTime()) {
+        invalid("A new approval must expire in the future.");
+      }
+      const approvalState = event.type === AgentEventType.APPROVAL_RESOLVED
+        ? "resolved" as const
+        : event.type === AgentEventType.APPROVAL_EXPIRED
+          ? "expired" as const
+          : event.type === AgentEventType.APPROVAL_CANCELLED
+            ? "cancelled" as const
+            : undefined;
       return {
         safePayload: {
           approvalId: payload.value.approvalId,
           safeSummary: payload.value.safeSummary,
           operationSummarySha256: payload.value.operationSummarySha256,
-          expiresAt: payload.value.expiresAt === undefined ? null : timestampDate(payload.value.expiresAt).toISOString(),
+          expiresAt: approvalExpiresAt.toISOString(),
         },
         failure: null,
+        interaction: approvalState === undefined
+          ? {
+              kind: "approval_required",
+              approvalId: payload.value.approvalId,
+              nativeApprovalId: payload.value.approvalId,
+              safeSummary: payload.value.safeSummary,
+              operationSummarySha256: payload.value.operationSummarySha256,
+              expiresAt: approvalExpiresAt,
+            }
+          : {
+              kind: "approval_state",
+              approvalId: payload.value.approvalId,
+              operationSummarySha256: payload.value.operationSummarySha256,
+              state: approvalState,
+            },
       };
     case AgentEventType.CLARIFICATION_REQUIRED:
     case AgentEventType.CLARIFICATION_RESOLVED:
     case AgentEventType.CLARIFICATION_EXPIRED:
     case AgentEventType.CLARIFICATION_CANCELLED:
       if (payload.case !== "clarification") invalid("Clarification payload is required.");
+      requireOpaqueId(payload.value.clarificationId, "clarificationId");
+      if (payload.value.safePrompt.length === 0 || payload.value.safePrompt.length > 4096) {
+        invalid("Clarification safePrompt must be between 1 and 4096 characters.");
+      }
+      if (payload.value.expiresAt === undefined) invalid("Clarification expiry is required.");
+      const clarificationExpiresAt = timestampDate(payload.value.expiresAt);
+      if (Number.isNaN(clarificationExpiresAt.getTime())) invalid("Clarification expiry is invalid.");
+      if (event.type === AgentEventType.CLARIFICATION_REQUIRED && clarificationExpiresAt.getTime() <= now.getTime()) {
+        invalid("A new clarification must expire in the future.");
+      }
+      const clarificationState = event.type === AgentEventType.CLARIFICATION_RESOLVED
+        ? "resolved" as const
+        : event.type === AgentEventType.CLARIFICATION_EXPIRED
+          ? "expired" as const
+          : event.type === AgentEventType.CLARIFICATION_CANCELLED
+            ? "cancelled" as const
+            : undefined;
       return {
         safePayload: {
           clarificationId: payload.value.clarificationId,
           safePrompt: payload.value.safePrompt,
-          expiresAt: payload.value.expiresAt === undefined ? null : timestampDate(payload.value.expiresAt).toISOString(),
+          expiresAt: clarificationExpiresAt.toISOString(),
         },
         failure: null,
+        interaction: clarificationState === undefined
+          ? {
+              kind: "clarification_required",
+              clarificationId: payload.value.clarificationId,
+              nativeClarificationId: payload.value.clarificationId,
+              safePrompt: payload.value.safePrompt,
+              expiresAt: clarificationExpiresAt,
+            }
+          : {
+              kind: "clarification_state",
+              clarificationId: payload.value.clarificationId,
+              state: clarificationState,
+            },
       };
     case AgentEventType.REQUEST_COMPLETED:
     case AgentEventType.REQUEST_FAILED:
@@ -244,7 +316,7 @@ function normalizePayload(event: NonNullable<EventEnvelope["event"]>): { safePay
       if (event.type !== AgentEventType.REQUEST_FAILED && failure !== null) {
         invalid("Only a failed request event may include a failure.");
       }
-      return { safePayload: failure === null ? {} : { failure }, failure };
+      return { safePayload: failure === null ? {} : { failure }, failure, interaction: null };
     }
     default:
       invalid("The Node event type is unsupported or owned by the Gateway.");
@@ -314,7 +386,8 @@ export class LedgerBackedNodeHandlers implements NodeStreamDelegate {
     if (event === undefined) invalid("Node event payload is required.");
     const eventType = eventTypeNames[event.type];
     if (eventType === undefined) invalid("The Node event type is unsupported or owned by the Gateway.");
-    const normalized = normalizePayload(event);
+    const now = this.dependencies.now();
+    const normalized = normalizePayload(event, now);
     try {
       await this.ledger.ingestNodeEvent({
         eventId: envelope.eventId,
@@ -328,7 +401,8 @@ export class LedgerBackedNodeHandlers implements NodeStreamDelegate {
         safePayload: normalized.safePayload,
         requestState: requestState(event.type),
         failure: normalized.failure,
-        occurredAt: this.dependencies.now(),
+        interaction: normalized.interaction,
+        occurredAt: now,
       });
     } catch (error) {
       if (error instanceof NodeLedgerError) throw mapLedgerError(error);
@@ -344,7 +418,21 @@ export class LedgerBackedNodeHandlers implements NodeStreamDelegate {
       this.dependencies.dispatchBatchSize ?? 25,
     );
     return records.map((record): NodeResponseInit =>
-      record.kind === "interrupt"
+      record.kind === "approval"
+        ? {
+            body: {
+              case: "dispatchApproval",
+              value: {
+                dispatchId: record.dispatchId,
+                requestId: record.requestId,
+                approvalId: record.approvalId,
+                idempotencyKey: record.idempotencyKey,
+                decision: record.decision === "approved" ? ApprovalDecision.APPROVE : ApprovalDecision.DENY,
+                operationSummarySha256: record.operationSummarySha256,
+              },
+            },
+          }
+        : record.kind === "interrupt"
         ? {
             body: {
               case: "dispatchInterrupt",

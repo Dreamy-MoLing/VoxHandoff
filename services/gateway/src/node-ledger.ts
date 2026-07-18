@@ -37,7 +37,17 @@ export interface ClaimedInterruptDispatchRecord extends ClaimedDispatchBase {
   kind: "interrupt";
 }
 
-export type ClaimedDispatchRecord = ClaimedSendDispatchRecord | ClaimedInterruptDispatchRecord;
+export interface ClaimedApprovalDispatchRecord extends ClaimedDispatchBase {
+  kind: "approval";
+  approvalId: string;
+  decision: "approved" | "rejected";
+  operationSummarySha256: string;
+}
+
+export type ClaimedDispatchRecord =
+  | ClaimedSendDispatchRecord
+  | ClaimedInterruptDispatchRecord
+  | ClaimedApprovalDispatchRecord;
 
 export interface StoredFailure {
   stage: string;
@@ -69,6 +79,34 @@ export interface NodeEventInput {
   safePayload: unknown;
   requestState: "working" | "completed" | "failed" | "cancelled" | "interrupted" | null;
   failure: StoredFailure | null;
+  interaction:
+    | {
+        kind: "approval_required";
+        approvalId: string;
+        nativeApprovalId: string;
+        safeSummary: string;
+        operationSummarySha256: string;
+        expiresAt: Date;
+      }
+    | {
+        kind: "approval_state";
+        approvalId: string;
+        operationSummarySha256: string;
+        state: "resolved" | "expired" | "cancelled";
+      }
+    | {
+        kind: "clarification_required";
+        clarificationId: string;
+        nativeClarificationId: string;
+        safePrompt: string;
+        expiresAt: Date;
+      }
+    | {
+        kind: "clarification_state";
+        clarificationId: string;
+        state: "resolved" | "expired" | "cancelled";
+      }
+    | null;
   occurredAt: Date;
 }
 
@@ -89,6 +127,7 @@ export type NodeLedgerErrorCode =
   | "event_identity_conflict"
   | "stale_node_connection"
   | "stale_node_event"
+  | "interaction_conflict"
   | "event_after_terminal";
 
 export class NodeLedgerError extends Error {

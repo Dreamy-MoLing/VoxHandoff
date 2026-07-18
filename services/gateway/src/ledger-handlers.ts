@@ -4,6 +4,7 @@ import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import {
   AgentEventType,
   AgentEventSchema,
+  ApprovalDecision,
   FailureCategory,
   FailureStage,
   ConnectClientResponseSchema,
@@ -16,7 +17,7 @@ import {
 } from "@agent-talk/protocol";
 
 import { acceptRequest, GatewayCommandError } from "./acceptance.js";
-import { acceptInterruptCommand, InteractionCommandError } from "./interaction-commands.js";
+import { acceptApprovalCommand, acceptInterruptCommand, InteractionCommandError } from "./interaction-commands.js";
 import type { InteractionLedger } from "./interaction-ledger.js";
 import type { ClientLedger, GatewayRequestStatusRecord, PersistedEventRecord } from "./client-ledger.js";
 import {
@@ -135,7 +136,7 @@ function interactionConnectError(error: InteractionCommandError): ConnectError {
     ? Code.PermissionDenied
     : ["invalid_command", "idempotency_conflict", "command_id_conflict"].includes(error.code)
       ? Code.InvalidArgument
-      : error.code === "request_not_found" || error.code === "conversation_not_found"
+      : error.code === "request_not_found" || error.code === "conversation_not_found" || error.code === "approval_not_found"
         ? Code.NotFound
         : Code.FailedPrecondition;
   return new ConnectError(error.message, code);
@@ -346,6 +347,29 @@ export class LedgerBackedGatewayHandlers implements GatewayStreamHandlers {
               requestId: interrupt.requestId,
               leaseId: command.leaseId,
               leaseRevision: command.leaseRevision,
+            },
+            this.dependencies,
+          );
+          return [requestStatus(result.request)];
+        }
+        case "resolveApproval": {
+          const approval = command.command.value;
+          if (approval.decision === ApprovalDecision.UNSPECIFIED) {
+            throw new ConnectError("Approval decision must be approve or deny.", Code.InvalidArgument);
+          }
+          const result = await acceptApprovalCommand(
+            this.store,
+            {
+              commandId: command.commandId,
+              idempotencyKey: command.idempotencyKey,
+              deviceId: context.principal.principalId,
+              conversationId: command.conversationId,
+              requestId: approval.requestId,
+              approvalId: approval.approvalId,
+              leaseId: command.leaseId,
+              leaseRevision: command.leaseRevision,
+              decision: approval.decision === ApprovalDecision.APPROVE ? "approved" : "rejected",
+              operationSummarySha256: approval.operationSummarySha256,
             },
             this.dependencies,
           );

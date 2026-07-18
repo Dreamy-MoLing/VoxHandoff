@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  acceptApprovalCommand,
   acceptInterruptCommand,
   InteractionCommandError,
   type InterruptCommandInput,
 } from "./interaction-commands.js";
 import type {
+  ApprovalRecord,
+  ApprovalResolutionFacts,
   ControlCommandRecord,
   InteractionLedger,
   InteractionLedgerTransaction,
@@ -43,6 +46,16 @@ class FakeInteractionLedger implements InteractionLedger, InteractionLedgerTrans
   };
   commands: ControlCommandRecord[] = [];
   facts: InterruptAcceptanceFacts | undefined;
+  approval: ApprovalRecord | undefined = {
+    approvalId: "approval-1",
+    requestId: "request-1",
+    nodeId: "node-1",
+    agentId: "agent-1",
+    operationSummarySha256: "b".repeat(64),
+    state: "pending",
+    expiresAt: new Date("2030-01-01T00:01:00.000Z"),
+  };
+  approvalFacts: ApprovalResolutionFacts | undefined;
 
   async interactionTransaction<T>(work: (transaction: InteractionLedgerTransaction) => Promise<T>): Promise<T> {
     return work(this);
@@ -67,10 +80,25 @@ class FakeInteractionLedger implements InteractionLedger, InteractionLedgerTrans
       ? this.request
       : undefined;
   }
+  async lockApproval(approvalId: string, requestId: string) {
+    return this.approval?.approvalId === approvalId && this.approval.requestId === requestId
+      ? this.approval
+      : undefined;
+  }
+  async expireApproval(approvalId: string): Promise<boolean> {
+    if (this.approval?.approvalId !== approvalId || this.approval.state !== "pending") return false;
+    this.approval = { ...this.approval, state: "expired" };
+    return true;
+  }
   async allocateConversationSequence(): Promise<bigint | undefined> { return 2n; }
   async insertInterruptAcceptance(facts: InterruptAcceptanceFacts): Promise<void> {
     this.facts = facts;
     this.commands.push(facts.command);
+  }
+  async insertApprovalResolution(facts: ApprovalResolutionFacts): Promise<void> {
+    this.approvalFacts = facts;
+    this.commands.push(facts.command);
+    this.approval = { ...this.approval!, state: facts.decision };
   }
 }
 
@@ -130,4 +158,70 @@ test("rejects command and idempotency identity reuse", async () => {
     acceptInterruptCommand(ledger, { ...input, requestId: "request-other" }, dependencies()),
     (error: unknown) => error instanceof InteractionCommandError && error.code === "idempotency_conflict",
   );
+});
+
+const approvalInput = {
+  commandId: "approval-command-1",
+  idempotencyKey: "approval-idempotency-1",
+  deviceId: "device-1",
+  conversationId: "conversation-1",
+  requestId: "request-1",
+  approvalId: "approval-1",
+  leaseId: "lease-1",
+  leaseRevision: 2n,
+  decision: "approved" as const,
+  operationSummarySha256: "b".repeat(64),
+};
+
+test("resolves a pending approval once and returns the original decision on exact retry", async () => {
+  const ledger = new FakeInteractionLedger();
+  ledger.device = { deviceId: "device-1", active: true, scopes: ["approve"] };
+  const deps = dependencies();
+  assert.equal((await acceptApprovalCommand(ledger, approvalInput, deps)).kind, "accepted");
+  assert.equal(ledger.approval?.state, "approved");
+  assert.equal(ledger.approvalFacts?.command.targetId, "approval-1");
+  assert.equal((await acceptApprovalCommand(ledger, approvalInput, deps)).kind, "existing");
+  await assert.rejects(
+    acceptApprovalCommand(
+      ledger,
+      { ...approvalInput, commandId: "approval-command-2", idempotencyKey: "approval-idempotency-2" },
+      deps,
+    ),
+    (error: unknown) => error instanceof InteractionCommandError && error.code === "approval_already_resolved",
+  );
+  await assert.rejects(
+    acceptApprovalCommand(ledger, { ...approvalInput, decision: "rejected" }, deps),
+    (error: unknown) => error instanceof InteractionCommandError && error.code === "idempotency_conflict",
+  );
+  assert.equal(ledger.commands.length, 1);
+});
+
+test("never dispatches approval without exact scope, summary, pending state, and expiry", async () => {
+  const scenarios: Array<(ledger: FakeInteractionLedger) => void> = [
+    () => {},
+    (ledger) => { ledger.device = { deviceId: "device-1", active: true, scopes: ["approve"] }; },
+    (ledger) => {
+      ledger.device = { deviceId: "device-1", active: true, scopes: ["approve"] };
+      ledger.approval = { ...ledger.approval!, state: "cancelled" };
+    },
+    (ledger) => {
+      ledger.device = { deviceId: "device-1", active: true, scopes: ["approve"] };
+      ledger.approval = { ...ledger.approval!, expiresAt: new Date("2030-01-01T00:00:01.000Z") };
+    },
+  ];
+  const inputs = [
+    approvalInput,
+    { ...approvalInput, operationSummarySha256: "c".repeat(64) },
+    approvalInput,
+    approvalInput,
+  ];
+  for (let index = 0; index < scenarios.length; index += 1) {
+    const ledger = new FakeInteractionLedger();
+    scenarios[index]!(ledger);
+    await assert.rejects(
+      acceptApprovalCommand(ledger, inputs[index]!, dependencies()),
+      (error: unknown) => error instanceof InteractionCommandError,
+    );
+    assert.equal(ledger.approvalFacts, undefined);
+  }
 });

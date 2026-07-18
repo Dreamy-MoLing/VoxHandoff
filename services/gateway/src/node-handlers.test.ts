@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { create } from "@bufbuild/protobuf";
+import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import {
   AgentCapabilitiesSchema,
@@ -183,5 +184,59 @@ test("maps a durable interrupt outbox record to DispatchInterrupt", async () => 
   if (body?.case === "dispatchInterrupt") {
     assert.equal(body.value.dispatchId, "interrupt-dispatch-1");
     assert.equal(body.value.idempotencyKey, "interrupt-idempotency-1");
+  }
+});
+
+test("normalizes a pending approval without deriving any decision", async () => {
+  const { ledger, handlers } = setup();
+  await handlers.onEvent(
+    create(EventEnvelopeSchema, {
+      protocol: { major: 1, minor: 0 },
+      eventId: "approval-event-1",
+      conversationId: "conversation-1",
+      requestId: "request-1",
+      sequence: 1n,
+      event: {
+        type: AgentEventType.APPROVAL_REQUIRED,
+        payload: {
+          case: "approval",
+          value: {
+            approvalId: "approval-1",
+            safeSummary: "Allow a harmless test action?",
+            operationSummarySha256: "a".repeat(64),
+            expiresAt: timestampFromDate(new Date("2030-01-01T00:01:00.000Z")),
+          },
+        },
+      },
+    }),
+    context,
+  );
+  assert.deepEqual(ledger.event?.interaction, {
+    kind: "approval_required",
+    approvalId: "approval-1",
+    nativeApprovalId: "approval-1",
+    safeSummary: "Allow a harmless test action?",
+    operationSummarySha256: "a".repeat(64),
+    expiresAt: new Date("2030-01-01T00:01:00.000Z"),
+  });
+});
+
+test("maps an authorized approval decision to DispatchApproval", async () => {
+  const { ledger, handlers } = setup();
+  ledger.claims = [{
+    kind: "approval",
+    dispatchId: "approval-dispatch-1",
+    requestId: "request-1",
+    idempotencyKey: "approval-idempotency-1",
+    approvalId: "approval-1",
+    decision: "rejected",
+    operationSummarySha256: "a".repeat(64),
+  }];
+  const responses = await handlers.onHeartbeat(context);
+  const body = responses[0]?.body;
+  assert.equal(body?.case, "dispatchApproval");
+  if (body?.case === "dispatchApproval") {
+    assert.equal(body.value.approvalId, "approval-1");
+    assert.equal(body.value.decision, 2);
   }
 });

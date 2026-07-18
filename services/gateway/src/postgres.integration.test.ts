@@ -9,7 +9,7 @@ import { Pool } from "pg";
 
 import { acceptRequest, GatewayCommandError, type AcceptRequestInput } from "./acceptance.js";
 import { acquireControlLease, renewControlLease } from "./control-lease.js";
-import { acceptInterruptCommand } from "./interaction-commands.js";
+import { acceptApprovalCommand, acceptInterruptCommand } from "./interaction-commands.js";
 import { MigrationError, runMigrations } from "./migrations.js";
 import { PostgresGatewayLedger } from "./postgres-ledger.js";
 import { NodeLedgerError } from "./node-ledger.js";
@@ -58,7 +58,7 @@ test(
       await pool.query(
         `INSERT INTO agent_talk.devices (
            device_id, display_name, public_key_sha256, status, scopes, paired_at
-         ) VALUES ($1, 'test device', $2, 'active', ARRAY['send', 'interrupt'], $3)`,
+         ) VALUES ($1, 'test device', $2, 'active', ARRAY['send', 'interrupt', 'approve'], $3)`,
         [deviceId, "a".repeat(64), pairedAt],
       );
       await pool.query(
@@ -283,6 +283,7 @@ test(
         safePayload: { safeMessage: "Agent is working." },
         requestState: "working" as const,
         failure: null,
+        interaction: null,
         occurredAt: new Date("2030-01-01T00:00:16.000Z"),
       };
       await assert.rejects(
@@ -294,16 +295,95 @@ test(
         recreatedGatewayLedger.ingestNodeEvent({ ...workingEvent, eventId: `stale-${suffix}` }),
         (error: unknown) => error instanceof NodeLedgerError && error.code === "stale_node_event",
       );
+      const approvalId = `approval-${suffix}`;
+      const approvalRequiredEvent = {
+        ...workingEvent,
+        eventId: `approval-required-${suffix}`,
+        sourceSequence: 2n,
+        eventType: "approval.required",
+        safePayload: {
+          approvalId,
+          safeSummary: "Allow a harmless test action?",
+          operationSummarySha256: "c".repeat(64),
+          expiresAt: "2030-01-01T00:02:00.000Z",
+        },
+        requestState: null,
+        interaction: {
+          kind: "approval_required" as const,
+          approvalId,
+          nativeApprovalId: approvalId,
+          safeSummary: "Allow a harmless test action?",
+          operationSummarySha256: "c".repeat(64),
+          expiresAt: new Date("2030-01-01T00:02:00.000Z"),
+        },
+        occurredAt: new Date("2030-01-01T00:00:16.500Z"),
+      };
+      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(approvalRequiredEvent)).sequence, 5n);
+      const pendingApproval = await pool.query<{ state: string }>(
+        "SELECT state FROM agent_talk.approvals WHERE approval_id = $1",
+        [approvalId],
+      );
+      assert.equal(pendingApproval.rows[0]?.state, "pending");
+      const approvalInput = {
+        commandId: `approval-command-${suffix}`,
+        idempotencyKey: `approval-idempotency-${suffix}`,
+        deviceId,
+        conversationId,
+        requestId: makeInput(1).requestId,
+        approvalId,
+        leaseId: renewed.lease.leaseId,
+        leaseRevision: renewed.lease.revision,
+        decision: "approved" as const,
+        operationSummarySha256: "c".repeat(64),
+      };
+      assert.equal((await acceptApprovalCommand(recreatedGatewayLedger, approvalInput, dependencies)).kind, "accepted");
+      assert.equal((await acceptApprovalCommand(recreatedGatewayLedger, approvalInput, dependencies)).kind, "existing");
+      const approvalClaims = await recreatedGatewayLedger.claimDispatches(
+        nodeId,
+        "node-connection-2",
+        new Date("2030-01-01T00:00:16.600Z"),
+        10,
+      );
+      assert.equal(approvalClaims.length, 1);
+      const approvalDispatch = approvalClaims[0];
+      assert.equal(approvalDispatch?.kind, "approval");
+      if (approvalDispatch?.kind === "approval") {
+        assert.equal(approvalDispatch.approvalId, approvalId);
+        assert.equal(approvalDispatch.decision, "approved");
+        await recreatedGatewayLedger.acknowledgeDispatch({
+          nodeId,
+          connectionId: "node-connection-2",
+          dispatchId: approvalDispatch.dispatchId,
+          requestId: approvalDispatch.requestId,
+          accepted: true,
+          failure: null,
+          occurredAt: new Date("2030-01-01T00:00:16.700Z"),
+        });
+      }
+      const approvalResolvedEvent = {
+        ...approvalRequiredEvent,
+        eventId: `approval-resolved-${suffix}`,
+        sourceSequence: 3n,
+        eventType: "approval.resolved",
+        interaction: {
+          kind: "approval_state" as const,
+          approvalId,
+          operationSummarySha256: "c".repeat(64),
+          state: "resolved" as const,
+        },
+        occurredAt: new Date("2030-01-01T00:00:16.800Z"),
+      };
+      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(approvalResolvedEvent)).sequence, 6n);
       const completedEvent = {
         ...workingEvent,
         eventId: `completed-${suffix}`,
-        sourceSequence: 2n,
+        sourceSequence: 4n,
         eventType: "request.completed",
         safePayload: {},
         requestState: "completed" as const,
         occurredAt: new Date("2030-01-01T00:00:17.000Z"),
       };
-      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(completedEvent)).sequence, 5n);
+      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(completedEvent)).sequence, 7n);
       assert.equal((await recreatedGatewayLedger.ingestNodeEvent(completedEvent)).duplicate, true);
       await assert.rejects(
         recreatedGatewayLedger.ingestNodeEvent({ ...completedEvent, safePayload: { changed: true } }),
@@ -318,6 +398,11 @@ test(
         }),
         (error: unknown) => error instanceof NodeLedgerError && error.code === "event_after_terminal",
       );
+      const resolvedApproval = await pool.query<{ state: string }>(
+        "SELECT state FROM agent_talk.approvals WHERE approval_id = $1",
+        [approvalId],
+      );
+      assert.equal(resolvedApproval.rows[0]?.state, "approved");
 
       const secondDispatch = reconnectClaims.find((claim) => claim.requestId === makeInput(2).requestId);
       assert(secondDispatch);
@@ -356,8 +441,10 @@ test(
           [2n, "request.accepted"],
           [3n, "request.interrupting"],
           [4n, "agent.working"],
-          [5n, "request.completed"],
-          [6n, "request.failed"],
+          [5n, "approval.required"],
+          [6n, "approval.resolved"],
+          [7n, "request.completed"],
+          [8n, "request.failed"],
         ],
       );
       assert.equal(
@@ -390,7 +477,7 @@ test(
         "SELECT last_sequence::text FROM agent_talk.conversations WHERE conversation_id = $1",
         [conversationId],
       );
-      assert.equal(afterFailure.rows[0]?.last_sequence, "6");
+      assert.equal(afterFailure.rows[0]?.last_sequence, "8");
 
       const secondDeviceId = `device-2-${suffix}`;
       await pool.query(

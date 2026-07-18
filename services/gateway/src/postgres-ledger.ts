@@ -16,6 +16,8 @@ import type {
   GatewayLedgerTransaction,
 } from "./ledger.js";
 import type {
+  ApprovalRecord,
+  ApprovalResolutionFacts,
   ControlCommandRecord,
   InteractionLedger,
   InteractionLedgerTransaction,
@@ -273,6 +275,37 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
     };
   }
 
+  async lockApproval(approvalId: string, requestId: string): Promise<ApprovalRecord | undefined> {
+    const result = await this.client.query<UnknownRow>(
+      `SELECT approval_id, request_id, node_id, agent_id, operation_summary_sha256, state, expires_at
+       FROM agent_talk.approvals
+       WHERE approval_id = $1 AND request_id = $2
+       FOR UPDATE`,
+      [approvalId, requestId],
+    );
+    if (result.rows[0] === undefined) return undefined;
+    const data = row(result.rows[0]);
+    return {
+      approvalId: stringAt(data, "approval_id"),
+      requestId: stringAt(data, "request_id"),
+      nodeId: stringAt(data, "node_id"),
+      agentId: stringAt(data, "agent_id"),
+      operationSummarySha256: stringAt(data, "operation_summary_sha256"),
+      state: stringAt(data, "state") as ApprovalRecord["state"],
+      expiresAt: dateAt(data, "expires_at"),
+    };
+  }
+
+  async expireApproval(approvalId: string, occurredAt: Date): Promise<boolean> {
+    const result = await this.client.query(
+      `UPDATE agent_talk.approvals
+       SET state = 'expired', resolved_at = $2
+       WHERE approval_id = $1 AND state = 'pending'`,
+      [approvalId, occurredAt],
+    );
+    return result.rowCount === 1;
+  }
+
   async insertInterruptAcceptance(facts: InterruptAcceptanceFacts): Promise<void> {
     const command = facts.command;
     await this.client.query(
@@ -324,6 +357,63 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
         facts.event.conversationId,
         facts.event.sequence.toString(),
         command.createdAt,
+      ],
+    );
+  }
+
+  async insertApprovalResolution(facts: ApprovalResolutionFacts): Promise<void> {
+    const command = facts.command;
+    const approval = await this.client.query(
+      `UPDATE agent_talk.approvals
+       SET state = $2, resolved_by_device_id = $3, resolution_idempotency_key = $4,
+           resolution_decision = $2, resolution_command_id = $5, resolved_at = $6
+       WHERE approval_id = $1 AND request_id = $7 AND state = 'pending'
+         AND operation_summary_sha256 = $8`,
+      [
+        facts.approvalId,
+        facts.decision,
+        command.deviceId,
+        command.idempotencyKey,
+        command.commandId,
+        command.createdAt,
+        command.requestId,
+        facts.operationSummarySha256,
+      ],
+    );
+    if (approval.rowCount !== 1) throw new Error("locked approval changed before resolution insert");
+    await this.client.query(
+      `INSERT INTO agent_talk.control_commands (
+         command_id, idempotency_key, device_id, conversation_id, request_id,
+         command_kind, target_id, payload_sha256, state, created_at
+       ) VALUES ($1, $2, $3, $4, $5, 'approval', $6, $7, 'accepted', $8)`,
+      [
+        command.commandId,
+        command.idempotencyKey,
+        command.deviceId,
+        command.conversationId,
+        command.requestId,
+        facts.approvalId,
+        command.payloadSha256,
+        command.createdAt,
+      ],
+    );
+    await this.client.query(
+      `INSERT INTO agent_talk.gateway_dispatch_outbox (
+         outbox_id, request_id, node_id, dispatch_kind, control_command_id, available_at, created_at
+       ) SELECT $1, r.request_id, r.node_id, 'approval', $2, $3, $3
+         FROM agent_talk.requests r WHERE r.request_id = $4`,
+      [facts.dispatchOutboxId, command.commandId, command.createdAt, command.requestId],
+    );
+    await this.client.query(
+      `INSERT INTO agent_talk.security_audit_events (
+         audit_id, device_id, action, outcome, target_type, target_id_sha256, safe_code, occurred_at
+       ) VALUES ($1, $2, 'approval.resolve', 'allowed', 'approval', $3, $4, $5)`,
+      [
+        facts.audit.auditId,
+        command.deviceId,
+        facts.audit.targetIdSha256,
+        facts.decision,
+        facts.audit.occurredAt,
       ],
     );
   }
@@ -733,12 +823,14 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
          )
          SELECT c.outbox_id, d.dispatch_kind, r.request_id,
                 COALESCE(cc.idempotency_key, r.idempotency_key) AS dispatch_idempotency_key,
+                cc.target_id, ap.resolution_decision, ap.operation_summary_sha256,
                 r.conversation_id,
                 r.session_id, r.node_id, r.agent_id, r.capability_revision, r.confirmed_text
          FROM claimed c
          JOIN agent_talk.gateway_dispatch_outbox d ON d.outbox_id = c.outbox_id
          JOIN agent_talk.requests r ON r.request_id = c.request_id
          LEFT JOIN agent_talk.control_commands cc ON cc.command_id = d.control_command_id
+         LEFT JOIN agent_talk.approvals ap ON ap.approval_id = cc.target_id
          ORDER BY r.accepted_at, c.outbox_id`,
         [nodeId, now, maximum, connectionId],
       );
@@ -752,6 +844,19 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
         };
         if (kind === "interrupt") {
           return { ...base, kind };
+        }
+        if (kind === "approval") {
+          const decision = stringAt(data, "resolution_decision");
+          if (decision !== "approved" && decision !== "rejected") {
+            throw new Error("invalid PostgreSQL approval dispatch decision");
+          }
+          return {
+            ...base,
+            kind,
+            approvalId: stringAt(data, "target_id"),
+            decision,
+            operationSummarySha256: stringAt(data, "operation_summary_sha256"),
+          };
         }
         if (kind !== "send") {
           throw new Error("unsupported PostgreSQL dispatch kind");
@@ -972,7 +1077,7 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
       }
 
       const requestResult = await client.query<UnknownRow>(
-        `SELECT r.request_id, r.device_id, r.conversation_id, r.session_id, r.node_id, r.state,
+        `SELECT r.request_id, r.device_id, r.conversation_id, r.session_id, r.node_id, r.agent_id, r.state,
                 n.current_connection_id
          FROM agent_talk.requests r
          JOIN agent_talk.nodes n ON n.node_id = r.node_id
@@ -1011,6 +1116,115 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
         throw new NodeLedgerError("stale_node_event", "The Node event source sequence is stale or out of order.");
       }
 
+      const interaction = event.interaction;
+      if (interaction?.kind === "approval_required") {
+        const existingApproval = await client.query(
+          `SELECT 1 FROM agent_talk.approvals
+           WHERE approval_id = $1 OR (request_id = $2 AND native_approval_id = $3)
+           FOR UPDATE`,
+          [interaction.approvalId, event.requestId, interaction.nativeApprovalId],
+        );
+        if (existingApproval.rowCount !== 0) {
+          throw new NodeLedgerError("interaction_conflict", "The approval identity is already bound.");
+        }
+        await client.query(
+          `INSERT INTO agent_talk.approvals (
+             approval_id, request_id, node_id, agent_id, native_approval_id,
+             operation_summary_sha256, safe_summary, state, expires_at, created_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9)`,
+          [
+            interaction.approvalId,
+            event.requestId,
+            event.nodeId,
+            stringAt(request, "agent_id"),
+            interaction.nativeApprovalId,
+            interaction.operationSummarySha256,
+            interaction.safeSummary,
+            interaction.expiresAt,
+            event.occurredAt,
+          ],
+        );
+      } else if (interaction?.kind === "approval_state") {
+        const approval = await client.query<UnknownRow>(
+          `SELECT state, operation_summary_sha256
+           FROM agent_talk.approvals
+           WHERE approval_id = $1 AND request_id = $2 AND node_id = $3
+           FOR UPDATE`,
+          [interaction.approvalId, event.requestId, event.nodeId],
+        );
+        if (approval.rows[0] === undefined) {
+          throw new NodeLedgerError("interaction_conflict", "The approval state event has no pending approval.");
+        }
+        const approvalRow = row(approval.rows[0]);
+        if (stringAt(approvalRow, "operation_summary_sha256") !== interaction.operationSummarySha256) {
+          throw new NodeLedgerError("interaction_conflict", "The approval summary identity changed.");
+        }
+        const currentState = stringAt(approvalRow, "state");
+        if (interaction.state === "resolved") {
+          if (!["approved", "rejected"].includes(currentState)) {
+            throw new NodeLedgerError("interaction_conflict", "The approval was not resolved by an authorized Client.");
+          }
+        } else {
+          if (currentState !== "pending") {
+            throw new NodeLedgerError("interaction_conflict", "The approval is already terminal.");
+          }
+          await client.query(
+            `UPDATE agent_talk.approvals SET state = $2, resolved_at = $3 WHERE approval_id = $1`,
+            [interaction.approvalId, interaction.state, event.occurredAt],
+          );
+        }
+      } else if (interaction?.kind === "clarification_required") {
+        const existingClarification = await client.query(
+          `SELECT 1 FROM agent_talk.clarifications
+           WHERE clarification_id = $1 OR (request_id = $2 AND native_clarification_id = $3)
+           FOR UPDATE`,
+          [interaction.clarificationId, event.requestId, interaction.nativeClarificationId],
+        );
+        if (existingClarification.rowCount !== 0) {
+          throw new NodeLedgerError("interaction_conflict", "The clarification identity is already bound.");
+        }
+        await client.query(
+          `INSERT INTO agent_talk.clarifications (
+             clarification_id, request_id, node_id, agent_id, native_clarification_id,
+             safe_prompt, state, expires_at, created_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)`,
+          [
+            interaction.clarificationId,
+            event.requestId,
+            event.nodeId,
+            stringAt(request, "agent_id"),
+            interaction.nativeClarificationId,
+            interaction.safePrompt,
+            interaction.expiresAt,
+            event.occurredAt,
+          ],
+        );
+      } else if (interaction?.kind === "clarification_state") {
+        const clarification = await client.query<UnknownRow>(
+          `SELECT state FROM agent_talk.clarifications
+           WHERE clarification_id = $1 AND request_id = $2 AND node_id = $3
+           FOR UPDATE`,
+          [interaction.clarificationId, event.requestId, event.nodeId],
+        );
+        if (clarification.rows[0] === undefined) {
+          throw new NodeLedgerError("interaction_conflict", "The clarification state event has no pending clarification.");
+        }
+        const currentState = stringAt(row(clarification.rows[0]), "state");
+        if (interaction.state === "resolved") {
+          if (currentState !== "resolved") {
+            throw new NodeLedgerError("interaction_conflict", "The clarification was not resolved by an authorized Client.");
+          }
+        } else {
+          if (currentState !== "pending") {
+            throw new NodeLedgerError("interaction_conflict", "The clarification is already terminal.");
+          }
+          await client.query(
+            `UPDATE agent_talk.clarifications SET state = $2, resolved_at = $3 WHERE clarification_id = $1`,
+            [interaction.clarificationId, interaction.state, event.occurredAt],
+          );
+        }
+      }
+
       const sequence = await transaction.allocateConversationSequence(event.conversationId);
       if (sequence === undefined) {
         throw new Error("event conversation disappeared before sequence allocation");
@@ -1043,6 +1257,20 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
 
       if (event.requestState !== null) {
         const terminal = ["completed", "failed", "cancelled", "interrupted"].includes(event.requestState);
+        if (terminal) {
+          await client.query(
+            `UPDATE agent_talk.approvals
+             SET state = 'cancelled', resolved_at = $2
+             WHERE request_id = $1 AND state = 'pending'`,
+            [event.requestId, event.occurredAt],
+          );
+          await client.query(
+            `UPDATE agent_talk.clarifications
+             SET state = 'cancelled', resolved_at = $2
+             WHERE request_id = $1 AND state = 'pending'`,
+            [event.requestId, event.occurredAt],
+          );
+        }
         await client.query(
           `UPDATE agent_talk.requests
            SET state = $2,
