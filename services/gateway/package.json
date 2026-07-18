@@ -11,10 +11,15 @@
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test dist/*.test.js",
-    "test:postgres": "npm run build && node --test dist/postgres.integration.test.js"
+    "test:postgres": "npm run build && node --test dist/postgres.integration.test.js",
+    "test:transport": "npm run build && node --test --test-name-pattern='real loopback HTTP/2 gRPC' dist/control-service.test.js"
   },
   "dependencies": {
     "@agent-talk/core": "*",
+    "@agent-talk/protocol": "*",
+    "@bufbuild/protobuf": "^2.12.1",
+    "@connectrpc/connect": "^2.1.2",
+    "@connectrpc/connect-node": "^2.1.2",
     "pg": "^8.22.0"
   },
   "devDependencies": {

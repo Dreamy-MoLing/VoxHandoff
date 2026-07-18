@@ -60,6 +60,11 @@ jobs:
       - name: Run offline tests
         run: npm test
 
+      - name: Run gRPC loopback transport tests
+        env:
+          AGENT_TALK_LOOPBACK_INTEGRATION: "1"
+        run: npm run test:transport
+
       - name: Run PostgreSQL transaction tests
         env:
           AGENT_TALK_POSTGRES_URL: postgresql://agent_talk_ci:agent_talk_ci_only@127.0.0.1:5432/agent_talk_ci

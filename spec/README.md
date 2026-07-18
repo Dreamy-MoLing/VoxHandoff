@@ -1,6 +1,6 @@
 # Agent Talk 正式开发基线
 
-> 基线版本：1.17<br>
+> 基线版本：1.18<br>
 > 生效日期：2026-07-18<br>
 > 状态：Active
 
@@ -29,6 +29,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.18 | 2026-07-18 | 建立认证后 Client/Node gRPC 双向流、握手门、逐帧撤销复核与 TLS/loopback 边界 |
 | 1.17 | 2026-07-18 | 固定 control lease CAS/显式接管/审计，并以 forward migration 统一审批 `rejected` 状态 |
 | 1.16 | 2026-07-18 | 建立 PostgreSQL acceptance/sequence/outbox 同事务账本与真实集成门 |
 | 1.15 | 2026-07-18 | 固定 Client 预生成 request identity，使 acceptance 丢失后可查询而不重提 |
