@@ -240,3 +240,22 @@ test("maps an authorized approval decision to DispatchApproval", async () => {
     assert.equal(body.value.decision, 2);
   }
 });
+
+test("maps confirmed clarification text to DispatchClarification", async () => {
+  const { ledger, handlers } = setup();
+  ledger.claims = [{
+    kind: "clarification",
+    dispatchId: "clarification-dispatch-1",
+    requestId: "request-1",
+    idempotencyKey: "clarification-idempotency-1",
+    clarificationId: "clarification-1",
+    confirmedText: "Use the isolated test directory.",
+  }];
+  const responses = await handlers.onHeartbeat(context);
+  const body = responses[0]?.body;
+  assert.equal(body?.case, "dispatchClarification");
+  if (body?.case === "dispatchClarification") {
+    assert.equal(body.value.clarificationId, "clarification-1");
+    assert.equal(body.value.confirmedText, "Use the isolated test directory.");
+  }
+});

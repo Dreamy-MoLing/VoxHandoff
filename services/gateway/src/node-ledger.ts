@@ -44,10 +44,17 @@ export interface ClaimedApprovalDispatchRecord extends ClaimedDispatchBase {
   operationSummarySha256: string;
 }
 
+export interface ClaimedClarificationDispatchRecord extends ClaimedDispatchBase {
+  kind: "clarification";
+  clarificationId: string;
+  confirmedText: string;
+}
+
 export type ClaimedDispatchRecord =
   | ClaimedSendDispatchRecord
   | ClaimedInterruptDispatchRecord
-  | ClaimedApprovalDispatchRecord;
+  | ClaimedApprovalDispatchRecord
+  | ClaimedClarificationDispatchRecord;
 
 export interface StoredFailure {
   stage: string;

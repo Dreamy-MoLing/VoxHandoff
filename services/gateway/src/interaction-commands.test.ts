@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   acceptApprovalCommand,
+  acceptClarificationCommand,
   acceptInterruptCommand,
   InteractionCommandError,
   type InterruptCommandInput,
@@ -10,6 +11,8 @@ import {
 import type {
   ApprovalRecord,
   ApprovalResolutionFacts,
+  ClarificationRecord,
+  ClarificationResolutionFacts,
   ControlCommandRecord,
   InteractionLedger,
   InteractionLedgerTransaction,
@@ -43,6 +46,8 @@ class FakeInteractionLedger implements InteractionLedger, InteractionLedgerTrans
     acceptedAt: new Date("2030-01-01T00:00:00.000Z"),
     state: "working",
     interruptCapable: true,
+    clarificationCapable: true,
+    maxRequestBytes: 1024n,
   };
   commands: ControlCommandRecord[] = [];
   facts: InterruptAcceptanceFacts | undefined;
@@ -56,6 +61,15 @@ class FakeInteractionLedger implements InteractionLedger, InteractionLedgerTrans
     expiresAt: new Date("2030-01-01T00:01:00.000Z"),
   };
   approvalFacts: ApprovalResolutionFacts | undefined;
+  clarification: ClarificationRecord | undefined = {
+    clarificationId: "clarification-1",
+    requestId: "request-1",
+    nodeId: "node-1",
+    agentId: "agent-1",
+    state: "pending",
+    expiresAt: new Date("2030-01-01T00:01:00.000Z"),
+  };
+  clarificationFacts: ClarificationResolutionFacts | undefined;
 
   async interactionTransaction<T>(work: (transaction: InteractionLedgerTransaction) => Promise<T>): Promise<T> {
     return work(this);
@@ -90,6 +104,16 @@ class FakeInteractionLedger implements InteractionLedger, InteractionLedgerTrans
     this.approval = { ...this.approval, state: "expired" };
     return true;
   }
+  async lockClarification(clarificationId: string, requestId: string) {
+    return this.clarification?.clarificationId === clarificationId && this.clarification.requestId === requestId
+      ? this.clarification
+      : undefined;
+  }
+  async expireClarification(clarificationId: string): Promise<boolean> {
+    if (this.clarification?.clarificationId !== clarificationId || this.clarification.state !== "pending") return false;
+    this.clarification = { ...this.clarification, state: "expired" };
+    return true;
+  }
   async allocateConversationSequence(): Promise<bigint | undefined> { return 2n; }
   async insertInterruptAcceptance(facts: InterruptAcceptanceFacts): Promise<void> {
     this.facts = facts;
@@ -99,6 +123,11 @@ class FakeInteractionLedger implements InteractionLedger, InteractionLedgerTrans
     this.approvalFacts = facts;
     this.commands.push(facts.command);
     this.approval = { ...this.approval!, state: facts.decision };
+  }
+  async insertClarificationResolution(facts: ClarificationResolutionFacts): Promise<void> {
+    this.clarificationFacts = facts;
+    this.commands.push(facts.command);
+    this.clarification = { ...this.clarification!, state: "resolved" };
   }
 }
 
@@ -223,5 +252,62 @@ test("never dispatches approval without exact scope, summary, pending state, and
       (error: unknown) => error instanceof InteractionCommandError,
     );
     assert.equal(ledger.approvalFacts, undefined);
+  }
+});
+
+const clarificationInput = {
+  commandId: "clarification-command-1",
+  idempotencyKey: "clarification-idempotency-1",
+  deviceId: "device-1",
+  conversationId: "conversation-1",
+  requestId: "request-1",
+  clarificationId: "clarification-1",
+  leaseId: "lease-1",
+  leaseRevision: 2n,
+  confirmedText: "Use the isolated test directory.",
+};
+
+test("submits confirmed clarification text with send scope and exact retry semantics", async () => {
+  const ledger = new FakeInteractionLedger();
+  ledger.device = { deviceId: "device-1", active: true, scopes: ["send"] };
+  const deps = dependencies();
+  assert.equal((await acceptClarificationCommand(ledger, clarificationInput, deps)).kind, "accepted");
+  assert.equal(ledger.clarification?.state, "resolved");
+  assert.equal(ledger.clarificationFacts?.confirmedText, "Use the isolated test directory.");
+  assert.equal((await acceptClarificationCommand(ledger, clarificationInput, deps)).kind, "existing");
+  await assert.rejects(
+    acceptClarificationCommand(ledger, { ...clarificationInput, confirmedText: "changed" }, deps),
+    (error: unknown) => error instanceof InteractionCommandError && error.code === "idempotency_conflict",
+  );
+});
+
+test("clarification never borrows approve scope and enforces capability, size, state, and expiry", async () => {
+  const scenarios: Array<(ledger: FakeInteractionLedger) => void> = [
+    (ledger) => { ledger.device = { deviceId: "device-1", active: true, scopes: ["approve"] }; },
+    (ledger) => {
+      ledger.device = { deviceId: "device-1", active: true, scopes: ["send"] };
+      ledger.request = { ...ledger.request!, clarificationCapable: false };
+    },
+    (ledger) => {
+      ledger.device = { deviceId: "device-1", active: true, scopes: ["send"] };
+      ledger.request = { ...ledger.request!, maxRequestBytes: 1n };
+    },
+    (ledger) => {
+      ledger.device = { deviceId: "device-1", active: true, scopes: ["send"] };
+      ledger.clarification = { ...ledger.clarification!, state: "cancelled" };
+    },
+    (ledger) => {
+      ledger.device = { deviceId: "device-1", active: true, scopes: ["send"] };
+      ledger.clarification = { ...ledger.clarification!, expiresAt: new Date("2030-01-01T00:00:01.000Z") };
+    },
+  ];
+  for (const configure of scenarios) {
+    const ledger = new FakeInteractionLedger();
+    configure(ledger);
+    await assert.rejects(
+      acceptClarificationCommand(ledger, clarificationInput, dependencies()),
+      (error: unknown) => error instanceof InteractionCommandError,
+    );
+    assert.equal(ledger.clarificationFacts, undefined);
   }
 });

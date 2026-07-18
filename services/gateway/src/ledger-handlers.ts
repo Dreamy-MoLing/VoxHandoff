@@ -17,7 +17,12 @@ import {
 } from "@agent-talk/protocol";
 
 import { acceptRequest, GatewayCommandError } from "./acceptance.js";
-import { acceptApprovalCommand, acceptInterruptCommand, InteractionCommandError } from "./interaction-commands.js";
+import {
+  acceptApprovalCommand,
+  acceptClarificationCommand,
+  acceptInterruptCommand,
+  InteractionCommandError,
+} from "./interaction-commands.js";
 import type { InteractionLedger } from "./interaction-ledger.js";
 import type { ClientLedger, GatewayRequestStatusRecord, PersistedEventRecord } from "./client-ledger.js";
 import {
@@ -136,7 +141,8 @@ function interactionConnectError(error: InteractionCommandError): ConnectError {
     ? Code.PermissionDenied
     : ["invalid_command", "idempotency_conflict", "command_id_conflict"].includes(error.code)
       ? Code.InvalidArgument
-      : error.code === "request_not_found" || error.code === "conversation_not_found" || error.code === "approval_not_found"
+      : error.code === "request_not_found" || error.code === "conversation_not_found" ||
+          error.code === "approval_not_found" || error.code === "clarification_not_found"
         ? Code.NotFound
         : Code.FailedPrecondition;
   return new ConnectError(error.message, code);
@@ -370,6 +376,25 @@ export class LedgerBackedGatewayHandlers implements GatewayStreamHandlers {
               leaseRevision: command.leaseRevision,
               decision: approval.decision === ApprovalDecision.APPROVE ? "approved" : "rejected",
               operationSummarySha256: approval.operationSummarySha256,
+            },
+            this.dependencies,
+          );
+          return [requestStatus(result.request)];
+        }
+        case "resolveClarification": {
+          const clarification = command.command.value;
+          const result = await acceptClarificationCommand(
+            this.store,
+            {
+              commandId: command.commandId,
+              idempotencyKey: command.idempotencyKey,
+              deviceId: context.principal.principalId,
+              conversationId: command.conversationId,
+              requestId: clarification.requestId,
+              clarificationId: clarification.clarificationId,
+              leaseId: command.leaseId,
+              leaseRevision: command.leaseRevision,
+              confirmedText: clarification.confirmedText,
             },
             this.dependencies,
           );

@@ -24,6 +24,8 @@ export interface ControlCommandRecord {
 export interface InteractionRequestRecord extends AcceptedRequestRecord {
   state: string;
   interruptCapable: boolean;
+  clarificationCapable: boolean;
+  maxRequestBytes: bigint | null;
 }
 
 export interface ApprovalRecord {
@@ -41,6 +43,27 @@ export interface ApprovalResolutionFacts {
   approvalId: string;
   decision: "approved" | "rejected";
   operationSummarySha256: string;
+  dispatchOutboxId: string;
+  audit: {
+    auditId: string;
+    targetIdSha256: string;
+    occurredAt: Date;
+  };
+}
+
+export interface ClarificationRecord {
+  clarificationId: string;
+  requestId: string;
+  nodeId: string;
+  agentId: string;
+  state: "pending" | "resolved" | "expired" | "cancelled";
+  expiresAt: Date;
+}
+
+export interface ClarificationResolutionFacts {
+  command: ControlCommandRecord;
+  clarificationId: string;
+  confirmedText: string;
   dispatchOutboxId: string;
   audit: {
     auditId: string;
@@ -76,9 +99,12 @@ export interface InteractionLedgerTransaction {
   lockInteractionRequest(requestId: string, conversationId: string): Promise<InteractionRequestRecord | undefined>;
   lockApproval(approvalId: string, requestId: string): Promise<ApprovalRecord | undefined>;
   expireApproval(approvalId: string, occurredAt: Date): Promise<boolean>;
+  lockClarification(clarificationId: string, requestId: string): Promise<ClarificationRecord | undefined>;
+  expireClarification(clarificationId: string, occurredAt: Date): Promise<boolean>;
   allocateConversationSequence(conversationId: string): Promise<bigint | undefined>;
   insertInterruptAcceptance(facts: InterruptAcceptanceFacts): Promise<void>;
   insertApprovalResolution(facts: ApprovalResolutionFacts): Promise<void>;
+  insertClarificationResolution(facts: ClarificationResolutionFacts): Promise<void>;
 }
 
 export interface InteractionLedger {

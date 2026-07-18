@@ -9,7 +9,11 @@ import { Pool } from "pg";
 
 import { acceptRequest, GatewayCommandError, type AcceptRequestInput } from "./acceptance.js";
 import { acquireControlLease, renewControlLease } from "./control-lease.js";
-import { acceptApprovalCommand, acceptInterruptCommand } from "./interaction-commands.js";
+import {
+  acceptApprovalCommand,
+  acceptClarificationCommand,
+  acceptInterruptCommand,
+} from "./interaction-commands.js";
 import { MigrationError, runMigrations } from "./migrations.js";
 import { PostgresGatewayLedger } from "./postgres-ledger.js";
 import { NodeLedgerError } from "./node-ledger.js";
@@ -71,7 +75,7 @@ test(
            agent_id, node_id, display_name, adapter, version, status,
            capability_revision, capabilities, max_request_bytes
          ) VALUES ($1, $2, 'test agent', 'fake', 'test', 'online', 'cap-1',
-                   '{"interrupt":true}'::jsonb, 1024)`,
+                   '{"interrupt":true,"clarification":true}'::jsonb, 1024)`,
         [agentId, nodeId],
       );
       await pool.query(
@@ -189,7 +193,7 @@ test(
             adapter: "fake",
             version: "1",
             capabilityRevision: "cap-1",
-            capabilities: { eventStream: true, interrupt: true, attachments: false },
+            capabilities: { eventStream: true, interrupt: true, clarification: true, attachments: false },
             maxRequestBytes: 1024n,
           }],
         };
@@ -374,16 +378,91 @@ test(
         occurredAt: new Date("2030-01-01T00:00:16.800Z"),
       };
       assert.equal((await recreatedGatewayLedger.ingestNodeEvent(approvalResolvedEvent)).sequence, 6n);
+      const clarificationId = `clarification-${suffix}`;
+      const clarificationRequiredEvent = {
+        ...workingEvent,
+        eventId: `clarification-required-${suffix}`,
+        sourceSequence: 4n,
+        eventType: "clarification.required",
+        safePayload: {
+          clarificationId,
+          safePrompt: "Which test directory should be used?",
+          expiresAt: "2030-01-01T00:02:00.000Z",
+        },
+        requestState: null,
+        interaction: {
+          kind: "clarification_required" as const,
+          clarificationId,
+          nativeClarificationId: clarificationId,
+          safePrompt: "Which test directory should be used?",
+          expiresAt: new Date("2030-01-01T00:02:00.000Z"),
+        },
+        occurredAt: new Date("2030-01-01T00:00:16.850Z"),
+      };
+      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(clarificationRequiredEvent)).sequence, 7n);
+      const clarificationInput = {
+        commandId: `clarification-command-${suffix}`,
+        idempotencyKey: `clarification-idempotency-${suffix}`,
+        deviceId,
+        conversationId,
+        requestId: makeInput(1).requestId,
+        clarificationId,
+        leaseId: renewed.lease.leaseId,
+        leaseRevision: renewed.lease.revision,
+        confirmedText: "Use the isolated test directory.",
+      };
+      assert.equal(
+        (await acceptClarificationCommand(recreatedGatewayLedger, clarificationInput, dependencies)).kind,
+        "accepted",
+      );
+      assert.equal(
+        (await acceptClarificationCommand(recreatedGatewayLedger, clarificationInput, dependencies)).kind,
+        "existing",
+      );
+      const clarificationClaims = await recreatedGatewayLedger.claimDispatches(
+        nodeId,
+        "node-connection-2",
+        new Date("2030-01-01T00:00:16.900Z"),
+        10,
+      );
+      assert.equal(clarificationClaims.length, 1);
+      const clarificationDispatch = clarificationClaims[0];
+      assert.equal(clarificationDispatch?.kind, "clarification");
+      if (clarificationDispatch?.kind === "clarification") {
+        assert.equal(clarificationDispatch.confirmedText, "Use the isolated test directory.");
+        await recreatedGatewayLedger.acknowledgeDispatch({
+          nodeId,
+          connectionId: "node-connection-2",
+          dispatchId: clarificationDispatch.dispatchId,
+          requestId: clarificationDispatch.requestId,
+          accepted: true,
+          failure: null,
+          occurredAt: new Date("2030-01-01T00:00:16.950Z"),
+        });
+      }
+      const clarificationResolvedEvent = {
+        ...clarificationRequiredEvent,
+        eventId: `clarification-resolved-${suffix}`,
+        sourceSequence: 5n,
+        eventType: "clarification.resolved",
+        interaction: {
+          kind: "clarification_state" as const,
+          clarificationId,
+          state: "resolved" as const,
+        },
+        occurredAt: new Date("2030-01-01T00:00:16.975Z"),
+      };
+      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(clarificationResolvedEvent)).sequence, 8n);
       const completedEvent = {
         ...workingEvent,
         eventId: `completed-${suffix}`,
-        sourceSequence: 4n,
+        sourceSequence: 6n,
         eventType: "request.completed",
         safePayload: {},
         requestState: "completed" as const,
         occurredAt: new Date("2030-01-01T00:00:17.000Z"),
       };
-      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(completedEvent)).sequence, 7n);
+      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(completedEvent)).sequence, 9n);
       assert.equal((await recreatedGatewayLedger.ingestNodeEvent(completedEvent)).duplicate, true);
       await assert.rejects(
         recreatedGatewayLedger.ingestNodeEvent({ ...completedEvent, safePayload: { changed: true } }),
@@ -393,7 +472,7 @@ test(
         recreatedGatewayLedger.ingestNodeEvent({
           ...workingEvent,
           eventId: `late-${suffix}`,
-          sourceSequence: 3n,
+          sourceSequence: 5n,
           occurredAt: new Date("2030-01-01T00:00:18.000Z"),
         }),
         (error: unknown) => error instanceof NodeLedgerError && error.code === "event_after_terminal",
@@ -403,6 +482,14 @@ test(
         [approvalId],
       );
       assert.equal(resolvedApproval.rows[0]?.state, "approved");
+      const resolvedClarification = await pool.query<{ state: string; confirmed_text: string }>(
+        "SELECT state, confirmed_text FROM agent_talk.clarifications WHERE clarification_id = $1",
+        [clarificationId],
+      );
+      assert.deepEqual(resolvedClarification.rows[0], {
+        state: "resolved",
+        confirmed_text: "Use the isolated test directory.",
+      });
 
       const secondDispatch = reconnectClaims.find((claim) => claim.requestId === makeInput(2).requestId);
       assert(secondDispatch);
@@ -443,8 +530,10 @@ test(
           [4n, "agent.working"],
           [5n, "approval.required"],
           [6n, "approval.resolved"],
-          [7n, "request.completed"],
-          [8n, "request.failed"],
+          [7n, "clarification.required"],
+          [8n, "clarification.resolved"],
+          [9n, "request.completed"],
+          [10n, "request.failed"],
         ],
       );
       assert.equal(
@@ -477,7 +566,7 @@ test(
         "SELECT last_sequence::text FROM agent_talk.conversations WHERE conversation_id = $1",
         [conversationId],
       );
-      assert.equal(afterFailure.rows[0]?.last_sequence, "8");
+      assert.equal(afterFailure.rows[0]?.last_sequence, "10");
 
       const secondDeviceId = `device-2-${suffix}`;
       await pool.query(

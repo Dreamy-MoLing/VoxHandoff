@@ -18,6 +18,8 @@ import type {
 import type {
   ApprovalRecord,
   ApprovalResolutionFacts,
+  ClarificationRecord,
+  ClarificationResolutionFacts,
   ControlCommandRecord,
   InteractionLedger,
   InteractionLedgerTransaction,
@@ -259,7 +261,9 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
   ): Promise<InteractionRequestRecord | undefined> {
     const result = await this.client.query<UnknownRow>(
       `SELECT ${requestColumnsFromR}, r.state,
-              COALESCE((a.capabilities->>'interrupt')::boolean, false) AS interrupt_capable
+              COALESCE((a.capabilities->>'interrupt')::boolean, false) AS interrupt_capable,
+              COALESCE((a.capabilities->>'clarification')::boolean, false) AS clarification_capable,
+              a.max_request_bytes
        FROM agent_talk.requests r
        JOIN agent_talk.agents a ON a.agent_id = r.agent_id AND a.node_id = r.node_id
        WHERE r.request_id = $1 AND r.conversation_id = $2
@@ -272,6 +276,8 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
       ...parseRequest(data),
       state: stringAt(data, "state"),
       interruptCapable: booleanAt(data, "interrupt_capable"),
+      clarificationCapable: booleanAt(data, "clarification_capable"),
+      maxRequestBytes: nullableBigintAt(data, "max_request_bytes"),
     };
   }
 
@@ -302,6 +308,39 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
        SET state = 'expired', resolved_at = $2
        WHERE approval_id = $1 AND state = 'pending'`,
       [approvalId, occurredAt],
+    );
+    return result.rowCount === 1;
+  }
+
+  async lockClarification(
+    clarificationId: string,
+    requestId: string,
+  ): Promise<ClarificationRecord | undefined> {
+    const result = await this.client.query<UnknownRow>(
+      `SELECT clarification_id, request_id, node_id, agent_id, state, expires_at
+       FROM agent_talk.clarifications
+       WHERE clarification_id = $1 AND request_id = $2
+       FOR UPDATE`,
+      [clarificationId, requestId],
+    );
+    if (result.rows[0] === undefined) return undefined;
+    const data = row(result.rows[0]);
+    return {
+      clarificationId: stringAt(data, "clarification_id"),
+      requestId: stringAt(data, "request_id"),
+      nodeId: stringAt(data, "node_id"),
+      agentId: stringAt(data, "agent_id"),
+      state: stringAt(data, "state") as ClarificationRecord["state"],
+      expiresAt: dateAt(data, "expires_at"),
+    };
+  }
+
+  async expireClarification(clarificationId: string, occurredAt: Date): Promise<boolean> {
+    const result = await this.client.query(
+      `UPDATE agent_talk.clarifications
+       SET state = 'expired', resolved_at = $2
+       WHERE clarification_id = $1 AND state = 'pending'`,
+      [clarificationId, occurredAt],
     );
     return result.rowCount === 1;
   }
@@ -415,6 +454,55 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
         facts.decision,
         facts.audit.occurredAt,
       ],
+    );
+  }
+
+  async insertClarificationResolution(facts: ClarificationResolutionFacts): Promise<void> {
+    const command = facts.command;
+    const clarification = await this.client.query(
+      `UPDATE agent_talk.clarifications
+       SET state = 'resolved', resolved_by_device_id = $2, resolution_idempotency_key = $3,
+           resolution_command_id = $4, confirmed_text = $5, resolved_at = $6
+       WHERE clarification_id = $1 AND request_id = $7 AND state = 'pending'`,
+      [
+        facts.clarificationId,
+        command.deviceId,
+        command.idempotencyKey,
+        command.commandId,
+        facts.confirmedText,
+        command.createdAt,
+        command.requestId,
+      ],
+    );
+    if (clarification.rowCount !== 1) throw new Error("locked clarification changed before resolution insert");
+    await this.client.query(
+      `INSERT INTO agent_talk.control_commands (
+         command_id, idempotency_key, device_id, conversation_id, request_id,
+         command_kind, target_id, payload_sha256, state, created_at
+       ) VALUES ($1, $2, $3, $4, $5, 'clarification', $6, $7, 'accepted', $8)`,
+      [
+        command.commandId,
+        command.idempotencyKey,
+        command.deviceId,
+        command.conversationId,
+        command.requestId,
+        facts.clarificationId,
+        command.payloadSha256,
+        command.createdAt,
+      ],
+    );
+    await this.client.query(
+      `INSERT INTO agent_talk.gateway_dispatch_outbox (
+         outbox_id, request_id, node_id, dispatch_kind, control_command_id, available_at, created_at
+       ) SELECT $1, r.request_id, r.node_id, 'clarification', $2, $3, $3
+         FROM agent_talk.requests r WHERE r.request_id = $4`,
+      [facts.dispatchOutboxId, command.commandId, command.createdAt, command.requestId],
+    );
+    await this.client.query(
+      `INSERT INTO agent_talk.security_audit_events (
+         audit_id, device_id, action, outcome, target_type, target_id_sha256, safe_code, occurred_at
+       ) VALUES ($1, $2, 'clarification.resolve', 'allowed', 'clarification', $3, 'submitted', $4)`,
+      [facts.audit.auditId, command.deviceId, facts.audit.targetIdSha256, facts.audit.occurredAt],
     );
   }
 
@@ -824,6 +912,7 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
          SELECT c.outbox_id, d.dispatch_kind, r.request_id,
                 COALESCE(cc.idempotency_key, r.idempotency_key) AS dispatch_idempotency_key,
                 cc.target_id, ap.resolution_decision, ap.operation_summary_sha256,
+                cl.confirmed_text AS clarification_confirmed_text,
                 r.conversation_id,
                 r.session_id, r.node_id, r.agent_id, r.capability_revision, r.confirmed_text
          FROM claimed c
@@ -831,6 +920,7 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
          JOIN agent_talk.requests r ON r.request_id = c.request_id
          LEFT JOIN agent_talk.control_commands cc ON cc.command_id = d.control_command_id
          LEFT JOIN agent_talk.approvals ap ON ap.approval_id = cc.target_id
+         LEFT JOIN agent_talk.clarifications cl ON cl.clarification_id = cc.target_id
          ORDER BY r.accepted_at, c.outbox_id`,
         [nodeId, now, maximum, connectionId],
       );
@@ -856,6 +946,14 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
             approvalId: stringAt(data, "target_id"),
             decision,
             operationSummarySha256: stringAt(data, "operation_summary_sha256"),
+          };
+        }
+        if (kind === "clarification") {
+          return {
+            ...base,
+            kind,
+            clarificationId: stringAt(data, "target_id"),
+            confirmedText: stringAt(data, "clarification_confirmed_text"),
           };
         }
         if (kind !== "send") {

@@ -38,6 +38,8 @@
 - Node stream 将 interrupt outbox 映射为 `DispatchInterrupt`；换连接仍使用原 command/request/idempotency identity，Ack 单独推进 control command，不把停止 TTS 或本地取消混成 Agent interrupt；
 - Node `approval.required` 在事件同事务创建绑定 request/node/agent、摘要 hash 和 expiry 的 pending approval；expired/cancelled/resolved 只允许与耐久状态机一致，request 终态只取消仍 pending 的交互，不改写既有用户决定；
 - Client approval 决策必须同时通过 active device、`approve` scope、当前 lease、非终态 request、pending/未过期状态和原摘要 hash；CAS 同事务写 approved/rejected、device/idempotency/command、无正文安全审计与固定 Node outbox，精确重试返回原决定，其他并发或迟到决定不投递；
+- Clarification required/expired/cancelled/resolved 与 Node event 同事务维护；Client 只接受用户确认的非空文字，要求当前 lease、`send` scope、clarification capability、pending/未过期状态和 Agent 字节上限，明确不借用 `approve` scope；
+- Clarification CAS 同事务保存 confirmed text 到权威交互表并创建固定 Node outbox；安全审计只含 opaque target hash，不含正文。重连使用原 command/request/clarification/idempotency identity，精确重试不重复提交；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 

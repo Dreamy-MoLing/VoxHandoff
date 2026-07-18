@@ -418,7 +418,20 @@ export class LedgerBackedNodeHandlers implements NodeStreamDelegate {
       this.dependencies.dispatchBatchSize ?? 25,
     );
     return records.map((record): NodeResponseInit =>
-      record.kind === "approval"
+      record.kind === "clarification"
+        ? {
+            body: {
+              case: "dispatchClarification",
+              value: {
+                dispatchId: record.dispatchId,
+                requestId: record.requestId,
+                clarificationId: record.clarificationId,
+                idempotencyKey: record.idempotencyKey,
+                confirmedText: record.confirmedText,
+              },
+            },
+          }
+        : record.kind === "approval"
         ? {
             body: {
               case: "dispatchApproval",
