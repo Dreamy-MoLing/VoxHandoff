@@ -343,6 +343,7 @@ PowerSync 类型和 schema 只存在于 Sync Adapter。若许可、稳定性或�
 - 支持 thread start/resume、turn start/interrupt、delta、完成和审批；
 - 从已安装 CLI 临时生成 schema 并执行协议兼容检查；
 - 不提交大批版本特定生成物；
+- 进程创建位于可 fake 的 adapter 边界；server request 只输出规范 ID、method 和脱敏安全摘要，notification 只输出 method，二者都不向 Core/UI 暴露原生 params；
 - WebSocket 实验传输不直接对公网开放；
 - 不依赖 Codex Desktop 当前窗口或焦点会话。
 

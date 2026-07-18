@@ -11,6 +11,7 @@
 - TypeScript workspace、strict 编译和 Node test 基线；
 - dependency-free Agent Core：事件、capability、错误、状态机、短播报、脱敏；
 - Codex app-server stdio adapter；
+- Codex fake stdio 契约：initialize、thread/turn、审批阻塞、诊断脱敏和 interrupt confirmation；
 - Hermes HTTP/SSE adapter；
 - CLI doctor、Codex/Hermes PoC 入口；
 - Codex 当前安装版本的 12 项协议兼容检查；

@@ -12,12 +12,6 @@ interface PendingRequest {
   reject(error: Error): void;
 }
 
-interface RpcRequest {
-  id: number | string;
-  method: string;
-  params?: unknown;
-}
-
 export interface CodexClientOptions {
   command?: string;
   args?: string[];
@@ -25,7 +19,14 @@ export interface CodexClientOptions {
   clientTitle?: string;
   clientVersion?: string;
   cwd?: string;
+  spawnProcess?: CodexProcessSpawner;
 }
+
+export type CodexProcessSpawner = (
+  command: string,
+  args: readonly string[],
+  options: { cwd?: string },
+) => ChildProcessWithoutNullStreams;
 
 export interface StartThreadOptions {
   model?: string;
@@ -40,10 +41,19 @@ export interface CodexTurnHandle {
 
 export interface CodexNotification {
   method: string;
-  params: unknown;
 }
 
-export interface CodexServerRequest extends RpcRequest {}
+export interface CodexServerRequest {
+  id: number | string;
+  method: string;
+  summary?: string;
+}
+
+function safeText(value: string | undefined, maxLength = 2_000): string | undefined {
+  if (value === undefined) return undefined;
+  const safe = redact(value.slice(0, maxLength));
+  return typeof safe === "string" ? safe : undefined;
+}
 
 export class CodexAppServerClient extends EventEmitter {
   readonly connectionId = randomUUID();
@@ -53,6 +63,7 @@ export class CodexAppServerClient extends EventEmitter {
   #requestByThread = new Map<string, string>();
   #requestByTurn = new Map<string, string>();
   #sequenceByRequest = new Map<string, number>();
+  readonly #spawnProcess: CodexProcessSpawner;
   readonly #options: Required<
     Pick<CodexClientOptions, "command" | "args" | "clientName" | "clientTitle" | "clientVersion">
   > &
@@ -60,6 +71,13 @@ export class CodexAppServerClient extends EventEmitter {
 
   constructor(options: CodexClientOptions = {}) {
     super();
+    this.#spawnProcess =
+      options.spawnProcess ??
+      ((command, args, spawnOptions) =>
+        spawn(command, [...args], {
+          stdio: ["pipe", "pipe", "pipe"],
+          ...(spawnOptions.cwd === undefined ? {} : { cwd: spawnOptions.cwd }),
+        }));
     this.#options = {
       command: options.command ?? "codex",
       args: options.args ?? ["app-server", "--listen", "stdio://"],
@@ -72,8 +90,7 @@ export class CodexAppServerClient extends EventEmitter {
 
   async start(): Promise<void> {
     if (this.#process) return;
-    const child = spawn(this.#options.command, this.#options.args, {
-      stdio: ["pipe", "pipe", "pipe"],
+    const child = this.#spawnProcess(this.#options.command, this.#options.args, {
       ...(this.#options.cwd === undefined ? {} : { cwd: this.#options.cwd }),
     });
     this.#process = child;
@@ -155,7 +172,7 @@ export class CodexAppServerClient extends EventEmitter {
   async startTurn(
     threadId: string,
     text: string,
-    requestId = randomUUID(),
+    requestId: string = randomUUID(),
   ): Promise<CodexTurnHandle> {
     this.#requestByThread.set(threadId, requestId);
     const result = await this.request("turn/start", {
@@ -211,10 +228,15 @@ export class CodexAppServerClient extends EventEmitter {
 
     if (typeof message.method !== "string") return;
     if (typeof id === "number" || typeof id === "string") {
+      const summary = safeText(
+        stringAt(message.params, "command") ??
+          stringAt(message.params, "question") ??
+          stringAt(message.params, "reason"),
+      );
       this.emit("serverRequest", {
         id,
         method: message.method,
-        params: message.params,
+        ...(summary === undefined ? {} : { summary }),
       } satisfies CodexServerRequest);
       this.#emitNormalized(message.method, message.params, id);
       return;
@@ -222,7 +244,6 @@ export class CodexAppServerClient extends EventEmitter {
 
     this.emit("notification", {
       method: message.method,
-      params: message.params,
     } satisfies CodexNotification);
     this.#emitNormalized(message.method, message.params);
   }
@@ -294,6 +315,9 @@ export class CodexAppServerClient extends EventEmitter {
         event = { ...base, type: "request.completed" };
       }
     } else if (/approval/i.test(method)) {
+      const summary = safeText(
+        stringAt(params, "command") ?? stringAt(params, "reason") ?? stringAt(params, "message"),
+      );
       event = {
         ...base,
         type: "approval.required",
@@ -301,9 +325,13 @@ export class CodexAppServerClient extends EventEmitter {
           approvalId: rpcId === undefined ? `unresolved:${base.eventId}` : String(rpcId),
           method,
           responseSupported: rpcId !== undefined,
+          ...(summary === undefined ? {} : { summary }),
         },
       };
     } else if (/elicitation|userInput|clarif/i.test(method)) {
+      const prompt = safeText(
+        stringAt(params, "question") ?? stringAt(params, "prompt") ?? stringAt(params, "message"),
+      );
       event = {
         ...base,
         type: "clarification.required",
@@ -311,6 +339,7 @@ export class CodexAppServerClient extends EventEmitter {
           clarificationId: rpcId === undefined ? `unresolved:${base.eventId}` : String(rpcId),
           method,
           responseSupported: rpcId !== undefined,
+          ...(prompt === undefined ? {} : { prompt }),
         },
       };
     }
