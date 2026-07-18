@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.idea/
+.vscode/
+tmp/
+artifacts/live/
+packages/adapters/src/generated/
+
+# Absorbed pre-development research; the active baseline lives in spec/.
+/docs/

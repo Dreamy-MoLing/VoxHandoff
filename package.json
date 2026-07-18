@@ -1,0 +1,24 @@
+{
+  "name": "agent-talk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @agent-talk/core && npm run build -w @agent-talk/adapters && npm run build -w @agent-talk/poc-cli",
+    "check": "npm run check -w @agent-talk/core && npm run build -w @agent-talk/core && npm run check -w @agent-talk/adapters && npm run build -w @agent-talk/adapters && npm run check -w @agent-talk/poc-cli",
+    "test": "npm run test -w @agent-talk/core && npm run test -w @agent-talk/adapters && npm run test -w @agent-talk/poc-cli",
+    "protocol:codex": "node scripts/check-codex-protocol.mjs",
+    "poc": "npm run start --workspace @agent-talk/poc-cli --"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^7.0.0"
+  }
+}

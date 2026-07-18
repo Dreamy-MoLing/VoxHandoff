@@ -1,0 +1,19 @@
+{
+  "name": "@agent-talk/poc-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "agent-talk-poc": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test dist/*.test.js",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@agent-talk/adapters": "*",
+    "@agent-talk/core": "*"
+  }
+}
