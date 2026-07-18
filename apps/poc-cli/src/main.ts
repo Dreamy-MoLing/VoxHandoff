@@ -14,7 +14,12 @@ import {
   type AgentEvent,
 } from "@agent-talk/core";
 
-import { parseArgs, required, type ParsedArgs } from "./args.js";
+import {
+  optionalPositiveInteger,
+  parseArgs,
+  required,
+  type ParsedArgs,
+} from "./args.js";
 
 function print(value: unknown): void {
   process.stdout.write(`${JSON.stringify(redact(value))}\n`);
@@ -42,10 +47,15 @@ function doctor(): void {
 
 async function codex(args: ParsedArgs): Promise<void> {
   const prompt = required(args, "prompt");
+  const interruptAfterMs = optionalPositiveInteger(args, "interrupt-after-ms");
   const client = new CodexAppServerClient({ cwd: args.values.get("cwd") ?? process.cwd() });
   let finalText = "";
   let activeThreadId: string | undefined;
   let activeTurnId: string | undefined;
+  let terminal = false;
+  let outcome: AgentEvent["type"] | undefined;
+  let interruptTimer: ReturnType<typeof setTimeout> | undefined;
+  let interruptAttempt: Promise<void> | undefined;
   let resolveFinal: (() => void) | undefined;
   let rejectFinal: ((error: Error) => void) | undefined;
   const final = new Promise<void>((resolve, reject) => {
@@ -70,6 +80,9 @@ async function codex(args: ParsedArgs): Promise<void> {
       const payload = event.payload as { text?: unknown };
       if (typeof payload.text === "string" && payload.text) finalText = payload.text;
     } else if (isTerminalAgentEventType(event.type)) {
+      terminal = true;
+      outcome = event.type;
+      if (interruptTimer) clearTimeout(interruptTimer);
       if (
         event.type === "request.completed" ||
         event.type === "request.cancelled" ||
@@ -95,15 +108,31 @@ async function codex(args: ParsedArgs): Promise<void> {
     const handle = await client.startTurn(activeThreadId, prompt);
     activeTurnId = handle.turnId;
     print({ kind: "turn_started", handle });
+    if (interruptAfterMs !== undefined) {
+      interruptTimer = setTimeout(() => {
+        if (terminal || !activeThreadId || !activeTurnId) return;
+        print({ kind: "interrupt_requested", afterMs: interruptAfterMs });
+        interruptAttempt = client.interruptTurn(activeThreadId, activeTurnId).then(
+          () => print({ kind: "interrupt_acknowledged" }),
+          (error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+            rejectFinal?.(new Error(`Codex interrupt failed: ${message}`));
+          },
+        );
+      }, interruptAfterMs);
+    }
     await final;
+    if (interruptAttempt) await interruptAttempt;
     print({
       kind: "result",
       threadId: activeThreadId,
       turnId: activeTurnId,
+      outcome: outcome ?? "unknown",
       fullText: finalText,
       speechText: createDeterministicSpeechSummary(finalText),
     });
   } finally {
+    if (interruptTimer) clearTimeout(interruptTimer);
     await client.close();
   }
 }
@@ -150,7 +179,9 @@ async function hermes(args: ParsedArgs): Promise<void> {
 function usage(): void {
   process.stdout.write(`Agent Talk protocol PoC\n\n`);
   process.stdout.write(`  doctor\n`);
-  process.stdout.write(`  codex --prompt TEXT [--cwd PATH] [--thread ID]\n`);
+  process.stdout.write(
+    `  codex --prompt TEXT [--cwd PATH] [--thread ID] [--interrupt-after-ms N]\n`,
+  );
   process.stdout.write(
     `  hermes --prompt TEXT [--base-url URL] [--token-env NAME] [--session ID]\n`,
   );

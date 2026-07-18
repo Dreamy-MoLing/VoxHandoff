@@ -16,14 +16,14 @@
 - Hermes HTTP/SSE adapter；
 - CLI doctor、Codex/Hermes PoC 入口；
 - Codex 当前安装版本的 12 项协议兼容检查；
-- Codex 真链路新建线程、turn、delta、完成、进程重启和 thread resume；2026-07-18 `ready` 复测确认规范事件 sequence 连续为 1-4；
+- Codex 真链路新建线程、turn、delta、完成、进程重启和 thread resume；2026-07-18 `ready` 复测确认规范事件 sequence 连续为 1-4，同日 750 ms 受控中断复测确认 `request.accepted` sequence 1 后得到 `request.interrupted` sequence 2；
 - Hermes fake HTTP/SSE 契约测试、脱敏 fixture、事件大小上限、错误正文隔离、approval/stop idempotency 和 client recreation；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
 未完成或未实测：
 
-- Codex interrupt 和真实 approval 场景；
+- Codex 真实 approval 场景（必须保持阻塞且由用户显式决定）；
 - 隔离环境内 Hermes 真链路 10 轮、stop、approval、重启；
 - OpenClaw adapter；
 - Protobuf/Buf 与 gRPC Gateway；
@@ -284,6 +284,9 @@ npm run poc -- doctor
 
 ```bash
 npm run poc -- codex --prompt "Reply with exactly: ready"
+npm run poc -- codex \
+  --prompt "Write a long numbered list. Do not use tools." \
+  --interrupt-after-ms 750
 npm run poc -- hermes \
   --base-url http://127.0.0.1:8642 \
   --token-env HERMES_API_KEY \

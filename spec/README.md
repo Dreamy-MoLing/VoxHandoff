@@ -1,6 +1,6 @@
 # Agent Talk 正式开发基线
 
-> 基线版本：1.8<br>
+> 基线版本：1.9<br>
 > 生效日期：2026-07-18<br>
 > 状态：Active
 
@@ -29,6 +29,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.9 | 2026-07-18 | 增加 Codex 显式定时中断 PoC 和真链路 `request.interrupted` 证据 |
 | 1.8 | 2026-07-18 | 记录 Codex 真链路规范 sequence 回归与修复证据 |
 | 1.7 | 2026-07-18 | 固定 Hermes approval/stop idempotency、client recreation 和 Core failure/property 证据 |
 | 1.6 | 2026-07-18 | 固定 Codex 可 fake 进程边界、server request 安全摘要和中断确认契约 |
