@@ -1,0 +1,5 @@
+event: approval.required
+data: {"approval_id":"approval-1","token":"[REDACTED]"}
+
+event: approval.approved
+data: {"approval_id":"approval-1","approved":true}

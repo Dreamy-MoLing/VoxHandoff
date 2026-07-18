@@ -115,9 +115,11 @@ export class HermesApiClient {
     }
   }
 
-  async stopRun(runId: string): Promise<void> {
+  async stopRun(runId: string, commandId: string = randomUUID()): Promise<void> {
+    if (!commandId) throw new Error("Hermes stop command id is required");
     await this.#json(`v1/runs/${encodeURIComponent(runId)}/stop`, {
       method: "POST",
+      headers: { "Idempotency-Key": commandId },
       body: "{}",
     });
   }
@@ -126,9 +128,13 @@ export class HermesApiClient {
     runId: string,
     approvalId: string,
     approved: boolean,
+    commandId: string = randomUUID(),
   ): Promise<void> {
+    if (!approvalId) throw new Error("Hermes approval id is required");
+    if (!commandId) throw new Error("Hermes approval command id is required");
     await this.#json(`v1/runs/${encodeURIComponent(runId)}/approval`, {
       method: "POST",
+      headers: { "Idempotency-Key": commandId },
       body: JSON.stringify({ approval_id: approvalId, approved }),
     });
   }
@@ -251,6 +257,26 @@ function normalizeHermesEvent(input: NormalizeHermesEventInput): AgentEvent {
   if (/tool\.(fail|failed)/.test(nativeType)) {
     return { ...common, type: "tool.failed", payload: { toolName: nativeType } };
   }
+  if (/approval\.(resolved|approved|rejected)/.test(nativeType)) {
+    const outcome = /rejected/.test(nativeType) ? "rejected" : "approved";
+    return {
+      ...common,
+      type: "approval.resolved",
+      payload: {
+        approvalId:
+          stringAt(input.native, "approval_id") ??
+          stringAt(input.native, "id") ??
+          `unresolved:${common.eventId}`,
+        outcome,
+      },
+    };
+  }
+  if (/approval\.expired/.test(nativeType)) {
+    return { ...common, type: "approval.expired" };
+  }
+  if (/approval\.cancelled/.test(nativeType)) {
+    return { ...common, type: "approval.cancelled" };
+  }
   if (/approval/.test(nativeType)) {
     return {
       ...common,
@@ -262,6 +288,15 @@ function normalizeHermesEvent(input: NormalizeHermesEventInput): AgentEvent {
           `unresolved:${common.eventId}`,
       },
     };
+  }
+  if (/clarif.*\.(resolved|answered)/.test(nativeType)) {
+    return { ...common, type: "clarification.resolved" };
+  }
+  if (/clarif.*\.expired/.test(nativeType)) {
+    return { ...common, type: "clarification.expired" };
+  }
+  if (/clarif.*\.cancelled/.test(nativeType)) {
+    return { ...common, type: "clarification.cancelled" };
   }
   if (/clarif/.test(nativeType)) {
     return {

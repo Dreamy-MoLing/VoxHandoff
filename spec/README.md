@@ -1,6 +1,6 @@
 # Agent Talk 正式开发基线
 
-> 基线版本：1.6<br>
+> 基线版本：1.7<br>
 > 生效日期：2026-07-18<br>
 > 状态：Active
 
@@ -29,6 +29,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.7 | 2026-07-18 | 固定 Hermes approval/stop idempotency、client recreation 和 Core failure/property 证据 |
 | 1.6 | 2026-07-18 | 固定 Codex 可 fake 进程边界、server request 安全摘要和中断确认契约 |
 | 1.5 | 2026-07-18 | 固定 Hermes SSE 事件大小、畸形 JSON 和错误正文隔离边界 |
 | 1.4 | 2026-07-18 | 固定统一 event、capability、failure taxonomy 与终态推导规则 |

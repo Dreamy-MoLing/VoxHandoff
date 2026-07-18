@@ -138,3 +138,81 @@ test("Hermes SSE rejects malformed JSON instead of leaking native payloads", asy
     /invalid JSON/,
   );
 });
+
+test("Hermes approval, stop, and client recreation preserve explicit command identity", async () => {
+  const encoder = new TextEncoder();
+  const fixture = await readFile(
+    new URL("../test-fixtures/hermes-approval.sse", import.meta.url),
+    "utf8",
+  );
+  const requests: Request[] = [];
+  const fakeFetch: typeof fetch = async (input, init) => {
+    const request = new Request(input, init);
+    requests.push(request);
+    if (request.url.endsWith("/events")) {
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(fixture));
+            controller.close();
+          },
+        }),
+      );
+    }
+    return new Response(null, { status: 204 });
+  };
+  const run = { runId: "run-1", requestId: "request-1", sessionId: "session-1" };
+  const firstClient = new HermesApiClient({
+    baseUrl: "https://hermes.example.test",
+    token: "test",
+    fetch: fakeFetch,
+  });
+
+  const firstEvents = [];
+  for await (const event of firstClient.streamRunEvents(run)) firstEvents.push(event);
+  assert.equal(firstEvents[0]?.type, "approval.required");
+  assert.deepEqual(firstEvents[0]?.payload, { approvalId: "approval-1" });
+  assert.equal(firstEvents[1]?.type, "approval.resolved");
+  assert.deepEqual(firstEvents[1]?.payload, {
+    approvalId: "approval-1",
+    outcome: "approved",
+  });
+  assert.doesNotMatch(JSON.stringify(firstEvents), /token/);
+
+  await firstClient.resolveApproval("run-1", "approval-1", false, "approval-command-1");
+  await firstClient.stopRun("run-1", "stop-command-1");
+
+  const approvalRequest = requests.find((request) => request.url.endsWith("/approval"));
+  const stopRequest = requests.find((request) => request.url.endsWith("/stop"));
+  assert.equal(approvalRequest?.headers.get("Idempotency-Key"), "approval-command-1");
+  assert.deepEqual(await approvalRequest?.clone().json(), {
+    approval_id: "approval-1",
+    approved: false,
+  });
+  assert.equal(stopRequest?.headers.get("Idempotency-Key"), "stop-command-1");
+
+  const restartedClient = new HermesApiClient({
+    baseUrl: "https://hermes.example.test",
+    token: "test",
+    fetch: fakeFetch,
+  });
+  const replayedEvents = [];
+  for await (const event of restartedClient.streamRunEvents(run)) replayedEvents.push(event);
+  assert.equal(replayedEvents[0]?.sequence, 1);
+  assert.notEqual(replayedEvents[0]?.eventId, firstEvents[0]?.eventId);
+});
+
+test("Hermes rejects empty approval and stop command identities", async () => {
+  const client = new HermesApiClient({
+    baseUrl: "https://hermes.example.test",
+    token: "test",
+    fetch: async () => new Response(null, { status: 204 }),
+  });
+
+  await assert.rejects(() => client.resolveApproval("run-1", "", false, "command-1"), /id is required/);
+  await assert.rejects(
+    () => client.resolveApproval("run-1", "approval-1", false, ""),
+    /command id is required/,
+  );
+  await assert.rejects(() => client.stopRun("run-1", ""), /command id is required/);
+});

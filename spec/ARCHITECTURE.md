@@ -351,6 +351,7 @@ PowerSync 类型和 schema 只存在于 Sync Adapter。若许可、稳定性或�
 
 - 普通路径使用 HTTPS/SSE；
 - 映射 health、capability、session、run、stop、approval 和错误；
+- run、stop 和 approval command 都携带调用方可稳定复用的 idempotency key；adapter 重建后由 run/request identity 恢复，不自行重复提交；
 - SSE 单事件默认上限 256 KiB，畸形 JSON 使当前 stream 明确失败；非 2xx 响应正文不进入普通异常或日志；
 - 需要完整控制时在 Hermes 同机侧使用正式 TUI Gateway 协议；
 - 启动用户既有 gateway 前必须确认不会意外连接其消息平台；
