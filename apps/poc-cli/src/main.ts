@@ -176,6 +176,16 @@ async function codex(args: ParsedArgs): Promise<void> {
 
 async function hermes(args: ParsedArgs): Promise<void> {
   const prompt = required(args, "prompt");
+  const rounds = optionalPositiveInteger(args, "rounds") ?? 1;
+  const stopAfterMs = optionalPositiveInteger(args, "stop-after-ms");
+  const approvalProbe = args.flags.has("approval-probe");
+  if (rounds > 100) throw new Error("Option --rounds cannot exceed 100");
+  if (rounds > 1 && stopAfterMs !== undefined) {
+    throw new Error("Option --stop-after-ms requires --rounds 1");
+  }
+  if (approvalProbe && (rounds > 1 || stopAfterMs !== undefined)) {
+    throw new Error("Option --approval-probe requires one round without --stop-after-ms");
+  }
   const tokenEnv = args.values.get("token-env") ?? "HERMES_API_KEY";
   const token = process.env[tokenEnv];
   if (!token) throw new Error(`Environment variable ${tokenEnv} is not set`);
@@ -185,37 +195,101 @@ async function hermes(args: ParsedArgs): Promise<void> {
   });
   print({ kind: "health", value: await client.health() });
   print({ kind: "capabilities", value: await client.capabilities() });
-  const sessionId = args.values.get("session");
-  const run = await client.startRun(prompt, {
-    ...(sessionId === undefined ? {} : { sessionId }),
-  });
-  print({ kind: "run_started", run });
-  let fullText = "";
-  let outcome: TerminalAgentEventType | undefined;
-  for await (const event of client.streamRunEvents(run)) {
-    print({ kind: "agent_event", event });
-    if (event.type === "approval.required" || event.type === "clarification.required") {
-      await client.stopRun(run.runId);
+  let sessionId = args.values.get("session");
+  if (args.flags.has("create-session")) {
+    if (sessionId) throw new Error("Options --session and --create-session cannot be combined");
+    sessionId = await client.createSession("Agent Talk protocol PoC");
+    print({ kind: "session_created", sessionId });
+  }
+
+  for (let round = 1; round <= rounds; round += 1) {
+    const run = await client.startRun(prompt, {
+      ...(sessionId === undefined ? {} : { sessionId }),
+    });
+    print({ kind: "run_started", round, rounds, run });
+    let fullText = "";
+    let outcome: TerminalAgentEventType | undefined;
+    let lastSequence = 0;
+    let blockedUserAction = false;
+    let stopAttempt: Promise<void> | undefined;
+    let stopError: Error | undefined;
+    let stopTimer: ReturnType<typeof setTimeout> | undefined;
+    const controller = new AbortController();
+    const requestStop = (reason: "timer" | "user_action_required"): void => {
+      if (stopAttempt) return;
+      print({ kind: "stop_requested", round, reason });
+      stopAttempt = client.stopRun(run.runId).then(
+        () => print({ kind: "stop_acknowledged", round }),
+        (error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          stopError = new Error(`Hermes stop failed: ${message}`);
+          controller.abort();
+        },
+      );
+    };
+    if (stopAfterMs !== undefined) {
+      stopTimer = setTimeout(() => requestStop("timer"), stopAfterMs);
+    }
+
+    try {
+      for await (const event of client.streamRunEvents(run, controller.signal)) {
+        print({ kind: "agent_event", round, event });
+        if (event.requestId !== run.requestId) {
+          throw new Error(`Hermes round ${round} returned the wrong request identity`);
+        }
+        if (event.sequence !== lastSequence + 1) {
+          throw new Error(`Hermes round ${round} returned a non-contiguous sequence`);
+        }
+        lastSequence = event.sequence;
+        if (event.type === "approval.required" || event.type === "clarification.required") {
+          blockedUserAction = true;
+          print({ kind: "blocked", round, reason: "user_action_required" });
+          requestStop("user_action_required");
+        }
+        if (event.type === "message.delta") {
+          const payload = event.payload as { delta?: unknown };
+          if (typeof payload.delta === "string") fullText += payload.delta;
+        }
+        if (event.type === "message.completed") {
+          const payload = event.payload as { text?: unknown };
+          if (typeof payload.text === "string" && payload.text) fullText = payload.text;
+        }
+        if (isTerminalAgentEventType(event.type)) outcome = event.type;
+      }
+    } catch (error) {
+      if (stopError) throw stopError;
+      throw error;
+    } finally {
+      if (stopTimer) clearTimeout(stopTimer);
+    }
+    if (stopAttempt) await stopAttempt;
+    print({
+      kind: "result",
+      round,
+      rounds,
+      outcome: outcome ?? "unknown",
+      blockedUserAction,
+      fullText,
+      speechText: createSpeechSummaryForOutcome(outcome, fullText) ?? null,
+    });
+    if (outcome === undefined) {
+      throw new Error(`Hermes round ${round} ended without a terminal event`);
+    }
+    if (approvalProbe && !blockedUserAction) {
+      throw new Error("Hermes approval probe completed without a blocking approval request");
+    }
+    if (blockedUserAction && !approvalProbe) {
       throw new Error("Hermes requested interactive user action; run stopped without approval");
     }
-    if (event.type === "message.delta") {
-      const payload = event.payload as { delta?: unknown };
-      if (typeof payload.delta === "string") fullText += payload.delta;
+    if (stopAfterMs !== undefined || approvalProbe) {
+      if (outcome !== "request.cancelled" && outcome !== "request.interrupted") {
+        throw new Error(`Hermes stop/approval probe ended as ${outcome}`);
+      }
+    } else if (outcome !== "request.completed") {
+      throw new Error(`Hermes request ended as ${outcome}`);
     }
-    if (event.type === "message.completed") {
-      const payload = event.payload as { text?: unknown };
-      if (typeof payload.text === "string" && payload.text) fullText = payload.text;
-    }
-    if (isTerminalAgentEventType(event.type)) outcome = event.type;
   }
-  print({
-    kind: "result",
-    outcome: outcome ?? "unknown",
-    fullText,
-    speechText: createSpeechSummaryForOutcome(outcome, fullText) ?? null,
-  });
-  if (outcome === undefined) throw new Error("Hermes event stream ended without a terminal event");
-  if (outcome === "request.failed") throw new Error("Hermes request failed");
+  print({ kind: "summary", roundsCompleted: rounds, sessionId: sessionId ?? null });
 }
 
 function usage(): void {
@@ -225,7 +299,7 @@ function usage(): void {
     `  codex --prompt TEXT [--cwd PATH] [--thread ID] [--interrupt-after-ms N] [--approval-probe|--failure-probe]\n`,
   );
   process.stdout.write(
-    `  hermes --prompt TEXT [--base-url URL] [--token-env NAME] [--session ID]\n`,
+    `  hermes --prompt TEXT [--base-url URL] [--token-env NAME] [--session ID|--create-session] [--rounds N] [--stop-after-ms N] [--approval-probe]\n`,
   );
 }
 

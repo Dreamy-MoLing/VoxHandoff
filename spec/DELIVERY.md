@@ -4,7 +4,7 @@
 
 基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2。
 
-当前阶段：M0 协议核心。M-1 已完成；Codex completion、interrupt、approval、failure 与 resume 真链路已固定，当前完成隔离 Hermes stop、approval、断线、重启真链路。
+当前阶段：M0 协议核心。M-1 已完成；Codex 真链路和隔离 Hermes 10 轮、stop、approval、重启恢复已固定，当前完成 Hermes 运行中断线/uncertain 真链路后关闭 M0。
 
 已完成：
 
@@ -20,12 +20,13 @@
 - Codex 真 approval probe：固定 `approvalPolicy=untrusted`、`approvalsReviewer=user`，确认 `approval.required` 可见、未发送 approval response，并以已确认 interrupt 结束；
 - Codex 真 failure probe：无效模型产生连续的 `request.accepted` sequence 1、`request.failed` sequence 2，无自动重试，失败/中断/取消终态均不生成可误解为成功的 speech text；
 - Hermes fake HTTP/SSE 契约测试、脱敏 fixture、事件大小上限、错误正文隔离、approval/stop idempotency 和 client recreation；
+- Hermes 0.18.2 隔离真链路：独立 `/tmp` HERMES_HOME、loopback API、无消息平台凭据；同一 session 10/10 轮完成且 identity/sequence 连续，stop 得到 `request.cancelled`，manual approval 保持阻塞且只以 stop 结束，gateway 重启后 session 可继续；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
 未完成或未实测：
 
-- 隔离环境内 Hermes 真链路 10 轮、stop、approval、重启；
+- Hermes 运行中断线与 uncertain 真链路；
 - OpenClaw adapter；
 - Protobuf/Buf 与 gRPC Gateway；
 - PostgreSQL/PowerSync/Drift 同步；
@@ -33,7 +34,7 @@
 - STT、GPT-SoVITS 和音频播放真链路；
 - 跨设备、远程网络、打包和发布测试。
 
-Hermes Gateway 当前未运行，且现有 service definition 可能关联用户消息平台。未经隔离 profile 或明确确认，不得为了测试直接启动完整 gateway。
+Hermes 默认 gateway 当前由 user systemd service 运行并关联 QQBot；它不是 Agent Talk 测试资源。Live PoC 必须使用不同 HERMES_HOME、端口、PID/state 目录和只含所需 provider key 的干净子进程环境，不得停止、重启或复用默认 gateway。
 
 ## 2. 仓库布局
 
@@ -295,9 +296,24 @@ npm run poc -- codex \
   --prompt "Reply with exactly: this should not complete" \
   --failure-probe
 npm run poc -- hermes \
-  --base-url http://127.0.0.1:8642 \
+  --base-url http://127.0.0.1:18642 \
   --token-env HERMES_API_KEY \
   --prompt "Reply with exactly: ready"
+npm run poc -- hermes \
+  --base-url http://127.0.0.1:18642 \
+  --token-env HERMES_API_KEY \
+  --prompt "Reply with exactly: ready" \
+  --create-session --rounds 10
+npm run poc -- hermes \
+  --base-url http://127.0.0.1:18642 \
+  --token-env HERMES_API_KEY \
+  --prompt "Write a long numbered list. Do not use tools." \
+  --stop-after-ms 500
+npm run poc -- hermes \
+  --base-url http://127.0.0.1:18642 \
+  --token-env HERMES_API_KEY \
+  --prompt "Use the terminal tool to run bash -lc 'exit 0'. Do not do anything else." \
+  --approval-probe
 ```
 
 新工作区加入 Flutter、Buf、PostgreSQL 等工具后，在这里添加统一命令，不把关键检查藏在个人 IDE task 中。
