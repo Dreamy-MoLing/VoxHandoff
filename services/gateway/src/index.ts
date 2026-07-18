@@ -5,5 +5,7 @@ export * from "./client-ledger.js";
 export * from "./ledger-handlers.js";
 export * from "./ledger.js";
 export * from "./migrations.js";
+export * from "./node-ledger.js";
+export * from "./node-handlers.js";
 export * from "./postgres-ledger.js";
 export * from "./server.js";

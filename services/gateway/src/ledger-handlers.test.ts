@@ -169,6 +169,30 @@ test("replay remains ordered and preserves unsupported events without inventing 
       safePayload: {},
       occurredAt: new Date("2030-01-01T00:00:01.000Z"),
     },
+    {
+      eventId: "event-3",
+      connectionId: "node-connection-1",
+      deviceId: "device-1",
+      conversationId: "conversation-1",
+      sessionId: null,
+      requestId: "request-1",
+      sequence: 3n,
+      eventType: "message.completed",
+      safePayload: { text: "complete answer", revision: "2" },
+      occurredAt: new Date("2030-01-01T00:00:02.000Z"),
+    },
+    {
+      eventId: "event-4",
+      connectionId: "node-connection-1",
+      deviceId: "device-1",
+      conversationId: "conversation-1",
+      sessionId: null,
+      requestId: "request-1",
+      sequence: 4n,
+      eventType: "message.completed",
+      safePayload: { text: "missing revision" },
+      occurredAt: new Date("2030-01-01T00:00:03.000Z"),
+    },
   ];
   const responses = await handlers.onClientCommand(
     command({
@@ -185,7 +209,7 @@ test("replay remains ordered and preserves unsupported events without inventing 
     responses.map((response) =>
       response.body?.case === "event" ? (response.body.value?.sequence ?? -1n) : -1n,
     ),
-    [1n, 2n],
+    [1n, 2n, 3n, 4n],
   );
   const firstEvent = responses[0]?.body;
   const secondEvent = responses[1]?.body;
@@ -194,6 +218,10 @@ test("replay remains ordered and preserves unsupported events without inventing 
   if (secondEvent?.case === "event") {
     assert.equal(secondEvent.value?.event?.payload?.case, "unsupported");
   }
+  const completeMessage = responses[2]?.body;
+  assert.equal(completeMessage?.case === "event" ? completeMessage.value.event?.payload?.case : undefined, "message");
+  const malformedMessage = responses[3]?.body;
+  assert.equal(malformedMessage?.case === "event" ? malformedMessage.value.event?.type : undefined, AgentEventType.UNSPECIFIED);
 });
 
 test("Ack advances only an exact persisted event identity", async () => {

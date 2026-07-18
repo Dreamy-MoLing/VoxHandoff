@@ -1,6 +1,6 @@
 # Agent Talk 正式开发基线
 
-> 基线版本：1.19<br>
+> 基线版本：1.20<br>
 > 生效日期：2026-07-18<br>
 > 状态：Active
 
@@ -29,6 +29,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.20 | 2026-07-18 | 接通 Node 注册、固定 dispatch、Ack/失败和单调事件入账，拒绝旧连接与乱序事件 |
 | 1.19 | 2026-07-18 | 接通 send/lease/GetRequest/replay/Ack 账本路径，并保存完整失败分类 |
 | 1.18 | 2026-07-18 | 建立认证后 Client/Node gRPC 双向流、握手门、逐帧撤销复核与 TLS/loopback 边界 |
 | 1.17 | 2026-07-18 | 固定 control lease CAS/显式接管/审计，并以 forward migration 统一审批 `rejected` 状态 |

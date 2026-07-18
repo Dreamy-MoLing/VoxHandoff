@@ -50,7 +50,8 @@ export interface NodeMessageContext {
 export interface GatewayStreamHandlers {
   onClientCommand(command: ClientCommand, context: ClientCommandContext): Promise<readonly ClientResponseInit[]>;
   onClientAck(ack: Ack, context: ClientCommandContext): Promise<void>;
-  onNodeRegistration(registration: NodeRegistration, context: NodeMessageContext): Promise<void>;
+  onNodeRegistration(registration: NodeRegistration, context: NodeMessageContext): Promise<readonly NodeResponseInit[]>;
+  onNodeHeartbeat(context: NodeMessageContext): Promise<readonly NodeResponseInit[]>;
   onNodeDispatchAck(ack: DispatchAck, context: NodeMessageContext): Promise<void>;
   onNodeEvent(event: EventEnvelope, context: NodeMessageContext): Promise<void>;
 }
@@ -196,6 +197,7 @@ async function* connectNode(
   assertPrincipal(principal, "node");
   const connectionId = options.newConnectionId();
   let handshaken = false;
+  let registered = false;
 
   for await (const request of requests) {
     await options.identityVerifier.revalidate(principal);
@@ -226,17 +228,27 @@ async function* connectNode(
     switch (body.case) {
       case "heartbeat":
         yield { body: { case: "heartbeat", value: body.value } };
+        if (registered) {
+          for (const response of await options.handlers.onNodeHeartbeat(messageContext)) {
+            yield response;
+          }
+        }
         break;
       case "registration":
         if (body.value.node?.nodeId !== principal.principalId) {
           permission("Node registration identity does not match the authenticated principal.");
         }
-        await options.handlers.onNodeRegistration(body.value, messageContext);
+        for (const response of await options.handlers.onNodeRegistration(body.value, messageContext)) {
+          yield response;
+        }
+        registered = true;
         break;
       case "dispatchAck":
+        if (!registered) invalid("Node registration is required before dispatch acknowledgement.");
         await options.handlers.onNodeDispatchAck(body.value, messageContext);
         break;
       case "event":
+        if (!registered) invalid("Node registration is required before events.");
         await options.handlers.onNodeEvent(body.value, messageContext);
         break;
       case "protocolError":

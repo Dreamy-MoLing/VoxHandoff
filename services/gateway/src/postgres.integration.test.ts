@@ -11,6 +11,7 @@ import { acceptRequest, GatewayCommandError, type AcceptRequestInput } from "./a
 import { acquireControlLease, renewControlLease } from "./control-lease.js";
 import { MigrationError, runMigrations } from "./migrations.js";
 import { PostgresGatewayLedger } from "./postgres-ledger.js";
+import { NodeLedgerError } from "./node-ledger.js";
 
 const databaseUrl = process.env.AGENT_TALK_POSTGRES_URL;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -35,6 +36,7 @@ test(
         "0001_gateway_ledger.sql",
         "0002_approval_rejected_state.sql",
         "0003_request_failure_details.sql",
+        "0004_dispatch_ack_facts.sql",
       ]);
       assert.deepEqual(await runMigrations(pool, migrationDirectory), []);
 
@@ -156,14 +158,174 @@ test(
         publications: "2",
         last_sequence: "2",
       });
+
+      const nodeRegistration = {
+          nodeId,
+          connectionId: "node-connection-1",
+          displayName: "registered node",
+          platform: "linux",
+          version: "1",
+          agents: [{
+            agentId,
+            displayName: "registered agent",
+            adapter: "fake",
+            version: "1",
+            capabilityRevision: "cap-1",
+            capabilities: { eventStream: true, attachments: false },
+            maxRequestBytes: 1024n,
+          }],
+        };
+      await recreatedGatewayLedger.registerNode(
+        nodeRegistration,
+        new Date("2030-01-01T00:00:11.000Z"),
+      );
+      const firstClaims = await recreatedGatewayLedger.claimDispatches(
+        nodeId,
+        "node-connection-1",
+        new Date("2030-01-01T00:00:12.000Z"),
+        10,
+      );
+      assert.equal(firstClaims.length, 2);
+      await recreatedGatewayLedger.registerNode(
+        { ...nodeRegistration, connectionId: "node-connection-2" },
+        new Date("2030-01-01T00:00:13.000Z"),
+      );
+      const reconnectClaims = await recreatedGatewayLedger.claimDispatches(
+        nodeId,
+        "node-connection-2",
+        new Date("2030-01-01T00:00:13.000Z"),
+        10,
+      );
+      assert.deepEqual(
+        reconnectClaims.map((claim) => [claim.dispatchId, claim.requestId, claim.idempotencyKey]),
+        firstClaims.map((claim) => [claim.dispatchId, claim.requestId, claim.idempotencyKey]),
+      );
+      const firstDispatch = reconnectClaims.find((claim) => claim.requestId === makeInput(1).requestId);
+      assert(firstDispatch);
+      await assert.rejects(
+        recreatedGatewayLedger.acknowledgeDispatch({
+          nodeId,
+          connectionId: "node-connection-1",
+          dispatchId: firstDispatch.dispatchId,
+          requestId: firstDispatch.requestId,
+          accepted: true,
+          failure: null,
+          occurredAt: new Date("2030-01-01T00:00:14.000Z"),
+        }),
+        (error: unknown) => error instanceof NodeLedgerError && error.code === "stale_node_connection",
+      );
+      await recreatedGatewayLedger.acknowledgeDispatch({
+        nodeId,
+        connectionId: "node-connection-2",
+        dispatchId: firstDispatch.dispatchId,
+        requestId: firstDispatch.requestId,
+        accepted: true,
+        failure: null,
+        occurredAt: new Date("2030-01-01T00:00:14.000Z"),
+      });
+      await recreatedGatewayLedger.acknowledgeDispatch({
+        nodeId,
+        connectionId: "node-connection-2",
+        dispatchId: firstDispatch.dispatchId,
+        requestId: firstDispatch.requestId,
+        accepted: true,
+        failure: null,
+        occurredAt: new Date("2030-01-01T00:00:14.000Z"),
+      });
+      const remainingClaims = await recreatedGatewayLedger.claimDispatches(
+        nodeId,
+        "node-connection-2",
+        new Date("2030-01-01T00:00:15.000Z"),
+        10,
+      );
+      assert.deepEqual(remainingClaims, []);
+
+      const workingEvent = {
+        eventId: `working-${suffix}`,
+        nodeId,
+        connectionId: "node-connection-2",
+        requestId: makeInput(1).requestId,
+        sourceSequence: 1n,
+        conversationId,
+        sessionId: `session-${suffix}`,
+        eventType: "agent.working",
+        safePayload: { safeMessage: "Agent is working." },
+        requestState: "working" as const,
+        failure: null,
+        occurredAt: new Date("2030-01-01T00:00:16.000Z"),
+      };
+      await assert.rejects(
+        recreatedGatewayLedger.ingestNodeEvent({ ...workingEvent, connectionId: "node-connection-1" }),
+        (error: unknown) => error instanceof NodeLedgerError && error.code === "stale_node_connection",
+      );
+      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(workingEvent)).sequence, 3n);
+      await assert.rejects(
+        recreatedGatewayLedger.ingestNodeEvent({ ...workingEvent, eventId: `stale-${suffix}` }),
+        (error: unknown) => error instanceof NodeLedgerError && error.code === "stale_node_event",
+      );
+      const completedEvent = {
+        ...workingEvent,
+        eventId: `completed-${suffix}`,
+        sourceSequence: 2n,
+        eventType: "request.completed",
+        safePayload: {},
+        requestState: "completed" as const,
+        occurredAt: new Date("2030-01-01T00:00:17.000Z"),
+      };
+      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(completedEvent)).sequence, 4n);
+      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(completedEvent)).duplicate, true);
+      await assert.rejects(
+        recreatedGatewayLedger.ingestNodeEvent({ ...completedEvent, safePayload: { changed: true } }),
+        (error: unknown) => error instanceof NodeLedgerError && error.code === "event_identity_conflict",
+      );
+      await assert.rejects(
+        recreatedGatewayLedger.ingestNodeEvent({
+          ...workingEvent,
+          eventId: `late-${suffix}`,
+          sourceSequence: 3n,
+          occurredAt: new Date("2030-01-01T00:00:18.000Z"),
+        }),
+        (error: unknown) => error instanceof NodeLedgerError && error.code === "event_after_terminal",
+      );
+
+      const secondDispatch = reconnectClaims.find((claim) => claim.requestId === makeInput(2).requestId);
+      assert(secondDispatch);
+      const rejection = {
+        nodeId,
+        connectionId: "node-connection-2",
+        dispatchId: secondDispatch.dispatchId,
+        requestId: secondDispatch.requestId,
+        accepted: false,
+        failure: {
+          stage: "agent",
+          category: "unavailable",
+          code: "adapter_unavailable",
+          safeMessage: "The selected Agent adapter is unavailable.",
+          retryable: false,
+        },
+        occurredAt: new Date("2030-01-01T00:00:19.000Z"),
+      } as const;
+      await recreatedGatewayLedger.acknowledgeDispatch(rejection);
+      await recreatedGatewayLedger.acknowledgeDispatch(rejection);
+      await assert.rejects(
+        recreatedGatewayLedger.acknowledgeDispatch({ ...rejection, accepted: true, failure: null }),
+        (error: unknown) => error instanceof NodeLedgerError && error.code === "dispatch_ack_conflict",
+      );
+
       const storedStatus = await recreatedGatewayLedger.getRequestStatus(makeInput(1).requestId, conversationId);
-      assert.equal(storedStatus?.state, "accepted");
+      assert.equal(storedStatus?.state, "completed");
+      const rejectedStatus = await recreatedGatewayLedger.getRequestStatus(makeInput(2).requestId, conversationId);
+      assert.deepEqual(rejectedStatus?.failure, rejection.failure);
+      assert.equal(rejectedStatus?.state, "failed");
       const replayed = await recreatedGatewayLedger.replayEvents(conversationId, 0n, 10);
       assert.deepEqual(
         replayed.map((event) => [event.sequence, event.eventType]),
         [
           [1n, "request.accepted"],
           [2n, "request.accepted"],
+          [3n, "agent.working"],
+          [4n, "request.completed"],
+          [5n, "request.failed"],
         ],
       );
       assert.equal(
@@ -196,7 +358,7 @@ test(
         "SELECT last_sequence::text FROM agent_talk.conversations WHERE conversation_id = $1",
         [conversationId],
       );
-      assert.equal(afterFailure.rows[0]?.last_sequence, "2");
+      assert.equal(afterFailure.rows[0]?.last_sequence, "5");
 
       const secondDeviceId = `device-2-${suffix}`;
       await pool.query(

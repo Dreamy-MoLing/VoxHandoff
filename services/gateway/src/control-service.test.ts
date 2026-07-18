@@ -97,6 +97,10 @@ function setup() {
     },
     async onNodeRegistration() {
       calls.registrations += 1;
+      return [];
+    },
+    async onNodeHeartbeat() {
+      return [];
     },
     async onNodeDispatchAck() {
       calls.dispatchAcks += 1;
@@ -276,6 +280,32 @@ test("binds Node registration to the authenticated opaque node identity", async 
   }
   assert.deepEqual(responses, ["handshake"]);
   assert.equal(calls.registrations, 1);
+});
+
+test("rejects Node business frames until the authenticated Node registers", async () => {
+  const { client, calls } = setup();
+  async function* requests() {
+    yield create(ConnectNodeRequestSchema, {
+      body: { case: "handshake", value: offer(ComponentRole.NODE) },
+    });
+    yield create(ConnectNodeRequestSchema, {
+      body: {
+        case: "dispatchAck",
+        value: { dispatchId: "dispatch-1", requestId: "request-1", accepted: true },
+      },
+    });
+  }
+  await assert.rejects(
+    async () => {
+      for await (const _ of client.connectNode(requests(), {
+        headers: new Headers({ authorization: "Bearer node-token" }),
+      })) {
+        // The handshake succeeds before the unregistered business frame is rejected.
+      }
+    },
+    (error: unknown) => error instanceof ConnectError && error.code === Code.InvalidArgument,
+  );
+  assert.equal(calls.dispatchAcks, 0);
 });
 
 test("serves the same handshake over real loopback HTTP/2 gRPC", {

@@ -3,9 +3,11 @@ import type { MessageInitShape } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import {
   AgentEventType,
+  AgentEventSchema,
   FailureCategory,
   FailureStage,
   ConnectClientResponseSchema,
+  ConnectNodeResponseSchema,
   type ClientCommand,
   type DispatchAck,
   type EventEnvelope,
@@ -28,6 +30,7 @@ import type {
 import type { GatewayLedger } from "./ledger.js";
 
 type ClientResponseInit = MessageInitShape<typeof ConnectClientResponseSchema>;
+type AgentPayloadInit = NonNullable<MessageInitShape<typeof AgentEventSchema>["payload"]>;
 
 export interface LedgerBackedGatewayStore extends GatewayLedger, ControlLeaseLedger, ClientLedger {}
 
@@ -37,13 +40,15 @@ export interface LedgerHandlerDependencies {
 }
 
 export interface NodeStreamDelegate {
-  onRegistration(registration: NodeRegistration, context: NodeMessageContext): Promise<void>;
+  onRegistration(registration: NodeRegistration, context: NodeMessageContext): Promise<readonly MessageInitShape<typeof ConnectNodeResponseSchema>[]>;
+  onHeartbeat(context: NodeMessageContext): Promise<readonly MessageInitShape<typeof ConnectNodeResponseSchema>[]>;
   onDispatchAck(ack: DispatchAck, context: NodeMessageContext): Promise<void>;
   onEvent(event: EventEnvelope, context: NodeMessageContext): Promise<void>;
 }
 
 const noNodeDelegate: NodeStreamDelegate = {
-  async onRegistration() {},
+  async onRegistration() { return []; },
+  async onHeartbeat() { return []; },
   async onDispatchAck() {},
   async onEvent() {},
 };
@@ -152,8 +157,105 @@ function requestStatus(record: GatewayRequestStatusRecord | import("./ledger.js"
   };
 }
 
+function safeObject(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function safeString(value: Record<string, unknown>, key: string): string | undefined {
+  return typeof value[key] === "string" ? value[key] : undefined;
+}
+
+function safePayload(record: PersistedEventRecord): AgentPayloadInit | undefined {
+  if (record.eventType === "request.accepted") {
+    return { case: "requestProgress", value: { safeMessage: "Request accepted." } };
+  }
+  const value = safeObject(record.safePayload);
+  if (value === undefined) return undefined;
+
+  if (["connection.ready", "connection.lost"].includes(record.eventType)) {
+    const safeMessage = safeString(value, "safeMessage");
+    return safeMessage === undefined ? undefined : { case: "connection", value: { safeMessage } };
+  }
+  if (["agent.working", "request.interrupting"].includes(record.eventType)) {
+    const safeMessage = safeString(value, "safeMessage");
+    return safeMessage === undefined ? undefined : { case: "requestProgress", value: { safeMessage } };
+  }
+  if (["message.delta", "message.completed"].includes(record.eventType)) {
+    const text = safeString(value, "text");
+    const revision = safeString(value, "revision");
+    return text === undefined || revision === undefined || !/^\d+$/u.test(revision)
+      ? undefined
+      : { case: "message", value: { text, revision: BigInt(revision) } };
+  }
+  if (["tool.started", "tool.completed", "tool.failed"].includes(record.eventType)) {
+    const toolName = safeString(value, "toolName");
+    const stage = safeString(value, "stage");
+    const safeSummary = safeString(value, "safeSummary");
+    return toolName === undefined || stage === undefined || safeSummary === undefined
+      ? undefined
+      : { case: "tool", value: { toolName, stage, safeSummary } };
+  }
+  if (record.eventType.startsWith("approval.")) {
+    const approvalId = safeString(value, "approvalId");
+    const safeSummary = safeString(value, "safeSummary");
+    const operationSummarySha256 = safeString(value, "operationSummarySha256");
+    const expiresAtValue = value.expiresAt;
+    const expiresAt = typeof expiresAtValue === "string" ? new Date(expiresAtValue) : undefined;
+    return approvalId === undefined || safeSummary === undefined || operationSummarySha256 === undefined ||
+      expiresAt === undefined || Number.isNaN(expiresAt.getTime())
+      ? undefined
+      : {
+          case: "approval",
+          value: { approvalId, safeSummary, operationSummarySha256, expiresAt: timestampFromDate(expiresAt) },
+        };
+  }
+  if (record.eventType.startsWith("clarification.")) {
+    const clarificationId = safeString(value, "clarificationId");
+    const safePrompt = safeString(value, "safePrompt");
+    const expiresAtValue = value.expiresAt;
+    const expiresAt = typeof expiresAtValue === "string" ? new Date(expiresAtValue) : undefined;
+    return clarificationId === undefined || safePrompt === undefined ||
+      expiresAt === undefined || Number.isNaN(expiresAt.getTime())
+      ? undefined
+      : { case: "clarification", value: { clarificationId, safePrompt, expiresAt: timestampFromDate(expiresAt) } };
+  }
+  if (["request.completed", "request.cancelled", "request.interrupted"].includes(record.eventType)) {
+    return { case: "requestTerminal", value: {} };
+  }
+  if (record.eventType === "request.failed") {
+    const failure = safeObject(value.failure);
+    if (failure === undefined) return undefined;
+    const stage = safeString(failure, "stage");
+    const category = safeString(failure, "category");
+    const code = safeString(failure, "code");
+    const safeMessage = safeString(failure, "safeMessage");
+    const retryable = failure.retryable;
+    if (
+      stage === undefined || category === undefined || code === undefined || safeMessage === undefined ||
+      typeof retryable !== "boolean"
+    ) return undefined;
+    return {
+      case: "requestTerminal",
+      value: {
+        failure: {
+          stage: failureStages[stage] ?? FailureStage.UNSPECIFIED,
+          category: failureCategories[category] ?? FailureCategory.UNSPECIFIED,
+          code,
+          safeMessage,
+          retryable,
+        },
+      },
+    };
+  }
+  return undefined;
+}
+
 function replayResponse(record: PersistedEventRecord): ClientResponseInit {
   const eventType = eventTypes[record.eventType];
+  const payload = safePayload(record);
+  const supported = eventType !== undefined && payload !== undefined;
   return {
     body: {
       case: "event",
@@ -168,7 +270,7 @@ function replayResponse(record: PersistedEventRecord): ClientResponseInit {
         sequence: record.sequence,
         occurredAt: timestampFromDate(record.occurredAt),
         event:
-          eventType === undefined
+          !supported
             ? {
                 type: AgentEventType.UNSPECIFIED,
                 payload: {
@@ -178,10 +280,7 @@ function replayResponse(record: PersistedEventRecord): ClientResponseInit {
               }
             : {
                 type: eventType,
-                payload:
-                  record.eventType === "request.accepted"
-                    ? { case: "requestProgress", value: { safeMessage: "Request accepted." } }
-                    : { case: undefined },
+                payload,
               },
       },
     },
@@ -321,8 +420,12 @@ export class LedgerBackedGatewayHandlers implements GatewayStreamHandlers {
     }
   }
 
-  async onNodeRegistration(registration: NodeRegistration, context: NodeMessageContext): Promise<void> {
-    await this.nodeDelegate.onRegistration(registration, context);
+  async onNodeRegistration(registration: NodeRegistration, context: NodeMessageContext) {
+    return this.nodeDelegate.onRegistration(registration, context);
+  }
+
+  async onNodeHeartbeat(context: NodeMessageContext) {
+    return this.nodeDelegate.onHeartbeat(context);
   }
 
   async onNodeDispatchAck(ack: DispatchAck, context: NodeMessageContext): Promise<void> {
