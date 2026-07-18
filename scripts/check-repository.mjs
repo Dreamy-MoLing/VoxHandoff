@@ -115,6 +115,31 @@ function checkText(relativePath, content) {
   }
 }
 
+function checkWorkflow(relativePath, content) {
+  if (!relativePath.startsWith(".github/workflows/")) {
+    return;
+  }
+
+  if (/^\s*pull_request_target\s*:/mu.test(content)) {
+    errors.push(`${relativePath}: pull_request_target is forbidden for untrusted changes`);
+  }
+
+  if (!/^permissions:\n  contents: read$/mu.test(content)) {
+    errors.push(`${relativePath}: set top-level GITHUB_TOKEN permissions to contents: read`);
+  }
+
+  for (const match of content.matchAll(/^\s*uses:\s+([^\s#]+)/gmu)) {
+    const reference = match[1];
+    if (!reference.startsWith("./") && !/@[0-9a-f]{40}$/u.test(reference)) {
+      errors.push(`${relativePath}: action is not pinned to a full commit SHA: ${reference}`);
+    }
+  }
+
+  if (/actions\/checkout@/u.test(content) && !/^\s*persist-credentials:\s+false$/mu.test(content)) {
+    errors.push(`${relativePath}: checkout must disable persisted credentials`);
+  }
+}
+
 async function checkMarkdownLinks(relativePath, content) {
   const linkPattern = /\[[^\]]*\]\(([^)]+)\)/gu;
 
@@ -174,6 +199,7 @@ for (const relativePath of files) {
 
   const content = await readFile(path.join(root, relativePath), "utf8");
   checkText(relativePath, content);
+  checkWorkflow(relativePath, content);
   if (relativePath.endsWith(".md")) {
     await checkMarkdownLinks(relativePath, content);
   }
