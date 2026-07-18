@@ -9,9 +9,15 @@
   ],
   "scripts": {
     "check:repo": "node scripts/check-repository.mjs",
-    "build": "npm run build -w @agent-talk/core && npm run build -w @agent-talk/adapters && npm run build -w @agent-talk/poc-cli",
-    "check": "npm run check:repo && npm run check -w @agent-talk/core && npm run build -w @agent-talk/core && npm run check -w @agent-talk/adapters && npm run build -w @agent-talk/adapters && npm run check -w @agent-talk/poc-cli",
-    "test": "npm run test -w @agent-talk/core && npm run test -w @agent-talk/adapters && npm run test -w @agent-talk/poc-cli",
+    "build": "npm run build -w @agent-talk/protocol && npm run build -w @agent-talk/core && npm run build -w @agent-talk/adapters && npm run build -w @agent-talk/poc-cli",
+    "check": "npm run check:repo && npm run protocol:check && npm run check -w @agent-talk/core && npm run build -w @agent-talk/core && npm run check -w @agent-talk/adapters && npm run build -w @agent-talk/adapters && npm run check -w @agent-talk/poc-cli",
+    "test": "npm run test -w @agent-talk/protocol && npm run test -w @agent-talk/core && npm run test -w @agent-talk/adapters && npm run test -w @agent-talk/poc-cli",
+    "protocol:lint": "node scripts/run-buf.mjs lint && node scripts/run-buf.mjs build",
+    "protocol:generate": "node scripts/run-buf.mjs generate --template buf.gen.yaml",
+    "protocol:generate:dart": "node scripts/run-buf.mjs generate --template buf.gen.dart.yaml",
+    "protocol:check:dart": "node scripts/check-protocol-generated.mjs dart",
+    "protocol:breaking": "node scripts/check-protocol-breaking.mjs",
+    "protocol:check": "npm run protocol:lint && node scripts/check-protocol-contract.mjs && node scripts/check-protocol-generated.mjs && npm run check -w @agent-talk/protocol",
     "protocol:codex": "node scripts/check-codex-protocol.mjs",
     "poc": "npm run start --workspace @agent-talk/poc-cli --"
   },
@@ -19,6 +25,8 @@
     "node": ">=22"
   },
   "devDependencies": {
+    "@bufbuild/buf": "^1.72.0",
+    "@bufbuild/protoc-gen-es": "^2.12.1",
     "@types/node": "^24.0.0",
     "typescript": "^7.0.0"
   }

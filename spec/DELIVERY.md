@@ -2,7 +2,7 @@
 
 ## 1. 当前状态
 
-基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2。
+基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1 和远程 Dart generator 25.0.0。当前主机尚未安装 Dart/Flutter SDK，Dart 真编译从 M2 工具链开始执行。
 
 当前阶段：M1 公共协议与 Gateway。M-1 与 M0 已完成；当前先固定 Protobuf/Buf 公共协议、生成边界和兼容测试，再实现耐久 Gateway 控制面。
 
@@ -22,13 +22,15 @@
 - Hermes fake HTTP/SSE 契约测试、脱敏 fixture、事件大小上限、错误正文隔离、approval/stop idempotency 和 client recreation；
 - Hermes 0.18.2 隔离真链路：独立 `/tmp` HERMES_HOME、loopback API、无消息平台凭据；同一 session 10/10 轮完成且 identity/sequence 连续，stop 得到 `request.cancelled`，manual approval 保持阻塞且只以 stop 结束，gateway 重启后 session 可继续；
 - Hermes 非优雅断线：在 `tool.started` 后 SIGKILL 仅监听 18642 的隔离 PID，partial lifecycle 后追加连续 `connection.lost`，PoC 进入 `uncertain`、不生成 speech、不自动重提；
+- `agent_talk.v1` Protobuf/Buf 公共 schema：版本握手、固定 capability/error/event taxonomy、Client/Node 双向流、配对和耐久命令消息；
+- 从同一 schema 生成 TypeScript 与 Dart/gRPC binding；Buf lint/build、core 契约对齐、生成物一致性、breaking baseline 和握手协商测试进入质量门；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
 未完成或未实测：
 
 - OpenClaw adapter；
-- Protobuf/Buf 与 gRPC Gateway；
+- gRPC/HTTPS Gateway 运行时、PostgreSQL 账本和 control lease；
 - PostgreSQL/PowerSync/Drift 同步；
 - Flutter 五端客户端；
 - STT、GPT-SoVITS 和音频播放真链路；
@@ -45,7 +47,7 @@ apps/
 packages/
   core/                 # 无外部依赖的领域模型和状态机
   adapters/             # Agent 原生协议适配器
-  protocol/             # Protobuf/Buf schema 与生成入口（待建）
+  protocol/             # Protobuf/Buf schema、TS/Dart binding 与协商测试
   sidecar/              # desktop stdio host（待建）
 services/
   gateway/              # gRPC/HTTPS Gateway（待建）
@@ -116,6 +118,17 @@ scripts/                # 协议、质量与构建脚本
 - protocol major/minor、数据库 migration 序号和产品版本分别管理，不从显示版本推导兼容性；
 - 每个发布 tag 对应变更记录、依赖/许可证快照、SBOM、migration/rollback 说明和已通过的发布门；
 - 不提交 secret、`.env`、原始 live payload、原始录音、临时生成的 Codex binding 或设备专属产物。
+
+### 3.7 公共协议依赖记录
+
+| 依赖 | 固定基线 | 许可证 | 维护/覆盖证据 | 退出路径 |
+| --- | --- | --- | --- | --- |
+| `@bufbuild/buf` | 1.72.0，npm lockfile | Apache-2.0 | Buf 官方 CLI；本地和 CI 使用同一项目内二进制 | 保留标准 `.proto`，可退回 `protoc` + 独立 lint/breaking 工具 |
+| `@bufbuild/protoc-gen-es` / `@bufbuild/protobuf` | 2.12.1，npm lockfile | Apache-2.0；runtime 另含 BSD-3-Clause | Buf 官方 Protobuf-ES，Node 22 strict 编译已通过 | wire schema 不变时替换 TS generator/runtime，并以 fixture 验证 |
+| `protoc_plugin` Dart remote plugin | 25.0.0，`buf.gen.dart.yaml` | BSD-3-Clause | Dart 官方维护的 generator；已生成 Dart 3.3+ 与 gRPC binding | 安装同版本本地 plugin，或在保持 wire schema 下替换生成器 |
+| Dart `protobuf` / `grpc` / `fixnum` | `^5.1.0` / `^5.1.0` / `^1.1.1` | BSD-3-Clause / Apache-2.0 / BSD-3-Clause | dart.dev/google.dev 发布，覆盖 Flutter 五端；M2 做真实 analyze/build | 生成层隔离在 `agent_talk_protocol`，替换 transport 不改变 Core/UI 契约 |
+
+Buf remote generation 需要网络，但普通 `npm run check` 和离线测试只校验已提交 TypeScript 生成物；CI 与显式 `protocol:check:dart` 重新生成 Dart 并逐字比较。Dart SDK 未安装前不把“生成成功”表述为“五端编译成功”。
 
 ## 4. 里程碑
 
@@ -280,6 +293,9 @@ Live PoC 不得自动执行写文件、发消息、发布、删除或管理员�
 npm install
 npm run check
 npm test
+npm run protocol:generate
+npm run protocol:breaking
+npm run protocol:check:dart
 npm run protocol:codex
 npm run poc -- doctor
 ```

@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package agent_talk.v1;
+
+message ProtocolVersion {
+  uint32 major = 1;
+  uint32 minor = 2;
+}
+
+message ProtocolVersionRange {
+  uint32 major = 1;
+  uint32 minimum_minor = 2;
+  uint32 maximum_minor = 3;
+}
+
+enum ComponentRole {
+  COMPONENT_ROLE_UNSPECIFIED = 0;
+  COMPONENT_ROLE_CLIENT = 1;
+  COMPONENT_ROLE_GATEWAY = 2;
+  COMPONENT_ROLE_NODE = 3;
+  COMPONENT_ROLE_SIDECAR = 4;
+  COMPONENT_ROLE_STT = 5;
+}
+
+enum DeltaMode {
+  DELTA_MODE_UNSPECIFIED = 0;
+  DELTA_MODE_NONE = 1;
+  DELTA_MODE_APPEND_ONLY = 2;
+  DELTA_MODE_REVISABLE = 3;
+}
+
+message AgentCapabilities {
+  DeltaMode delta_mode = 1;
+  bool event_stream = 2;
+  bool session_history = 3;
+  bool create_session = 4;
+  bool resume_session = 5;
+  bool interrupt = 6;
+  bool steer = 7;
+  bool clarification = 8;
+  bool approval = 9;
+  bool tool_events = 10;
+  bool attachments = 11;
+  bool idempotency = 12;
+  bool replay = 13;
+  bool sequence_recovery = 14;
+  optional uint64 max_request_bytes = 15;
+  optional uint64 request_timeout_ms = 16;
+}
+
+enum FailureStage {
+  FAILURE_STAGE_UNSPECIFIED = 0;
+  FAILURE_STAGE_RECORDING = 1;
+  FAILURE_STAGE_STT = 2;
+  FAILURE_STAGE_CONNECTION = 3;
+  FAILURE_STAGE_AUTHENTICATION = 4;
+  FAILURE_STAGE_AUTHORIZATION = 5;
+  FAILURE_STAGE_PROTOCOL = 6;
+  FAILURE_STAGE_AGENT = 7;
+  FAILURE_STAGE_SUMMARY = 8;
+  FAILURE_STAGE_TTS = 9;
+  FAILURE_STAGE_PLAYBACK = 10;
+  FAILURE_STAGE_STORAGE = 11;
+  FAILURE_STAGE_SYNC = 12;
+  FAILURE_STAGE_CONFIGURATION = 13;
+}
+
+enum FailureCategory {
+  FAILURE_CATEGORY_UNSPECIFIED = 0;
+  FAILURE_CATEGORY_VALIDATION = 1;
+  FAILURE_CATEGORY_UNAVAILABLE = 2;
+  FAILURE_CATEGORY_AUTHENTICATION = 3;
+  FAILURE_CATEGORY_AUTHORIZATION = 4;
+  FAILURE_CATEGORY_PROTOCOL = 5;
+  FAILURE_CATEGORY_TIMEOUT = 6;
+  FAILURE_CATEGORY_RATE_LIMIT = 7;
+  FAILURE_CATEGORY_UPSTREAM = 8;
+  FAILURE_CATEGORY_STORAGE = 9;
+  FAILURE_CATEGORY_PRIVACY = 10;
+  FAILURE_CATEGORY_UNKNOWN = 11;
+}
+
+message StageFailure {
+  FailureStage stage = 1;
+  FailureCategory category = 2;
+  string code = 3;
+  string safe_message = 4;
+  bool retryable = 5;
+}
+
+message Empty {}

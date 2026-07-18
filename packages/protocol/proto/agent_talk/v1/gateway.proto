@@ -1,0 +1,157 @@
+syntax = "proto3";
+
+package agent_talk.v1;
+
+import "agent_talk/v1/common.proto";
+import "agent_talk/v1/control.proto";
+import "agent_talk/v1/event.proto";
+
+message ConnectClientRequest {
+  oneof body {
+    HandshakeOffer handshake = 1;
+    Heartbeat heartbeat = 2;
+    Ack ack = 3;
+    ClientCommand command = 4;
+    ProtocolError protocol_error = 5;
+  }
+}
+
+message ConnectClientResponse {
+  oneof body {
+    HandshakeAccepted handshake = 1;
+    Heartbeat heartbeat = 2;
+    EventEnvelope event = 3;
+    RequestStatus request_status = 4;
+    ControlLease control_lease = 5;
+    ProtocolError protocol_error = 6;
+  }
+}
+
+message NodeDescriptor {
+  string node_id = 1;
+  string display_name = 2;
+  string platform = 3;
+  string version = 4;
+}
+
+message AgentDescriptor {
+  string agent_id = 1;
+  string display_name = 2;
+  string adapter = 3;
+  string version = 4;
+  string capability_revision = 5;
+  AgentCapabilities capabilities = 6;
+}
+
+message NodeRegistration {
+  NodeDescriptor node = 1;
+  repeated AgentDescriptor agents = 2;
+}
+
+message DispatchRequest {
+  string dispatch_id = 1;
+  string request_id = 2;
+  string idempotency_key = 3;
+  string conversation_id = 4;
+  string session_id = 5;
+  string node_id = 6;
+  string agent_id = 7;
+  string capability_revision = 8;
+  string confirmed_text = 9;
+}
+
+message DispatchInterrupt {
+  string dispatch_id = 1;
+  string request_id = 2;
+  string idempotency_key = 3;
+}
+
+message DispatchApproval {
+  string dispatch_id = 1;
+  string request_id = 2;
+  string approval_id = 3;
+  string idempotency_key = 4;
+  ApprovalDecision decision = 5;
+  string operation_summary_sha256 = 6;
+}
+
+message DispatchClarification {
+  string dispatch_id = 1;
+  string request_id = 2;
+  string clarification_id = 3;
+  string idempotency_key = 4;
+  string confirmed_text = 5;
+}
+
+message DispatchAck {
+  string dispatch_id = 1;
+  string request_id = 2;
+  bool accepted = 3;
+  optional StageFailure failure = 4;
+}
+
+message ConnectNodeRequest {
+  oneof body {
+    HandshakeOffer handshake = 1;
+    Heartbeat heartbeat = 2;
+    NodeRegistration registration = 3;
+    DispatchAck dispatch_ack = 4;
+    EventEnvelope event = 5;
+    ProtocolError protocol_error = 6;
+  }
+}
+
+message ConnectNodeResponse {
+  oneof body {
+    HandshakeAccepted handshake = 1;
+    Heartbeat heartbeat = 2;
+    DispatchRequest dispatch_request = 3;
+    DispatchInterrupt dispatch_interrupt = 4;
+    DispatchApproval dispatch_approval = 5;
+    DispatchClarification dispatch_clarification = 6;
+    ProtocolError protocol_error = 7;
+  }
+}
+
+service GatewayControlService {
+  rpc ConnectClient(stream ConnectClientRequest) returns (stream ConnectClientResponse);
+  rpc ConnectNode(stream ConnectNodeRequest) returns (stream ConnectNodeResponse);
+}
+
+message BeginPairingRequest {
+  string device_display_name = 1;
+  bytes device_public_key = 2;
+}
+
+message BeginPairingResponse {
+  string pairing_id = 1;
+  string user_code = 2;
+  string verification_uri = 3;
+  uint32 expires_in_seconds = 4;
+}
+
+message CompletePairingRequest {
+  string pairing_id = 1;
+  string device_proof = 2;
+}
+
+message CompletePairingResponse {
+  string device_id = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+  repeated string scopes = 4;
+}
+
+message RevokeDeviceRequest {
+  string device_id = 1;
+}
+
+message RevokeDeviceResponse {
+  bool revoked = 1;
+}
+
+service PairingService {
+  rpc BeginPairing(BeginPairingRequest) returns (BeginPairingResponse);
+  rpc CompletePairing(CompletePairingRequest) returns (CompletePairingResponse);
+  rpc RevokeDevice(RevokeDeviceRequest) returns (RevokeDeviceResponse);
+}

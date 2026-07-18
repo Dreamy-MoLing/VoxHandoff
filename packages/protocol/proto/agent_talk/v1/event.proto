@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package agent_talk.v1;
+
+import "agent_talk/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+enum AgentEventType {
+  AGENT_EVENT_TYPE_UNSPECIFIED = 0;
+  AGENT_EVENT_TYPE_CONNECTION_READY = 1;
+  AGENT_EVENT_TYPE_CONNECTION_LOST = 2;
+  AGENT_EVENT_TYPE_REQUEST_ACCEPTED = 3;
+  AGENT_EVENT_TYPE_AGENT_WORKING = 4;
+  AGENT_EVENT_TYPE_REQUEST_INTERRUPTING = 5;
+  AGENT_EVENT_TYPE_MESSAGE_DELTA = 6;
+  AGENT_EVENT_TYPE_MESSAGE_COMPLETED = 7;
+  AGENT_EVENT_TYPE_TOOL_STARTED = 8;
+  AGENT_EVENT_TYPE_TOOL_COMPLETED = 9;
+  AGENT_EVENT_TYPE_TOOL_FAILED = 10;
+  AGENT_EVENT_TYPE_APPROVAL_REQUIRED = 11;
+  AGENT_EVENT_TYPE_APPROVAL_RESOLVED = 12;
+  AGENT_EVENT_TYPE_APPROVAL_EXPIRED = 13;
+  AGENT_EVENT_TYPE_APPROVAL_CANCELLED = 14;
+  AGENT_EVENT_TYPE_CLARIFICATION_REQUIRED = 15;
+  AGENT_EVENT_TYPE_CLARIFICATION_RESOLVED = 16;
+  AGENT_EVENT_TYPE_CLARIFICATION_EXPIRED = 17;
+  AGENT_EVENT_TYPE_CLARIFICATION_CANCELLED = 18;
+  AGENT_EVENT_TYPE_REQUEST_COMPLETED = 19;
+  AGENT_EVENT_TYPE_REQUEST_FAILED = 20;
+  AGENT_EVENT_TYPE_REQUEST_CANCELLED = 21;
+  AGENT_EVENT_TYPE_REQUEST_INTERRUPTED = 22;
+}
+
+message ConnectionEvent {
+  string safe_message = 1;
+}
+
+message RequestProgressEvent {
+  string safe_message = 1;
+}
+
+message MessageEvent {
+  string text = 1;
+  uint64 revision = 2;
+}
+
+message ToolEvent {
+  string tool_name = 1;
+  string stage = 2;
+  string safe_summary = 3;
+}
+
+message ApprovalEvent {
+  string approval_id = 1;
+  string safe_summary = 2;
+  string operation_summary_sha256 = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+message ClarificationEvent {
+  string clarification_id = 1;
+  string safe_prompt = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message RequestTerminalEvent {
+  optional StageFailure failure = 1;
+}
+
+message UnsupportedEvent {
+  uint32 native_type_number = 1;
+  string safe_message = 2;
+}
+
+message AgentEvent {
+  AgentEventType type = 1;
+  oneof payload {
+    ConnectionEvent connection = 10;
+    RequestProgressEvent request_progress = 11;
+    MessageEvent message = 12;
+    ToolEvent tool = 13;
+    ApprovalEvent approval = 14;
+    ClarificationEvent clarification = 15;
+    RequestTerminalEvent request_terminal = 16;
+    UnsupportedEvent unsupported = 17;
+  }
+}
+
+message EventEnvelope {
+  ProtocolVersion protocol = 1;
+  string event_id = 2;
+  string connection_id = 3;
+  string device_id = 4;
+  string conversation_id = 5;
+  string session_id = 6;
+  string request_id = 7;
+  uint64 sequence = 8;
+  google.protobuf.Timestamp occurred_at = 9;
+  AgentEvent event = 10;
+}

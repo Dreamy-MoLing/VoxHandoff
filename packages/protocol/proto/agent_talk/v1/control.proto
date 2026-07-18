@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package agent_talk.v1;
+
+import "agent_talk/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+message HandshakeOffer {
+  ProtocolVersion current_protocol = 1;
+  ProtocolVersionRange accepted_protocols = 2;
+  string schema_build = 3;
+  string schema_sha256 = 4;
+  string component_version = 5;
+  ComponentRole component_role = 6;
+  string capability_revision = 7;
+  AgentCapabilities capabilities = 8;
+  repeated string scopes = 9;
+}
+
+message HandshakeAccepted {
+  ProtocolVersion selected_protocol = 1;
+  string connection_id = 2;
+  string schema_build = 3;
+  string schema_sha256 = 4;
+  string component_version = 5;
+  ComponentRole component_role = 6;
+  string capability_revision = 7;
+  AgentCapabilities capabilities = 8;
+  repeated string scopes = 9;
+}
+
+message ProtocolError {
+  string code = 1;
+  string safe_message = 2;
+  ProtocolVersion local_protocol = 3;
+  ProtocolVersion remote_protocol = 4;
+  bool retryable = 5;
+}
+
+message Heartbeat {
+  google.protobuf.Timestamp sent_at = 1;
+  uint64 last_received_sequence = 2;
+}
+
+message Ack {
+  string conversation_id = 1;
+  uint64 sequence = 2;
+  string event_id = 3;
+}
+
+message SendRequest {
+  string agent_id = 1;
+  string node_id = 2;
+  string session_id = 3;
+  string confirmed_text = 4;
+  string capability_revision = 5;
+}
+
+message InterruptRequest {
+  string request_id = 1;
+}
+
+enum ApprovalDecision {
+  APPROVAL_DECISION_UNSPECIFIED = 0;
+  APPROVAL_DECISION_APPROVE = 1;
+  APPROVAL_DECISION_DENY = 2;
+}
+
+message ResolveApproval {
+  string request_id = 1;
+  string approval_id = 2;
+  ApprovalDecision decision = 3;
+  string operation_summary_sha256 = 4;
+}
+
+message ResolveClarification {
+  string request_id = 1;
+  string clarification_id = 2;
+  string confirmed_text = 3;
+}
+
+message AcquireControlLease {
+  string expected_lease_id = 1;
+  uint64 expected_revision = 2;
+  bool explicit_takeover = 3;
+}
+
+message RenewControlLease {
+  string lease_id = 1;
+  uint64 expected_revision = 2;
+}
+
+message ReplayEvents {
+  uint64 after_sequence = 1;
+  uint32 maximum_events = 2;
+}
+
+message GetRequest {
+  string request_id = 1;
+}
+
+message ClientCommand {
+  string command_id = 1;
+  string idempotency_key = 2;
+  string conversation_id = 3;
+  string lease_id = 4;
+  uint64 lease_revision = 5;
+  oneof command {
+    SendRequest send = 10;
+    InterruptRequest interrupt = 11;
+    ResolveApproval resolve_approval = 12;
+    ResolveClarification resolve_clarification = 13;
+    AcquireControlLease acquire_lease = 14;
+    RenewControlLease renew_lease = 15;
+    ReplayEvents replay = 16;
+    GetRequest get_request = 17;
+  }
+}
+
+message RequestStatus {
+  string request_id = 1;
+  string conversation_id = 2;
+  string state = 3;
+  string node_id = 4;
+  string agent_id = 5;
+  string capability_revision = 6;
+  uint64 accepted_sequence = 7;
+  optional StageFailure failure = 8;
+}
+
+message ControlLease {
+  string lease_id = 1;
+  string conversation_id = 2;
+  string device_id = 3;
+  uint64 revision = 4;
+  google.protobuf.Timestamp expires_at = 5;
+}
