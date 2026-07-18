@@ -59,6 +59,12 @@ class FakeCodexProcess extends EventEmitter {
       this.#write({ id: message.id, result: { turn: { id: "turn-1" } } });
       setTimeout(() => {
         this.#write({
+          method: "thread/status/changed",
+          params: { threadId: "thread-1", status: "active" },
+        });
+      }, 2);
+      setTimeout(() => {
+        this.#write({
           method: "turn/started",
           params: { threadId: "thread-1", turn: { id: "turn-1" } },
         });
@@ -138,6 +144,8 @@ test("Codex adapter blocks approval and distinguishes interrupt confirmation", a
       responseSupported: true,
       summary: "safe fake command",
     });
+    assert.equal(events.find((event) => event.type === "request.accepted")?.sequence, 1);
+    assert.equal(approval.sequence, 2);
     assert.doesNotMatch(JSON.stringify(approval), /fixture-secret/);
     assert.doesNotMatch(JSON.stringify(serverRequests), /fixture-secret/);
 

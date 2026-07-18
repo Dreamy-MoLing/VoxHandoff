@@ -265,7 +265,6 @@ export class CodexAppServerClient extends EventEmitter {
       occurredAt: new Date().toISOString(),
       payload: {},
     };
-    this.#sequenceByRequest.set(requestId, base.sequence);
 
     let event: AgentEvent | undefined;
     if (method === "turn/started") {
@@ -344,7 +343,10 @@ export class CodexAppServerClient extends EventEmitter {
       };
     }
 
-    if (event) this.emit("agentEvent", event);
+    if (event) {
+      this.#sequenceByRequest.set(requestId, event.sequence);
+      this.emit("agentEvent", event);
+    }
   }
 
   #terminatePending(error: Error): void {
