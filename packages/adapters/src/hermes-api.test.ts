@@ -41,8 +41,9 @@ test("Hermes client probes capabilities and preserves idempotency keys", async (
 
   assert.deepEqual(await client.health(), { status: "ok" });
   const capabilities = await client.capabilities();
-  assert.equal(capabilities.cancel, true);
-  assert.equal(capabilities.eventReplay, false);
+  assert.equal(capabilities.interrupt, true);
+  assert.equal(capabilities.replay, false);
+  assert.equal(capabilities.attachments, false);
   const run = await client.startRun("hello", { requestId: "request-1" });
   assert.equal(run.runId, "run-1");
 
@@ -84,9 +85,38 @@ test("Hermes SSE events normalize into the shared event contract", async () => {
   assert.equal(events[0]?.type, "message.delta");
   assert.deepEqual(events[0]?.payload, {
     delta: "完成",
-    native: { delta: "完成" },
   });
   assert.equal(events[1]?.type, "request.completed");
-  assert.equal(events[1]?.sequence, 8);
-  assert.equal(events[1]?.final, true);
+  assert.equal(events[1]?.sequence, 2);
+  assert.equal(typeof events[1]?.eventId, "string");
+});
+
+test("Hermes SSE rejects malformed JSON instead of leaking native payloads", async () => {
+  const encoder = new TextEncoder();
+  const fakeFetch: typeof fetch = async () =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode("event: assistant.delta\ndata: not-json\n\n"));
+          controller.close();
+        },
+      }),
+    );
+  const client = new HermesApiClient({
+    baseUrl: "https://hermes.example.test",
+    token: "test",
+    fetch: fakeFetch,
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _event of client.streamRunEvents({
+        runId: "run-1",
+        requestId: "request-1",
+      })) {
+        // No event should be yielded.
+      }
+    },
+    /invalid JSON/,
+  );
 });

@@ -14,9 +14,13 @@ function submitted(): VoiceSessionSnapshot {
   }).snapshot;
   return transition(state, {
     type: "request.submit",
+    conversationId: "conversation-1",
     connectionId: "conn-1",
     sessionId: "session-1",
     requestId: "request-1",
+    agentId: "agent-1",
+    nodeId: "node-1",
+    capabilityRevision: "cap-1",
   }).snapshot;
 }
 
@@ -26,14 +30,15 @@ function event(
   payload: unknown = {},
 ): AgentEvent {
   return {
+    eventId: `event-${sequence}`,
     connectionId: "conn-1",
+    conversationId: "conversation-1",
     sessionId: "session-1",
     requestId: "request-1",
     sequence,
-    serverTime: new Date(0).toISOString(),
+    occurredAt: new Date(0).toISOString(),
     type,
     payload,
-    final: type.startsWith("request.") && !type.endsWith("accepted"),
   };
 }
 
@@ -61,20 +66,39 @@ test("preserves the complete reply independently from speech", () => {
 
 test("rejects stale and cross-request events", () => {
   let state = submitted();
-  state = transition(state, { type: "agent.event", event: event(5, "agent.working") }).snapshot;
+  state = transition(state, { type: "agent.event", event: event(1, "agent.working") }).snapshot;
 
   const stale = transition(state, {
     type: "agent.event",
-    event: event(4, "message.delta", { delta: "stale" }),
+    event: { ...event(1, "message.delta", { delta: "stale" }), eventId: "stale-copy" },
   });
   assert.equal(stale.ignored?.reason, "stale_sequence");
   assert.equal(stale.snapshot.fullReply, "");
 
   const foreign = transition(state, {
     type: "agent.event",
-    event: { ...event(6, "message.delta", { delta: "foreign" }), requestId: "request-2" },
+    event: { ...event(2, "message.delta", { delta: "foreign" }), requestId: "request-2" },
   });
   assert.equal(foreign.ignored?.reason, "wrong_request");
+});
+
+test("rejects duplicate event IDs and sequence gaps without mutating state", () => {
+  let state = submitted();
+  state = transition(state, { type: "agent.event", event: event(1, "agent.working") }).snapshot;
+
+  const duplicate = transition(state, {
+    type: "agent.event",
+    event: { ...event(2, "message.delta", { delta: "duplicate" }), eventId: "event-1" },
+  });
+  assert.equal(duplicate.ignored?.reason, "duplicate_event");
+  assert.equal(duplicate.snapshot.fullReply, "");
+
+  const gap = transition(state, {
+    type: "agent.event",
+    event: event(3, "message.delta", { delta: "gap" }),
+  });
+  assert.equal(gap.ignored?.reason, "sequence_gap");
+  assert.equal(gap.snapshot.lastSequence, 1);
 });
 
 test("a disconnect after submission becomes uncertain, never auto-retried", () => {
@@ -91,4 +115,50 @@ test("approval is represented as a blocking visible state", () => {
     event: event(1, "approval.required", { command: "rm example" }),
   }).snapshot;
   assert.equal(state.state, "awaiting_approval");
+});
+
+test("interrupt confirmation stays distinct from local cancellation", () => {
+  let state = submitted();
+  state = transition(state, { type: "agent.event", event: event(1, "request.accepted") }).snapshot;
+  state = transition(state, { type: "request.interrupt" }).snapshot;
+  assert.equal(state.state, "interrupting");
+
+  const cancelled = transition(state, { type: "cancel" }).snapshot;
+  assert.equal(cancelled.state, "interrupting");
+
+  state = transition(state, {
+    type: "agent.event",
+    event: event(2, "request.interrupted", { reason: "user_requested" }),
+  }).snapshot;
+  assert.equal(state.state, "interrupted");
+});
+
+test("summary failures preserve the complete reply", () => {
+  let state = submitted();
+  state = transition(state, { type: "agent.event", event: event(1, "request.accepted") }).snapshot;
+  state = transition(state, {
+    type: "agent.event",
+    event: event(2, "message.completed", { text: "完整文字" }),
+  }).snapshot;
+  state = transition(state, { type: "agent.event", event: event(3, "request.completed") }).snapshot;
+  state = transition(state, {
+    type: "summary.failed",
+    failure: {
+      stage: "summary",
+      category: "upstream",
+      code: "summary_unavailable",
+      message: "摘要不可用",
+      retryable: false,
+    },
+  }).snapshot;
+
+  assert.equal(state.state, "completed");
+  assert.equal(state.fullReply, "完整文字");
+});
+
+test("speech stop never interrupts an active Agent request", () => {
+  let state = submitted();
+  state = transition(state, { type: "agent.event", event: event(1, "request.accepted") }).snapshot;
+  state = transition(state, { type: "speech.stop" }).snapshot;
+  assert.equal(state.state, "agent_working");
 });

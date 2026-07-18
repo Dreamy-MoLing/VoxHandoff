@@ -7,7 +7,12 @@ import {
   HermesApiClient,
   type CodexServerRequest,
 } from "@agent-talk/adapters";
-import { createDeterministicSpeechSummary, redact, type AgentEvent } from "@agent-talk/core";
+import {
+  createDeterministicSpeechSummary,
+  isTerminalAgentEventType,
+  redact,
+  type AgentEvent,
+} from "@agent-talk/core";
 
 import { parseArgs, required, type ParsedArgs } from "./args.js";
 
@@ -64,9 +69,16 @@ async function codex(args: ParsedArgs): Promise<void> {
     } else if (event.type === "message.completed") {
       const payload = event.payload as { text?: unknown };
       if (typeof payload.text === "string" && payload.text) finalText = payload.text;
-    } else if (event.final) {
-      if (event.type === "request.completed" || event.type === "request.cancelled") resolveFinal?.();
-      else rejectFinal?.(new Error("Codex request failed"));
+    } else if (isTerminalAgentEventType(event.type)) {
+      if (
+        event.type === "request.completed" ||
+        event.type === "request.cancelled" ||
+        event.type === "request.interrupted"
+      ) {
+        resolveFinal?.();
+      } else {
+        rejectFinal?.(new Error("Codex request failed"));
+      }
     }
   });
   client.on("disconnect", (value) => {

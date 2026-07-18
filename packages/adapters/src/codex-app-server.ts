@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import readline from "node:readline";
 
-import type { AgentEvent } from "@agent-talk/core";
+import { redact, type AgentEvent } from "@agent-talk/core";
 
 import { isRecord, stringAt } from "./guards.js";
 
@@ -82,7 +82,10 @@ export class CodexAppServerClient extends EventEmitter {
       this.#handleLine(line);
     });
     readline.createInterface({ input: child.stderr }).on("line", (line) => {
-      this.emit("diagnostic", { source: "codex.stderr", message: line });
+      this.emit("diagnostic", {
+        source: "codex.stderr",
+        message: redact(line.slice(0, 500)),
+      });
     });
     child.once("error", (error) => this.#terminatePending(error));
     child.once("exit", (code, signal) => {
@@ -192,12 +195,13 @@ export class CodexAppServerClient extends EventEmitter {
       if (!pending) return;
       this.#pending.delete(id);
       if (isRecord(message.error)) {
+        const rawMessage =
+          typeof message.error.message === "string"
+            ? message.error.message.slice(0, 500)
+            : "Codex RPC request failed";
+        const safeMessage = redact(rawMessage);
         pending.reject(
-          new Error(
-            typeof message.error.message === "string"
-              ? message.error.message
-              : "Codex RPC request failed",
-          ),
+          new Error(typeof safeMessage === "string" ? safeMessage : "Codex RPC request failed"),
         );
       } else {
         pending.resolve(message.result);
@@ -232,13 +236,13 @@ export class CodexAppServerClient extends EventEmitter {
     if (!requestId) return;
 
     const base = {
+      eventId: randomUUID(),
       connectionId: this.connectionId,
       ...(threadId === undefined ? {} : { sessionId: threadId }),
       requestId,
       sequence: (this.#sequenceByRequest.get(requestId) ?? 0) + 1,
-      serverTime: new Date().toISOString(),
-      payload: params,
-      final: false,
+      occurredAt: new Date().toISOString(),
+      payload: {},
     };
     this.#sequenceByRequest.set(requestId, base.sequence);
 
@@ -250,12 +254,12 @@ export class CodexAppServerClient extends EventEmitter {
       event = {
         ...base,
         type: "message.delta",
-        payload: { delta: stringAt(params, "delta") ?? "", native: params },
+        payload: { delta: stringAt(params, "delta") ?? "" },
       };
     } else if (method === "item/started") {
       const itemType = stringAt(params, "item", "type");
       if (itemType && itemType !== "userMessage" && itemType !== "agentMessage" && itemType !== "reasoning") {
-        event = { ...base, type: "tool.started" };
+        event = { ...base, type: "tool.started", payload: { toolName: itemType } };
       }
     } else if (method === "item/completed") {
       const itemType = stringAt(params, "item", "type");
@@ -264,7 +268,7 @@ export class CodexAppServerClient extends EventEmitter {
         event = {
           ...base,
           type: "message.completed",
-          payload: { text, native: params },
+          payload: { text },
         };
       } else if (
         itemType &&
@@ -272,28 +276,42 @@ export class CodexAppServerClient extends EventEmitter {
         itemType !== "reasoning" &&
         itemType !== "plan"
       ) {
-        event = { ...base, type: "tool.completed" };
+        event = { ...base, type: "tool.completed", payload: { toolName: itemType } };
       }
     } else if (method === "turn/completed") {
       const status = stringAt(params, "turn", "status");
-      const type =
-        status === "interrupted" || status === "cancelled"
-          ? "request.cancelled"
-          : status === "failed"
-            ? "request.failed"
-            : "request.completed";
-      event = { ...base, type, final: true };
+      if (status === "interrupted") {
+        event = { ...base, type: "request.interrupted", payload: { reason: status } };
+      } else if (status === "cancelled") {
+        event = { ...base, type: "request.cancelled", payload: { reason: status } };
+      } else if (status === "failed") {
+        event = {
+          ...base,
+          type: "request.failed",
+          payload: { code: "codex_turn_failed", message: "Codex turn failed" },
+        };
+      } else {
+        event = { ...base, type: "request.completed" };
+      }
     } else if (/approval/i.test(method)) {
       event = {
         ...base,
         type: "approval.required",
-        payload: { rpcId, method, native: params },
+        payload: {
+          approvalId: rpcId === undefined ? `unresolved:${base.eventId}` : String(rpcId),
+          method,
+          responseSupported: rpcId !== undefined,
+        },
       };
     } else if (/elicitation|userInput|clarif/i.test(method)) {
       event = {
         ...base,
         type: "clarification.required",
-        payload: { rpcId, method, native: params },
+        payload: {
+          clarificationId: rpcId === undefined ? `unresolved:${base.eventId}` : String(rpcId),
+          method,
+          responseSupported: rpcId !== undefined,
+        },
       };
     }
 

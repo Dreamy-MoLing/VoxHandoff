@@ -102,7 +102,7 @@ export class HermesApiClient {
       try {
         native = JSON.parse(message.data);
       } catch {
-        native = { text: message.data };
+        throw new Error("Hermes event stream returned invalid JSON");
       }
       localSequence += 1;
       yield normalizeHermesEvent({
@@ -152,10 +152,8 @@ export class HermesApiClient {
     }
     const response = await this.#fetch(new URL(path, this.#baseUrl), { ...init, headers });
     if (!response.ok) {
-      const detail = (await response.text()).slice(0, 500);
-      throw new Error(
-        `Hermes HTTP ${response.status} ${response.statusText}${detail ? `: ${detail}` : ""}`,
-      );
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error(`Hermes HTTP ${response.status} ${response.statusText}`);
     }
     return response;
   }
@@ -178,19 +176,20 @@ export function normalizeHermesCapabilities(native: unknown): AgentCapabilities 
   return {
     ...(protocolVersion === undefined ? {} : { protocolVersion }),
     ...(serverVersion === undefined ? {} : { serverVersion }),
-    streamingText: flag("streaming", true),
+    deltaMode: flag("streaming", true) ? "append_only" : "none",
     eventStream: flag("runs", true),
     sessionHistory: flag("session_history", true),
     createSession: flag("session_create", true),
     resumeSession: flag("session_resume", true),
-    cancel: flag("run_stop", true),
+    interrupt: flag("run_stop", true),
     steer: flag("steer", false),
     clarification: flag("clarification", false),
     approval: flag("approval", true),
-    toolProgress: flag("tool_progress", true),
-    fileMessages: flag("file_messages", false),
-    idempotencyKey: flag("idempotency", true),
-    eventReplay: flag("event_replay", false),
+    toolEvents: flag("tool_progress", true),
+    attachments: false,
+    idempotency: flag("idempotency", true),
+    replay: flag("event_replay", false),
+    sequenceRecovery: flag("sequence_recovery", false),
     ...(maxRequestBytes === undefined ? {} : { maxRequestBytes }),
     ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
   };
@@ -208,13 +207,13 @@ function normalizeHermesEvent(input: NormalizeHermesEventInput): AgentEvent {
   const nativeType =
     input.eventName ?? stringAt(input.native, "type") ?? stringAt(input.native, "event") ?? "unknown";
   const common = {
+    eventId: randomUUID(),
     connectionId: input.connectionId,
     ...(input.run.sessionId === undefined ? {} : { sessionId: input.run.sessionId }),
     requestId: input.run.requestId,
-    sequence: numberAt(input.native, "seq") ?? input.fallbackSequence,
-    serverTime: stringAt(input.native, "timestamp") ?? new Date().toISOString(),
-    payload: input.native,
-    final: false,
+    sequence: input.fallbackSequence,
+    occurredAt: new Date().toISOString(),
+    payload: {},
   };
 
   if (/assistant\.delta|message\.delta|response\.output_text\.delta/.test(nativeType)) {
@@ -227,7 +226,6 @@ function normalizeHermesEvent(input: NormalizeHermesEventInput): AgentEvent {
           stringAt(input.native, "text") ??
           stringAt(input.native, "payload", "delta") ??
           "",
-        native: input.native,
       },
     };
   }
@@ -241,25 +239,63 @@ function normalizeHermesEvent(input: NormalizeHermesEventInput): AgentEvent {
           stringAt(input.native, "message", "content") ??
           stringAt(input.native, "payload", "text") ??
           "",
-        native: input.native,
       },
     };
   }
-  if (/tool\.(start|started)/.test(nativeType)) return { ...common, type: "tool.started" };
-  if (/tool\.(complete|completed)/.test(nativeType)) return { ...common, type: "tool.completed" };
-  if (/approval/.test(nativeType)) return { ...common, type: "approval.required" };
-  if (/clarif/.test(nativeType)) return { ...common, type: "clarification.required" };
+  if (/tool\.(start|started)/.test(nativeType)) {
+    return { ...common, type: "tool.started", payload: { toolName: nativeType } };
+  }
+  if (/tool\.(complete|completed)/.test(nativeType)) {
+    return { ...common, type: "tool.completed", payload: { toolName: nativeType } };
+  }
+  if (/tool\.(fail|failed)/.test(nativeType)) {
+    return { ...common, type: "tool.failed", payload: { toolName: nativeType } };
+  }
+  if (/approval/.test(nativeType)) {
+    return {
+      ...common,
+      type: "approval.required",
+      payload: {
+        approvalId:
+          stringAt(input.native, "approval_id") ??
+          stringAt(input.native, "id") ??
+          `unresolved:${common.eventId}`,
+      },
+    };
+  }
+  if (/clarif/.test(nativeType)) {
+    return {
+      ...common,
+      type: "clarification.required",
+      payload: {
+        clarificationId:
+          stringAt(input.native, "clarification_id") ??
+          stringAt(input.native, "id") ??
+          `unresolved:${common.eventId}`,
+      },
+    };
+  }
   if (/run\.(complete|completed)|request\.completed/.test(nativeType)) {
-    return { ...common, type: "request.completed", final: true };
+    return { ...common, type: "request.completed" };
+  }
+  if (/run\.(interrupt|interrupted)|request\.interrupted/.test(nativeType)) {
+    return { ...common, type: "request.interrupted", payload: { reason: nativeType } };
   }
   if (/run\.(cancel|cancelled|stopped)/.test(nativeType)) {
-    return { ...common, type: "request.cancelled", final: true };
+    return { ...common, type: "request.cancelled", payload: { reason: nativeType } };
   }
   if (/run\.(fail|failed)|error/.test(nativeType)) {
-    return { ...common, type: "request.failed", final: true };
+    return {
+      ...common,
+      type: "request.failed",
+      payload: {
+        code: stringAt(input.native, "code") ?? "hermes_run_failed",
+        message: stringAt(input.native, "message")?.slice(0, 500) ?? "Hermes run failed",
+      },
+    };
   }
   if (/run\.(accept|accepted|created)/.test(nativeType)) {
     return { ...common, type: "request.accepted" };
   }
-  return { ...common, type: "agent.working" };
+  return { ...common, type: "agent.working", payload: { nativeType: nativeType.slice(0, 120) } };
 }

@@ -209,6 +209,26 @@ Handshake 必须携带：当前 protocol major/minor、可接受的 minor 范围
 - Gateway 数据 migration 先兼容旧二进制，再部署 Gateway、Node、Client，最后清理旧字段；任一步失败都允许回退到上一个应用版本而不回滚已提交 migration；
 - Buf breaking check、生成物一致性和前一个 minor 的 fixture replay 属于合并门；不能只测试最新组件全套同版本组合。
 
+### 5.5 统一 taxonomy
+
+Agent adapter 只输出以下规范事件；未知原生事件记录为受限诊断或 `unsupported_event`，不得把原生 payload 直接泄漏到 Core/UI：
+
+| 事件组 | 规范类型 | 语义 |
+| --- | --- | --- |
+| Connection | `connection.ready`、`connection.lost` | 连接状态；lost 不自行推导远端是否执行 |
+| Request progress | `request.accepted`、`agent.working`、`request.interrupting` | 已耐久接受、真实工作事件、等待中断确认 |
+| Message | `message.delta`、`message.completed` | 可追加/可修订规则由 capability 决定 |
+| Tool | `tool.started`、`tool.completed`、`tool.failed` | 只含规范名称、阶段和安全摘要 |
+| Approval | `approval.required`、`approval.resolved`、`approval.expired`、`approval.cancelled` | 与耐久 approval 状态机一致 |
+| Clarification | `clarification.required`、`clarification.resolved`、`clarification.expired`、`clarification.cancelled` | 不与 approval scope 混用 |
+| Request terminal | `request.completed`、`request.failed`、`request.cancelled`、`request.interrupted` | 四种不可互换的终态 |
+
+每个事件必须有本地生成的 opaque `eventId`、connection/session/request identity、从 1 开始且连续的规范 sequence 和本地接收 `occurredAt`。原生 sequence/time 可以放入受限诊断，但不能直接驱动 Core；`final` 由规范终态类型推导，不接受上游布尔值。
+
+Capability 字段固定为：`deltaMode`（`none|append_only|revisable`）、`eventStream`、`sessionHistory`、`createSession`、`resumeSession`、`interrupt`、`steer`、`clarification`、`approval`、`toolEvents`、`attachments`、`idempotency`、`replay`、`sequenceRecovery`、请求大小和 timeout。M0-M5 `attachments=false`；UI 不使用旧名称或失败探测能力。
+
+错误至少包含 `stage`、`category`、稳定 `code`、用户可行动的安全 `message` 和 `retryable`。stage 固定为 `recording|stt|connection|authentication|authorization|protocol|agent|summary|tts|playback|storage|sync|configuration`；category 固定为 `validation|unavailable|authentication|authorization|protocol|timeout|rate_limit|upstream|storage|privacy|unknown`。只有能证明幂等且 acceptance 未发生的操作才允许标记自动安全重试；当前 Client 不自动重试 executable command。
+
 ## 6. 状态机
 
 ### 6.1 请求生命周期

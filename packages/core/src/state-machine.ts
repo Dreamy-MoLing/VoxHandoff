@@ -5,13 +5,23 @@ import type {
   VoiceSessionSnapshot,
 } from "./model.js";
 
-const terminalStates = new Set(["completed", "cancelled", "failed"] as const);
+const requestFinishedStates = new Set([
+  "summarizing",
+  "synthesizing",
+  "playing",
+  "completed",
+  "cancelled",
+  "failed",
+  "interrupted",
+] as const);
+const recentEventLimit = 128;
 
 export function initialVoiceSession(): VoiceSessionSnapshot {
   return {
     state: "idle",
     generation: 0,
-    lastSequence: -1,
+    lastSequence: 0,
+    recentEventIds: [],
     transcript: "",
     fullReply: "",
     speechText: "",
@@ -22,10 +32,14 @@ function fail(
   previous: VoiceSessionSnapshot,
   action: Extract<
     SessionAction,
-    { type: "transcription.failed" | "summary.failed" | "tts.failed" }
+    { type: "transcription.failed" | "summary.failed" | "tts.failed" | "playback.failed" }
   >,
 ): VoiceSessionSnapshot {
-  if (action.type === "summary.failed" || action.type === "tts.failed") {
+  if (
+    action.type === "summary.failed" ||
+    action.type === "tts.failed" ||
+    action.type === "playback.failed"
+  ) {
     return {
       ...previous,
       state: "completed",
@@ -48,11 +62,29 @@ function applyAgentEvent(
   previous: VoiceSessionSnapshot,
   event: AgentEvent,
 ): TransitionResult {
-  if (terminalStates.has(previous.state as "completed" | "cancelled" | "failed")) {
+  if (
+    requestFinishedStates.has(
+      previous.state as
+        | "summarizing"
+        | "synthesizing"
+        | "playing"
+        | "completed"
+        | "cancelled"
+        | "failed"
+        | "interrupted",
+    )
+  ) {
     return ignored(previous, event, "terminal_state");
   }
   if (event.connectionId !== previous.connectionId) {
     return ignored(previous, event, "wrong_connection");
+  }
+  if (
+    previous.conversationId !== undefined &&
+    event.conversationId !== undefined &&
+    event.conversationId !== previous.conversationId
+  ) {
+    return ignored(previous, event, "wrong_conversation");
   }
   if (
     previous.sessionId !== undefined &&
@@ -64,18 +96,31 @@ function applyAgentEvent(
   if (event.requestId !== undefined && event.requestId !== previous.requestId) {
     return ignored(previous, event, "wrong_request");
   }
+  if (previous.recentEventIds.includes(event.eventId)) {
+    return ignored(previous, event, "duplicate_event");
+  }
   if (event.sequence <= previous.lastSequence) {
     return ignored(previous, event, "stale_sequence");
   }
+  if (event.sequence !== previous.lastSequence + 1) {
+    return ignored(previous, event, "sequence_gap");
+  }
 
-  const next = { ...previous, lastSequence: event.sequence };
+  const next = {
+    ...previous,
+    lastSequence: event.sequence,
+    recentEventIds: [...previous.recentEventIds, event.eventId].slice(-recentEventLimit),
+  };
   switch (event.type) {
     case "request.accepted":
       return { snapshot: { ...next, state: "agent_working" } };
     case "agent.working":
     case "tool.started":
     case "tool.completed":
+    case "tool.failed":
       return { snapshot: { ...next, state: "agent_working" } };
+    case "request.interrupting":
+      return { snapshot: { ...next, state: "interrupting" } };
     case "message.delta": {
       const delta = readText(event.payload, "delta");
       return {
@@ -98,12 +143,22 @@ function applyAgentEvent(
     }
     case "approval.required":
       return { snapshot: { ...next, state: "awaiting_approval" } };
+    case "approval.resolved":
+    case "approval.expired":
+    case "approval.cancelled":
+      return { snapshot: { ...next, state: "agent_working" } };
     case "clarification.required":
       return { snapshot: { ...next, state: "awaiting_clarification" } };
+    case "clarification.resolved":
+    case "clarification.expired":
+    case "clarification.cancelled":
+      return { snapshot: { ...next, state: "agent_working" } };
     case "request.completed":
       return { snapshot: { ...next, state: "summarizing" } };
     case "request.cancelled":
       return { snapshot: { ...next, state: "cancelled" } };
+    case "request.interrupted":
+      return { snapshot: { ...next, state: "interrupted" } };
     case "request.failed":
       return {
         snapshot: {
@@ -111,6 +166,7 @@ function applyAgentEvent(
           state: "failed",
           failure: {
             stage: "agent",
+            category: "upstream",
             code: readText(event.payload, "code") || "agent_failed",
             message: readText(event.payload, "message") || "Agent request failed",
             retryable: false,
@@ -141,7 +197,7 @@ export function transition(
         snapshot: { ...initialVoiceSession(), generation: previous.generation + 1 },
       };
     case "record.start":
-      if (!["idle", "completed", "cancelled", "failed"].includes(previous.state)) {
+      if (!["idle", "completed", "cancelled", "failed", "interrupted"].includes(previous.state)) {
         return { snapshot: previous };
       }
       return {
@@ -172,6 +228,7 @@ export function transition(
     case "transcription.failed":
     case "summary.failed":
     case "tts.failed":
+    case "playback.failed":
       return { snapshot: fail(previous, action) };
     case "transcript.update":
       return {
@@ -189,15 +246,34 @@ export function transition(
         snapshot: {
           ...withoutFailure,
           state: "sending",
+          conversationId: action.conversationId,
           connectionId: action.connectionId,
           requestId: action.requestId,
+          agentId: action.agentId,
+          nodeId: action.nodeId,
+          capabilityRevision: action.capabilityRevision,
           ...(action.sessionId === undefined ? {} : { sessionId: action.sessionId }),
-          lastSequence: -1,
+          lastSequence: 0,
+          recentEventIds: [],
           fullReply: "",
           speechText: "",
         },
       };
     }
+    case "request.interrupt":
+      return {
+        snapshot: ["agent_working", "awaiting_approval", "awaiting_clarification"].includes(
+          previous.state,
+        )
+          ? { ...previous, state: "interrupting" }
+          : previous,
+      };
+    case "speech.stop":
+      return {
+        snapshot: ["synthesizing", "playing"].includes(previous.state)
+          ? { ...previous, state: "completed" }
+          : previous,
+      };
     case "agent.event":
       return applyAgentEvent(previous, action.event);
     case "summary.ready":
@@ -223,10 +299,9 @@ export function transition(
       };
     case "cancel":
       return {
-        snapshot:
-          previous.state === "idle"
-            ? previous
-            : { ...previous, state: "cancelled" },
+        snapshot: ["recording", "transcribing", "awaiting_confirmation"].includes(previous.state)
+          ? { ...previous, state: "cancelled" }
+          : previous,
       };
   }
 }
