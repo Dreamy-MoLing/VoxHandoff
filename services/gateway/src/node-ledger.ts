@@ -17,10 +17,14 @@ export interface NodeRegistrationRecord {
   agents: readonly NodeAgentRegistration[];
 }
 
-export interface ClaimedDispatchRecord {
+interface ClaimedDispatchBase {
   dispatchId: string;
   requestId: string;
   idempotencyKey: string;
+}
+
+export interface ClaimedSendDispatchRecord extends ClaimedDispatchBase {
+  kind: "send";
   conversationId: string;
   sessionId: string | null;
   nodeId: string;
@@ -28,6 +32,12 @@ export interface ClaimedDispatchRecord {
   capabilityRevision: string;
   confirmedText: string;
 }
+
+export interface ClaimedInterruptDispatchRecord extends ClaimedDispatchBase {
+  kind: "interrupt";
+}
+
+export type ClaimedDispatchRecord = ClaimedSendDispatchRecord | ClaimedInterruptDispatchRecord;
 
 export interface StoredFailure {
   stage: string;

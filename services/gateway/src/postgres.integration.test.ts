@@ -9,6 +9,7 @@ import { Pool } from "pg";
 
 import { acceptRequest, GatewayCommandError, type AcceptRequestInput } from "./acceptance.js";
 import { acquireControlLease, renewControlLease } from "./control-lease.js";
+import { acceptInterruptCommand } from "./interaction-commands.js";
 import { MigrationError, runMigrations } from "./migrations.js";
 import { PostgresGatewayLedger } from "./postgres-ledger.js";
 import { NodeLedgerError } from "./node-ledger.js";
@@ -37,6 +38,7 @@ test(
         "0002_approval_rejected_state.sql",
         "0003_request_failure_details.sql",
         "0004_dispatch_ack_facts.sql",
+        "0005_interaction_commands.sql",
       ]);
       assert.deepEqual(await runMigrations(pool, migrationDirectory), []);
 
@@ -56,7 +58,7 @@ test(
       await pool.query(
         `INSERT INTO agent_talk.devices (
            device_id, display_name, public_key_sha256, status, scopes, paired_at
-         ) VALUES ($1, 'test device', $2, 'active', ARRAY['send'], $3)`,
+         ) VALUES ($1, 'test device', $2, 'active', ARRAY['send', 'interrupt'], $3)`,
         [deviceId, "a".repeat(64), pairedAt],
       );
       await pool.query(
@@ -68,7 +70,8 @@ test(
         `INSERT INTO agent_talk.agents (
            agent_id, node_id, display_name, adapter, version, status,
            capability_revision, capabilities, max_request_bytes
-         ) VALUES ($1, $2, 'test agent', 'fake', 'test', 'online', 'cap-1', '{}'::jsonb, 1024)`,
+         ) VALUES ($1, $2, 'test agent', 'fake', 'test', 'online', 'cap-1',
+                   '{"interrupt":true}'::jsonb, 1024)`,
         [agentId, nodeId],
       );
       await pool.query(
@@ -159,6 +162,21 @@ test(
         last_sequence: "2",
       });
 
+      const interruptInput = {
+        commandId: `interrupt-command-${suffix}`,
+        idempotencyKey: `interrupt-idempotency-${suffix}`,
+        deviceId,
+        connectionId,
+        conversationId,
+        requestId: makeInput(1).requestId,
+        leaseId: renewed.lease.leaseId,
+        leaseRevision: renewed.lease.revision,
+      };
+      const interrupt = await acceptInterruptCommand(recreatedGatewayLedger, interruptInput, dependencies);
+      assert.equal(interrupt.kind, "accepted");
+      assert.equal(interrupt.kind === "accepted" ? interrupt.facts.event.sequence : 0n, 3n);
+      assert.equal((await acceptInterruptCommand(recreatedGatewayLedger, interruptInput, dependencies)).kind, "existing");
+
       const nodeRegistration = {
           nodeId,
           connectionId: "node-connection-1",
@@ -171,7 +189,7 @@ test(
             adapter: "fake",
             version: "1",
             capabilityRevision: "cap-1",
-            capabilities: { eventStream: true, attachments: false },
+            capabilities: { eventStream: true, interrupt: true, attachments: false },
             maxRequestBytes: 1024n,
           }],
         };
@@ -185,7 +203,7 @@ test(
         new Date("2030-01-01T00:00:12.000Z"),
         10,
       );
-      assert.equal(firstClaims.length, 2);
+      assert.equal(firstClaims.length, 3);
       await recreatedGatewayLedger.registerNode(
         { ...nodeRegistration, connectionId: "node-connection-2" },
         new Date("2030-01-01T00:00:13.000Z"),
@@ -197,10 +215,12 @@ test(
         10,
       );
       assert.deepEqual(
-        reconnectClaims.map((claim) => [claim.dispatchId, claim.requestId, claim.idempotencyKey]),
-        firstClaims.map((claim) => [claim.dispatchId, claim.requestId, claim.idempotencyKey]),
+        reconnectClaims.map((claim) => [claim.kind, claim.dispatchId, claim.requestId, claim.idempotencyKey]),
+        firstClaims.map((claim) => [claim.kind, claim.dispatchId, claim.requestId, claim.idempotencyKey]),
       );
-      const firstDispatch = reconnectClaims.find((claim) => claim.requestId === makeInput(1).requestId);
+      const firstDispatch = reconnectClaims.find(
+        (claim) => claim.kind === "send" && claim.requestId === makeInput(1).requestId,
+      );
       assert(firstDispatch);
       await assert.rejects(
         recreatedGatewayLedger.acknowledgeDispatch({
@@ -219,6 +239,17 @@ test(
         connectionId: "node-connection-2",
         dispatchId: firstDispatch.dispatchId,
         requestId: firstDispatch.requestId,
+        accepted: true,
+        failure: null,
+        occurredAt: new Date("2030-01-01T00:00:14.000Z"),
+      });
+      const interruptDispatch = reconnectClaims.find((claim) => claim.kind === "interrupt");
+      assert(interruptDispatch);
+      await recreatedGatewayLedger.acknowledgeDispatch({
+        nodeId,
+        connectionId: "node-connection-2",
+        dispatchId: interruptDispatch.dispatchId,
+        requestId: interruptDispatch.requestId,
         accepted: true,
         failure: null,
         occurredAt: new Date("2030-01-01T00:00:14.000Z"),
@@ -258,7 +289,7 @@ test(
         recreatedGatewayLedger.ingestNodeEvent({ ...workingEvent, connectionId: "node-connection-1" }),
         (error: unknown) => error instanceof NodeLedgerError && error.code === "stale_node_connection",
       );
-      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(workingEvent)).sequence, 3n);
+      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(workingEvent)).sequence, 4n);
       await assert.rejects(
         recreatedGatewayLedger.ingestNodeEvent({ ...workingEvent, eventId: `stale-${suffix}` }),
         (error: unknown) => error instanceof NodeLedgerError && error.code === "stale_node_event",
@@ -272,7 +303,7 @@ test(
         requestState: "completed" as const,
         occurredAt: new Date("2030-01-01T00:00:17.000Z"),
       };
-      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(completedEvent)).sequence, 4n);
+      assert.equal((await recreatedGatewayLedger.ingestNodeEvent(completedEvent)).sequence, 5n);
       assert.equal((await recreatedGatewayLedger.ingestNodeEvent(completedEvent)).duplicate, true);
       await assert.rejects(
         recreatedGatewayLedger.ingestNodeEvent({ ...completedEvent, safePayload: { changed: true } }),
@@ -323,9 +354,10 @@ test(
         [
           [1n, "request.accepted"],
           [2n, "request.accepted"],
-          [3n, "agent.working"],
-          [4n, "request.completed"],
-          [5n, "request.failed"],
+          [3n, "request.interrupting"],
+          [4n, "agent.working"],
+          [5n, "request.completed"],
+          [6n, "request.failed"],
         ],
       );
       assert.equal(
@@ -358,7 +390,7 @@ test(
         "SELECT last_sequence::text FROM agent_talk.conversations WHERE conversation_id = $1",
         [conversationId],
       );
-      assert.equal(afterFailure.rows[0]?.last_sequence, "5");
+      assert.equal(afterFailure.rows[0]?.last_sequence, "6");
 
       const secondDeviceId = `device-2-${suffix}`;
       await pool.query(

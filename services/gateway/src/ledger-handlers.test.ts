@@ -7,6 +7,7 @@ import { AckSchema, AgentEventType, ClientCommandSchema, type ClientCommand } fr
 
 import type { ClientLedger, GatewayRequestStatusRecord, PersistedEventRecord } from "./client-ledger.js";
 import type { ControlLeaseLedger, ControlLeaseTransaction } from "./control-lease.js";
+import type { InteractionLedger, InteractionLedgerTransaction } from "./interaction-ledger.js";
 import type { ClientCommandContext } from "./control-service.js";
 import { LedgerBackedGatewayHandlers } from "./ledger-handlers.js";
 import type {
@@ -19,7 +20,7 @@ import type {
   GatewayLedgerTransaction,
 } from "./ledger.js";
 
-class StubStore implements GatewayLedger, ControlLeaseLedger, ClientLedger, GatewayLedgerTransaction {
+class StubStore implements GatewayLedger, ControlLeaseLedger, ClientLedger, InteractionLedger, GatewayLedgerTransaction {
   request: GatewayRequestStatusRecord | undefined;
   events: PersistedEventRecord[] = [];
   acknowledged: { deviceId: string; conversationId: string; sequence: bigint; eventId: string } | undefined;
@@ -30,6 +31,10 @@ class StubStore implements GatewayLedger, ControlLeaseLedger, ClientLedger, Gate
 
   async leaseTransaction<T>(_work: (transaction: ControlLeaseTransaction) => Promise<T>): Promise<T> {
     throw new Error("lease transaction is not configured in this stub");
+  }
+
+  async interactionTransaction<T>(_work: (transaction: InteractionLedgerTransaction) => Promise<T>): Promise<T> {
+    throw new Error("interaction transaction is not configured in this stub");
   }
 
   async lockDevice(): Promise<DeviceRecord | undefined> {

@@ -4,6 +4,8 @@ export * from "./control-service.js";
 export * from "./client-ledger.js";
 export * from "./ledger-handlers.js";
 export * from "./ledger.js";
+export * from "./interaction-commands.js";
+export * from "./interaction-ledger.js";
 export * from "./migrations.js";
 export * from "./node-ledger.js";
 export * from "./node-handlers.js";

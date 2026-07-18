@@ -15,6 +15,13 @@ import type {
   GatewayLedger,
   GatewayLedgerTransaction,
 } from "./ledger.js";
+import type {
+  ControlCommandRecord,
+  InteractionLedger,
+  InteractionLedgerTransaction,
+  InteractionRequestRecord,
+  InterruptAcceptanceFacts,
+} from "./interaction-ledger.js";
 import {
   NodeLedgerError,
   type ClaimedDispatchRecord,
@@ -106,13 +113,54 @@ function parseRequest(value: unknown): AcceptedRequestRecord {
   };
 }
 
+function parseControlCommand(value: unknown): ControlCommandRecord {
+  const data = row(value);
+  return {
+    commandId: stringAt(data, "command_id"),
+    idempotencyKey: stringAt(data, "idempotency_key"),
+    deviceId: stringAt(data, "device_id"),
+    conversationId: stringAt(data, "conversation_id"),
+    requestId: stringAt(data, "request_id"),
+    kind: stringAt(data, "command_kind") as ControlCommandRecord["kind"],
+    targetId: nullableStringAt(data, "target_id"),
+    payloadSha256: stringAt(data, "payload_sha256"),
+    state: stringAt(data, "state") as ControlCommandRecord["state"],
+    failure:
+      data.failure_code === null
+        ? null
+        : {
+            stage: stringAt(data, "failure_stage"),
+            category: stringAt(data, "failure_category"),
+            code: stringAt(data, "failure_code"),
+            safeMessage: stringAt(data, "failure_safe_message"),
+            retryable: booleanAt(data, "failure_retryable"),
+          },
+    createdAt: dateAt(data, "created_at"),
+  };
+}
+
 const requestColumns = `
   request_id, command_id, idempotency_key, device_id, accepted_connection_id,
   conversation_id, session_id, node_id, agent_id, capability_revision,
   confirmed_text_sha256, accepted_sequence, accepted_at
 `;
 
-class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLeaseTransaction {
+const requestColumnsFromR = `
+  r.request_id AS request_id, r.command_id AS command_id, r.idempotency_key AS idempotency_key,
+  r.device_id AS device_id, r.accepted_connection_id AS accepted_connection_id,
+  r.conversation_id AS conversation_id, r.session_id AS session_id, r.node_id AS node_id,
+  r.agent_id AS agent_id, r.capability_revision AS capability_revision,
+  r.confirmed_text_sha256 AS confirmed_text_sha256,
+  r.accepted_sequence AS accepted_sequence, r.accepted_at AS accepted_at
+`;
+
+const controlCommandColumns = `
+  command_id, idempotency_key, device_id, conversation_id, request_id,
+  command_kind, target_id, payload_sha256, state, failure_stage,
+  failure_category, failure_code, failure_safe_message, failure_retryable, created_at
+`;
+
+class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLeaseTransaction, InteractionLedgerTransaction {
   constructor(readonly client: PoolClient) {}
 
   async lockDevice(deviceId: string): Promise<DeviceRecord | undefined> {
@@ -168,6 +216,116 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
       [deviceId, commandId],
     );
     return result.rows[0] === undefined ? undefined : parseRequest(result.rows[0]);
+  }
+
+  async findControlCommandByIdempotency(
+    deviceId: string,
+    idempotencyKey: string,
+  ): Promise<ControlCommandRecord | undefined> {
+    const result = await this.client.query<UnknownRow>(
+      `SELECT ${controlCommandColumns} FROM agent_talk.control_commands
+       WHERE device_id = $1 AND idempotency_key = $2`,
+      [deviceId, idempotencyKey],
+    );
+    return result.rows[0] === undefined ? undefined : parseControlCommand(result.rows[0]);
+  }
+
+  async findControlCommandById(commandId: string): Promise<ControlCommandRecord | undefined> {
+    const result = await this.client.query<UnknownRow>(
+      `SELECT ${controlCommandColumns} FROM agent_talk.control_commands WHERE command_id = $1`,
+      [commandId],
+    );
+    return result.rows[0] === undefined ? undefined : parseControlCommand(result.rows[0]);
+  }
+
+  async findSendRequestByCommand(deviceId: string, commandId: string): Promise<AcceptedRequestRecord | undefined> {
+    return this.findRequestByCommand(deviceId, commandId);
+  }
+
+  async findInterruptByRequest(requestId: string): Promise<ControlCommandRecord | undefined> {
+    const result = await this.client.query<UnknownRow>(
+      `SELECT ${controlCommandColumns} FROM agent_talk.control_commands
+       WHERE request_id = $1 AND command_kind = 'interrupt'`,
+      [requestId],
+    );
+    return result.rows[0] === undefined ? undefined : parseControlCommand(result.rows[0]);
+  }
+
+  async lockInteractionRequest(
+    requestId: string,
+    conversationId: string,
+  ): Promise<InteractionRequestRecord | undefined> {
+    const result = await this.client.query<UnknownRow>(
+      `SELECT ${requestColumnsFromR}, r.state,
+              COALESCE((a.capabilities->>'interrupt')::boolean, false) AS interrupt_capable
+       FROM agent_talk.requests r
+       JOIN agent_talk.agents a ON a.agent_id = r.agent_id AND a.node_id = r.node_id
+       WHERE r.request_id = $1 AND r.conversation_id = $2
+       FOR UPDATE OF r`,
+      [requestId, conversationId],
+    );
+    if (result.rows[0] === undefined) return undefined;
+    const data = row(result.rows[0]);
+    return {
+      ...parseRequest(data),
+      state: stringAt(data, "state"),
+      interruptCapable: booleanAt(data, "interrupt_capable"),
+    };
+  }
+
+  async insertInterruptAcceptance(facts: InterruptAcceptanceFacts): Promise<void> {
+    const command = facts.command;
+    await this.client.query(
+      `INSERT INTO agent_talk.control_commands (
+         command_id, idempotency_key, device_id, conversation_id, request_id,
+         command_kind, target_id, payload_sha256, state, created_at
+       ) VALUES ($1, $2, $3, $4, $5, 'interrupt', NULL, $6, 'accepted', $7)`,
+      [
+        command.commandId,
+        command.idempotencyKey,
+        command.deviceId,
+        command.conversationId,
+        command.requestId,
+        command.payloadSha256,
+        command.createdAt,
+      ],
+    );
+    await this.client.query(
+      `INSERT INTO agent_talk.events (
+         event_id, connection_id, device_id, conversation_id, session_id, request_id,
+         sequence, event_type, safe_payload, occurred_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'request.interrupting',
+                 '{"safeMessage":"Interrupt requested."}'::jsonb, $8)`,
+      [
+        facts.event.eventId,
+        facts.event.connectionId,
+        facts.event.deviceId,
+        facts.event.conversationId,
+        facts.event.sessionId,
+        facts.event.requestId,
+        facts.event.sequence.toString(),
+        facts.event.occurredAt,
+      ],
+    );
+    await this.client.query(
+      `INSERT INTO agent_talk.gateway_dispatch_outbox (
+         outbox_id, request_id, node_id, dispatch_kind, control_command_id, available_at, created_at
+       ) SELECT $1, r.request_id, r.node_id, 'interrupt', $2, $3, $3
+         FROM agent_talk.requests r WHERE r.request_id = $4`,
+      [facts.dispatchOutboxId, command.commandId, command.createdAt, command.requestId],
+    );
+    await this.client.query(
+      `INSERT INTO agent_talk.gateway_event_outbox (
+         outbox_id, event_id, conversation_id, sequence, available_at, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $5)`,
+      [
+        facts.eventOutboxId,
+        facts.event.eventId,
+        facts.event.conversationId,
+        facts.event.sequence.toString(),
+        command.createdAt,
+      ],
+    );
   }
 
   async getControlLease(conversationId: string): Promise<ControlLeaseRecord | undefined> {
@@ -356,7 +514,7 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
   }
 }
 
-export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger, ClientLedger, NodeLedger {
+export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger, ClientLedger, NodeLedger, InteractionLedger {
   constructor(private readonly pool: Pool) {}
 
   async transaction<T>(work: (transaction: GatewayLedgerTransaction) => Promise<T>): Promise<T> {
@@ -364,6 +522,10 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
   }
 
   async leaseTransaction<T>(work: (transaction: ControlLeaseTransaction) => Promise<T>): Promise<T> {
+    return this.runTransaction(work);
+  }
+
+  async interactionTransaction<T>(work: (transaction: InteractionLedgerTransaction) => Promise<T>): Promise<T> {
     return this.runTransaction(work);
   }
 
@@ -569,19 +731,34 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
            WHERE d.outbox_id = c.outbox_id
            RETURNING d.outbox_id, d.request_id
          )
-         SELECT c.outbox_id, r.request_id, r.idempotency_key, r.conversation_id,
+         SELECT c.outbox_id, d.dispatch_kind, r.request_id,
+                COALESCE(cc.idempotency_key, r.idempotency_key) AS dispatch_idempotency_key,
+                r.conversation_id,
                 r.session_id, r.node_id, r.agent_id, r.capability_revision, r.confirmed_text
          FROM claimed c
+         JOIN agent_talk.gateway_dispatch_outbox d ON d.outbox_id = c.outbox_id
          JOIN agent_talk.requests r ON r.request_id = c.request_id
+         LEFT JOIN agent_talk.control_commands cc ON cc.command_id = d.control_command_id
          ORDER BY r.accepted_at, c.outbox_id`,
         [nodeId, now, maximum, connectionId],
       );
       return result.rows.map((value) => {
         const data = row(value);
-        return {
+        const kind = stringAt(data, "dispatch_kind");
+        const base = {
           dispatchId: stringAt(data, "outbox_id"),
           requestId: stringAt(data, "request_id"),
-          idempotencyKey: stringAt(data, "idempotency_key"),
+          idempotencyKey: stringAt(data, "dispatch_idempotency_key"),
+        };
+        if (kind === "interrupt") {
+          return { ...base, kind };
+        }
+        if (kind !== "send") {
+          throw new Error("unsupported PostgreSQL dispatch kind");
+        }
+        return {
+          ...base,
+          kind,
           conversationId: stringAt(data, "conversation_id"),
           sessionId: nullableStringAt(data, "session_id"),
           nodeId: stringAt(data, "node_id"),
@@ -598,7 +775,8 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
       const result = await transaction.client.query<UnknownRow>(
         `SELECT d.state, d.ack_accepted, d.last_failure_code, d.failure_stage,
                 d.failure_category, d.failure_safe_message, d.failure_retryable,
-                d.node_id, d.request_id, r.device_id, r.conversation_id, r.session_id,
+                d.node_id, d.request_id, d.dispatch_kind, d.control_command_id,
+                r.device_id, r.conversation_id, r.session_id,
                 r.state AS request_state, n.current_connection_id
          FROM agent_talk.gateway_dispatch_outbox d
          JOIN agent_talk.requests r ON r.request_id = d.request_id
@@ -647,19 +825,27 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
            WHERE outbox_id = $1`,
           [acknowledgement.dispatchId, acknowledgement.occurredAt],
         );
+        const controlCommandId = nullableStringAt(data, "control_command_id");
+        if (controlCommandId !== null) {
+          await transaction.client.query(
+            `UPDATE agent_talk.control_commands
+             SET state = 'delivered', delivered_at = $2
+             WHERE command_id = $1`,
+            [controlCommandId, acknowledgement.occurredAt],
+          );
+        }
         return;
       }
 
       if (acknowledgement.failure === null) {
         throw new NodeLedgerError("dispatch_ack_conflict", "A rejected dispatch must include a safe failure.");
       }
-      if (["completed", "failed", "cancelled", "interrupted"].includes(stringAt(data, "request_state"))) {
+      const dispatchKind = stringAt(data, "dispatch_kind");
+      if (
+        dispatchKind === "send" &&
+        ["completed", "failed", "cancelled", "interrupted"].includes(stringAt(data, "request_state"))
+      ) {
         throw new NodeLedgerError("dispatch_ack_conflict", "A terminal request cannot accept a dispatch rejection.");
-      }
-      const conversationId = stringAt(data, "conversation_id");
-      const sequence = await transaction.allocateConversationSequence(conversationId);
-      if (sequence === undefined) {
-        throw new Error("dispatch request conversation disappeared before failure allocation");
       }
       await transaction.client.query(
         `UPDATE agent_talk.gateway_dispatch_outbox
@@ -678,6 +864,32 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
           acknowledgement.failure.retryable,
         ],
       );
+      const controlCommandId = nullableStringAt(data, "control_command_id");
+      if (dispatchKind !== "send") {
+        if (controlCommandId === null) throw new Error("control dispatch lost its command binding");
+        await transaction.client.query(
+          `UPDATE agent_talk.control_commands
+           SET state = 'failed', delivered_at = $2,
+               failure_code = $3, failure_stage = $4, failure_category = $5,
+               failure_safe_message = $6, failure_retryable = $7
+           WHERE command_id = $1`,
+          [
+            controlCommandId,
+            acknowledgement.occurredAt,
+            acknowledgement.failure.code,
+            acknowledgement.failure.stage,
+            acknowledgement.failure.category,
+            acknowledgement.failure.safeMessage,
+            acknowledgement.failure.retryable,
+          ],
+        );
+        return;
+      }
+      const conversationId = stringAt(data, "conversation_id");
+      const sequence = await transaction.allocateConversationSequence(conversationId);
+      if (sequence === undefined) {
+        throw new Error("dispatch request conversation disappeared before failure allocation");
+      }
       const eventId = `dispatch-failure-${acknowledgement.dispatchId}`;
       await transaction.client.query(
         `UPDATE agent_talk.requests

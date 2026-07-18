@@ -343,21 +343,34 @@ export class LedgerBackedNodeHandlers implements NodeStreamDelegate {
       this.dependencies.now(),
       this.dependencies.dispatchBatchSize ?? 25,
     );
-    return records.map((record) => ({
-      body: {
-        case: "dispatchRequest",
-        value: {
-          dispatchId: record.dispatchId,
-          requestId: record.requestId,
-          idempotencyKey: record.idempotencyKey,
-          conversationId: record.conversationId,
-          sessionId: record.sessionId ?? "",
-          nodeId: record.nodeId,
-          agentId: record.agentId,
-          capabilityRevision: record.capabilityRevision,
-          confirmedText: record.confirmedText,
-        },
-      },
-    }));
+    return records.map((record): NodeResponseInit =>
+      record.kind === "interrupt"
+        ? {
+            body: {
+              case: "dispatchInterrupt",
+              value: {
+                dispatchId: record.dispatchId,
+                requestId: record.requestId,
+                idempotencyKey: record.idempotencyKey,
+              },
+            },
+          }
+        : {
+            body: {
+              case: "dispatchRequest",
+              value: {
+                dispatchId: record.dispatchId,
+                requestId: record.requestId,
+                idempotencyKey: record.idempotencyKey,
+                conversationId: record.conversationId,
+                sessionId: record.sessionId ?? "",
+                nodeId: record.nodeId,
+                agentId: record.agentId,
+                capabilityRevision: record.capabilityRevision,
+                confirmedText: record.confirmedText,
+              },
+            },
+          },
+    );
   }
 }

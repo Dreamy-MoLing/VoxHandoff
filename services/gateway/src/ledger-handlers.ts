@@ -16,6 +16,8 @@ import {
 } from "@agent-talk/protocol";
 
 import { acceptRequest, GatewayCommandError } from "./acceptance.js";
+import { acceptInterruptCommand, InteractionCommandError } from "./interaction-commands.js";
+import type { InteractionLedger } from "./interaction-ledger.js";
 import type { ClientLedger, GatewayRequestStatusRecord, PersistedEventRecord } from "./client-ledger.js";
 import {
   acquireControlLease,
@@ -32,7 +34,7 @@ import type { GatewayLedger } from "./ledger.js";
 type ClientResponseInit = MessageInitShape<typeof ConnectClientResponseSchema>;
 type AgentPayloadInit = NonNullable<MessageInitShape<typeof AgentEventSchema>["payload"]>;
 
-export interface LedgerBackedGatewayStore extends GatewayLedger, ControlLeaseLedger, ClientLedger {}
+export interface LedgerBackedGatewayStore extends GatewayLedger, ControlLeaseLedger, ClientLedger, InteractionLedger {}
 
 export interface LedgerHandlerDependencies {
   now(): Date;
@@ -125,6 +127,17 @@ function toConnectError(error: GatewayCommandError): ConnectError {
           : error.category === "storage"
             ? Code.NotFound
             : Code.FailedPrecondition;
+  return new ConnectError(error.message, code);
+}
+
+function interactionConnectError(error: InteractionCommandError): ConnectError {
+  const code = ["device_not_found", "device_revoked", "scope_missing", "control_lease_lost"].includes(error.code)
+    ? Code.PermissionDenied
+    : ["invalid_command", "idempotency_conflict", "command_id_conflict"].includes(error.code)
+      ? Code.InvalidArgument
+      : error.code === "request_not_found" || error.code === "conversation_not_found"
+        ? Code.NotFound
+        : Code.FailedPrecondition;
   return new ConnectError(error.message, code);
 }
 
@@ -320,6 +333,24 @@ export class LedgerBackedGatewayHandlers implements GatewayStreamHandlers {
           );
           return [requestStatus(result.kind === "accepted" ? result.facts.request : result.request)];
         }
+        case "interrupt": {
+          const interrupt = command.command.value;
+          const result = await acceptInterruptCommand(
+            this.store,
+            {
+              commandId: command.commandId,
+              idempotencyKey: command.idempotencyKey,
+              deviceId: context.principal.principalId,
+              connectionId: context.connectionId,
+              conversationId: command.conversationId,
+              requestId: interrupt.requestId,
+              leaseId: command.leaseId,
+              leaseRevision: command.leaseRevision,
+            },
+            this.dependencies,
+          );
+          return [requestStatus(result.request)];
+        }
         case "acquireLease": {
           const acquire = command.command.value;
           const change = await acquireControlLease(
@@ -398,6 +429,9 @@ export class LedgerBackedGatewayHandlers implements GatewayStreamHandlers {
     } catch (error) {
       if (error instanceof GatewayCommandError) {
         throw toConnectError(error);
+      }
+      if (error instanceof InteractionCommandError) {
+        throw interactionConnectError(error);
       }
       throw error;
     }

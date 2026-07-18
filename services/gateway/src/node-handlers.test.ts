@@ -63,6 +63,7 @@ function setup() {
 test("registers an authenticated Node and dispatches the exact accepted route", async () => {
   const { ledger, handlers } = setup();
   ledger.claims = [{
+    kind: "send",
     dispatchId: "dispatch-1",
     requestId: "request-1",
     idempotencyKey: "idempotency-1",
@@ -166,4 +167,21 @@ test("records an exact dispatch acknowledgement", async () => {
     failure: null,
     occurredAt: new Date("2030-01-01T00:00:00.000Z"),
   });
+});
+
+test("maps a durable interrupt outbox record to DispatchInterrupt", async () => {
+  const { ledger, handlers } = setup();
+  ledger.claims = [{
+    kind: "interrupt",
+    dispatchId: "interrupt-dispatch-1",
+    requestId: "request-1",
+    idempotencyKey: "interrupt-idempotency-1",
+  }];
+  const responses = await handlers.onHeartbeat(context);
+  const body = responses[0]?.body;
+  assert.equal(body?.case, "dispatchInterrupt");
+  if (body?.case === "dispatchInterrupt") {
+    assert.equal(body.value.dispatchId, "interrupt-dispatch-1");
+    assert.equal(body.value.idempotencyKey, "interrupt-idempotency-1");
+  }
 });
