@@ -16,6 +16,7 @@ class FakeCodexProcess extends EventEmitter {
   readonly stdin = new PassThrough();
   readonly stdout = new PassThrough();
   readonly stderr = new PassThrough();
+  readonly turnStartParams: unknown[] = [];
   #buffer = "";
 
   constructor() {
@@ -56,6 +57,7 @@ class FakeCodexProcess extends EventEmitter {
     } else if (message.method === "thread/start") {
       this.#write({ id: message.id, result: { thread: { id: "thread-1" } } });
     } else if (message.method === "turn/start") {
+      this.turnStartParams.push(message.params);
       this.#write({ id: message.id, result: { turn: { id: "turn-1" } } });
       setTimeout(() => {
         this.#write({
@@ -96,9 +98,6 @@ class FakeCodexProcess extends EventEmitter {
   }
 }
 
-const spawnFake: CodexProcessSpawner = () =>
-  new FakeCodexProcess() as unknown as ChildProcessWithoutNullStreams;
-
 function waitFor<T>(subscribe: (resolve: (value: T) => void) => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Timed out waiting for fake Codex event")), 2_000);
@@ -110,6 +109,9 @@ function waitFor<T>(subscribe: (resolve: (value: T) => void) => void): Promise<T
 }
 
 test("Codex adapter blocks approval and distinguishes interrupt confirmation", async () => {
+  const fakeProcess = new FakeCodexProcess();
+  const spawnFake: CodexProcessSpawner = () =>
+    fakeProcess as unknown as ChildProcessWithoutNullStreams;
   const client = new CodexAppServerClient({
     command: "fake-codex",
     spawnProcess: spawnFake,
@@ -125,7 +127,19 @@ test("Codex adapter blocks approval and distinguishes interrupt confirmation", a
   try {
     await client.start();
     const threadId = await client.startThread();
-    const handle = await client.startTurn(threadId, "fake prompt", "request-1");
+    const handle = await client.startTurn(threadId, "fake prompt", {
+      requestId: "request-1",
+      approvalPolicy: "untrusted",
+      approvalsReviewer: "user",
+    });
+    assert.deepEqual(fakeProcess.turnStartParams, [
+      {
+        threadId: "thread-1",
+        input: [{ type: "text", text: "fake prompt" }],
+        approvalPolicy: "untrusted",
+        approvalsReviewer: "user",
+      },
+    ]);
 
     const approval = await waitFor<AgentEvent>((resolve) => {
       const existing = events.find((event) => event.type === "approval.required");

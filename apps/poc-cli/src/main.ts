@@ -48,12 +48,15 @@ function doctor(): void {
 async function codex(args: ParsedArgs): Promise<void> {
   const prompt = required(args, "prompt");
   const interruptAfterMs = optionalPositiveInteger(args, "interrupt-after-ms");
+  const approvalProbe = args.flags.has("approval-probe");
   const client = new CodexAppServerClient({ cwd: args.values.get("cwd") ?? process.cwd() });
   let finalText = "";
   let activeThreadId: string | undefined;
   let activeTurnId: string | undefined;
   let terminal = false;
   let outcome: AgentEvent["type"] | undefined;
+  let blockedUserAction = false;
+  let sawApproval = false;
   let interruptTimer: ReturnType<typeof setTimeout> | undefined;
   let interruptAttempt: Promise<void> | undefined;
   let resolveFinal: (() => void) | undefined;
@@ -63,12 +66,26 @@ async function codex(args: ParsedArgs): Promise<void> {
     rejectFinal = reject;
   });
 
+  const requestInterrupt = (reason: "timer" | "user_action_required"): void => {
+    if (interruptAttempt || !activeThreadId || !activeTurnId) return;
+    print({ kind: "interrupt_requested", reason });
+    interruptAttempt = client.interruptTurn(activeThreadId, activeTurnId).then(
+      () => print({ kind: "interrupt_acknowledged" }),
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        rejectFinal?.(new Error(`Codex interrupt failed: ${message}`));
+      },
+    );
+  };
+
   client.on("diagnostic", (value) => print({ kind: "diagnostic", value }));
   client.on("serverRequest", (request: CodexServerRequest) => {
+    blockedUserAction = true;
     print({ kind: "blocked", reason: "user_action_required", request });
     if (activeThreadId && activeTurnId) {
-      void client.interruptTurn(activeThreadId, activeTurnId).catch(() => undefined);
-      rejectFinal?.(new Error("Codex requested interactive approval or clarification"));
+      requestInterrupt("user_action_required");
+    } else {
+      rejectFinal?.(new Error("Codex requested user action before the turn was ready"));
     }
   });
   client.on("agentEvent", (event: AgentEvent) => {
@@ -92,6 +109,8 @@ async function codex(args: ParsedArgs): Promise<void> {
       } else {
         rejectFinal?.(new Error("Codex request failed"));
       }
+    } else if (event.type === "approval.required") {
+      sawApproval = true;
     }
   });
   client.on("disconnect", (value) => {
@@ -105,20 +124,18 @@ async function codex(args: ParsedArgs): Promise<void> {
     activeThreadId = args.values.get("thread");
     if (activeThreadId) await client.resumeThread(activeThreadId);
     else activeThreadId = await client.startThread({ cwd: args.values.get("cwd") ?? process.cwd() });
-    const handle = await client.startTurn(activeThreadId, prompt);
+    const handle = await client.startTurn(activeThreadId, prompt, {
+      ...(approvalProbe
+        ? { approvalPolicy: "untrusted" as const, approvalsReviewer: "user" as const }
+        : {}),
+    });
     activeTurnId = handle.turnId;
     print({ kind: "turn_started", handle });
     if (interruptAfterMs !== undefined) {
       interruptTimer = setTimeout(() => {
         if (terminal || !activeThreadId || !activeTurnId) return;
-        print({ kind: "interrupt_requested", afterMs: interruptAfterMs });
-        interruptAttempt = client.interruptTurn(activeThreadId, activeTurnId).then(
-          () => print({ kind: "interrupt_acknowledged" }),
-          (error: unknown) => {
-            const message = error instanceof Error ? error.message : String(error);
-            rejectFinal?.(new Error(`Codex interrupt failed: ${message}`));
-          },
-        );
+        print({ kind: "interrupt_timer_elapsed", afterMs: interruptAfterMs });
+        requestInterrupt("timer");
       }, interruptAfterMs);
     }
     await final;
@@ -128,9 +145,16 @@ async function codex(args: ParsedArgs): Promise<void> {
       threadId: activeThreadId,
       turnId: activeTurnId,
       outcome: outcome ?? "unknown",
+      blockedUserAction,
       fullText: finalText,
       speechText: createDeterministicSpeechSummary(finalText),
     });
+    if (approvalProbe && (!sawApproval || !blockedUserAction)) {
+      throw new Error("Codex approval probe completed without a blocking approval request");
+    }
+    if (blockedUserAction && !approvalProbe) {
+      throw new Error("Codex requested interactive approval or clarification");
+    }
   } finally {
     if (interruptTimer) clearTimeout(interruptTimer);
     await client.close();
@@ -180,7 +204,7 @@ function usage(): void {
   process.stdout.write(`Agent Talk protocol PoC\n\n`);
   process.stdout.write(`  doctor\n`);
   process.stdout.write(
-    `  codex --prompt TEXT [--cwd PATH] [--thread ID] [--interrupt-after-ms N]\n`,
+    `  codex --prompt TEXT [--cwd PATH] [--thread ID] [--interrupt-after-ms N] [--approval-probe]\n`,
   );
   process.stdout.write(
     `  hermes --prompt TEXT [--base-url URL] [--token-env NAME] [--session ID]\n`,

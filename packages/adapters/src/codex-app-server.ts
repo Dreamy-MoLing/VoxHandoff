@@ -33,6 +33,12 @@ export interface StartThreadOptions {
   cwd?: string;
 }
 
+export interface StartTurnOptions {
+  requestId?: string;
+  approvalPolicy?: "untrusted" | "on-request";
+  approvalsReviewer?: "user";
+}
+
 export interface CodexTurnHandle {
   threadId: string;
   turnId: string;
@@ -172,12 +178,19 @@ export class CodexAppServerClient extends EventEmitter {
   async startTurn(
     threadId: string,
     text: string,
-    requestId: string = randomUUID(),
+    options: StartTurnOptions = {},
   ): Promise<CodexTurnHandle> {
+    const requestId = options.requestId ?? randomUUID();
     this.#requestByThread.set(threadId, requestId);
     const result = await this.request("turn/start", {
       threadId,
       input: [{ type: "text", text }],
+      ...(options.approvalPolicy === undefined
+        ? {}
+        : { approvalPolicy: options.approvalPolicy }),
+      ...(options.approvalsReviewer === undefined
+        ? {}
+        : { approvalsReviewer: options.approvalsReviewer }),
     });
     const turnId = stringAt(result, "turn", "id");
     if (!turnId) throw new Error("Codex turn/start returned no turn id");
