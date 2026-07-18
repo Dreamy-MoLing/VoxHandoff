@@ -31,3 +31,13 @@ export function createDeterministicSpeechSummary(
   const clipped = preferred.slice(0, Math.max(1, maxCharacters - 1)).trimEnd();
   return `${clipped}…`;
 }
+
+export function createSpeechSummaryForOutcome(
+  outcome: TerminalAgentEventType | undefined,
+  fullReply: string,
+  options: SpeechSummaryOptions = {},
+): string | undefined {
+  if (outcome !== "request.completed") return undefined;
+  return createDeterministicSpeechSummary(fullReply, options);
+}
+import type { TerminalAgentEventType } from "./model.js";

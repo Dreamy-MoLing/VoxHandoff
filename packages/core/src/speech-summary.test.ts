@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { redact } from "./redaction.js";
-import { createDeterministicSpeechSummary } from "./speech-summary.js";
+import { terminalAgentEventTypes } from "./model.js";
+import {
+  createDeterministicSpeechSummary,
+  createSpeechSummaryForOutcome,
+} from "./speech-summary.js";
 
 test("speech summary strips code and limits length", () => {
   const result = createDeterministicSpeechSummary(
@@ -11,6 +15,18 @@ test("speech summary strips code and limits length", () => {
   );
   assert.doesNotMatch(result, /const|token/);
   assert.ok(result.length <= 24);
+});
+
+test("speech output is enabled only for a completed request", () => {
+  assert.equal(
+    createSpeechSummaryForOutcome("request.completed", "Everything completed safely."),
+    "Everything completed safely.",
+  );
+  for (const outcome of terminalAgentEventTypes) {
+    if (outcome === "request.completed") continue;
+    assert.equal(createSpeechSummaryForOutcome(outcome, "Must not be spoken"), undefined);
+  }
+  assert.equal(createSpeechSummaryForOutcome(undefined, "Must not be spoken"), undefined);
 });
 
 test("redaction removes nested credentials", () => {

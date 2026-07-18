@@ -35,6 +35,7 @@ export interface StartThreadOptions {
 
 export interface StartTurnOptions {
   requestId?: string;
+  model?: string;
   approvalPolicy?: "untrusted" | "on-request";
   approvalsReviewer?: "user";
 }
@@ -185,6 +186,7 @@ export class CodexAppServerClient extends EventEmitter {
     const result = await this.request("turn/start", {
       threadId,
       input: [{ type: "text", text }],
+      ...(options.model === undefined ? {} : { model: options.model }),
       ...(options.approvalPolicy === undefined
         ? {}
         : { approvalPolicy: options.approvalPolicy }),

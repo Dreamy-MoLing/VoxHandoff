@@ -59,6 +59,7 @@ class FakeCodexProcess extends EventEmitter {
     } else if (message.method === "turn/start") {
       this.turnStartParams.push(message.params);
       this.#write({ id: message.id, result: { turn: { id: "turn-1" } } });
+      const params = message.params as Record<string, unknown>;
       setTimeout(() => {
         this.#write({
           method: "thread/status/changed",
@@ -71,6 +72,15 @@ class FakeCodexProcess extends EventEmitter {
           params: { threadId: "thread-1", turn: { id: "turn-1" } },
         });
       }, 5);
+      if (params.model === "agent-talk-invalid-model") {
+        setTimeout(() => {
+          this.#write({
+            method: "turn/completed",
+            params: { threadId: "thread-1", turn: { id: "turn-1", status: "failed" } },
+          });
+        }, 10);
+        return;
+      }
       setTimeout(() => {
         this.#write({
           id: "approval-1",
@@ -179,6 +189,43 @@ test("Codex adapter blocks approval and distinguishes interrupt confirmation", a
     assert.equal(interrupted.sequence, approval.sequence + 1);
     assert.doesNotMatch(JSON.stringify(diagnostics), /fake-secret-value/);
     assert.match(JSON.stringify(diagnostics), /\[REDACTED\]/);
+  } finally {
+    await client.close();
+  }
+});
+
+test("Codex adapter normalizes a failed turn without exposing native details", async () => {
+  const fakeProcess = new FakeCodexProcess();
+  const client = new CodexAppServerClient({
+    command: "fake-codex",
+    spawnProcess: () => fakeProcess as unknown as ChildProcessWithoutNullStreams,
+  });
+  const events: AgentEvent[] = [];
+  client.on("agentEvent", (value: AgentEvent) => events.push(value));
+
+  try {
+    await client.start();
+    const threadId = await client.startThread();
+    await client.startTurn(threadId, "failure probe", {
+      requestId: "request-failed",
+      model: "agent-talk-invalid-model",
+    });
+    const failed = await waitFor<AgentEvent>((resolve) => {
+      const existing = events.find((event) => event.type === "request.failed");
+      if (existing) resolve(existing);
+      else {
+        client.on("agentEvent", (event: AgentEvent) => {
+          if (event.type === "request.failed") resolve(event);
+        });
+      }
+    });
+
+    assert.equal(events.find((event) => event.type === "request.accepted")?.sequence, 1);
+    assert.equal(failed.sequence, 2);
+    assert.deepEqual(failed.payload, {
+      code: "codex_turn_failed",
+      message: "Codex turn failed",
+    });
   } finally {
     await client.close();
   }

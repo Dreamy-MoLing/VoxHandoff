@@ -4,7 +4,7 @@
 
 基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2。
 
-当前阶段：M0 协议核心。M-1 已完成；Codex interrupt 与 approval 真链路已固定，当前完成 Codex failure 注入和隔离 Hermes stop、approval、断线、重启真链路。
+当前阶段：M0 协议核心。M-1 已完成；Codex completion、interrupt、approval、failure 与 resume 真链路已固定，当前完成隔离 Hermes stop、approval、断线、重启真链路。
 
 已完成：
 
@@ -18,13 +18,13 @@
 - Codex 当前安装版本的 12 项协议兼容检查；
 - Codex 真链路新建线程、turn、delta、完成、进程重启和 thread resume；2026-07-18 `ready` 复测确认规范事件 sequence 连续为 1-4，同日 750 ms 受控中断复测确认 `request.accepted` sequence 1 后得到 `request.interrupted` sequence 2；
 - Codex 真 approval probe：固定 `approvalPolicy=untrusted`、`approvalsReviewer=user`，确认 `approval.required` 可见、未发送 approval response，并以已确认 interrupt 结束；
+- Codex 真 failure probe：无效模型产生连续的 `request.accepted` sequence 1、`request.failed` sequence 2，无自动重试，失败/中断/取消终态均不生成可误解为成功的 speech text；
 - Hermes fake HTTP/SSE 契约测试、脱敏 fixture、事件大小上限、错误正文隔离、approval/stop idempotency 和 client recreation；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
 未完成或未实测：
 
-- Codex 显式 failure 真链路；
 - 隔离环境内 Hermes 真链路 10 轮、stop、approval、重启；
 - OpenClaw adapter；
 - Protobuf/Buf 与 gRPC Gateway；
@@ -291,6 +291,9 @@ npm run poc -- codex \
 npm run poc -- codex \
   --prompt "Use the terminal tool to run bash -lc 'exit 0'. Do not do anything else." \
   --approval-probe
+npm run poc -- codex \
+  --prompt "Reply with exactly: this should not complete" \
+  --failure-probe
 npm run poc -- hermes \
   --base-url http://127.0.0.1:8642 \
   --token-env HERMES_API_KEY \

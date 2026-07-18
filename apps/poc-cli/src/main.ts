@@ -8,10 +8,11 @@ import {
   type CodexServerRequest,
 } from "@agent-talk/adapters";
 import {
-  createDeterministicSpeechSummary,
+  createSpeechSummaryForOutcome,
   isTerminalAgentEventType,
   redact,
   type AgentEvent,
+  type TerminalAgentEventType,
 } from "@agent-talk/core";
 
 import {
@@ -49,12 +50,19 @@ async function codex(args: ParsedArgs): Promise<void> {
   const prompt = required(args, "prompt");
   const interruptAfterMs = optionalPositiveInteger(args, "interrupt-after-ms");
   const approvalProbe = args.flags.has("approval-probe");
+  const failureProbe = args.flags.has("failure-probe");
+  if (approvalProbe && failureProbe) {
+    throw new Error("Options --approval-probe and --failure-probe cannot be combined");
+  }
+  if (failureProbe && interruptAfterMs !== undefined) {
+    throw new Error("Options --failure-probe and --interrupt-after-ms cannot be combined");
+  }
   const client = new CodexAppServerClient({ cwd: args.values.get("cwd") ?? process.cwd() });
   let finalText = "";
   let activeThreadId: string | undefined;
   let activeTurnId: string | undefined;
   let terminal = false;
-  let outcome: AgentEvent["type"] | undefined;
+  let outcome: TerminalAgentEventType | undefined;
   let blockedUserAction = false;
   let sawApproval = false;
   let interruptTimer: ReturnType<typeof setTimeout> | undefined;
@@ -103,7 +111,8 @@ async function codex(args: ParsedArgs): Promise<void> {
       if (
         event.type === "request.completed" ||
         event.type === "request.cancelled" ||
-        event.type === "request.interrupted"
+        event.type === "request.interrupted" ||
+        (failureProbe && event.type === "request.failed")
       ) {
         resolveFinal?.();
       } else {
@@ -128,6 +137,7 @@ async function codex(args: ParsedArgs): Promise<void> {
       ...(approvalProbe
         ? { approvalPolicy: "untrusted" as const, approvalsReviewer: "user" as const }
         : {}),
+      ...(failureProbe ? { model: "agent-talk-invalid-model" } : {}),
     });
     activeTurnId = handle.turnId;
     print({ kind: "turn_started", handle });
@@ -147,13 +157,16 @@ async function codex(args: ParsedArgs): Promise<void> {
       outcome: outcome ?? "unknown",
       blockedUserAction,
       fullText: finalText,
-      speechText: createDeterministicSpeechSummary(finalText),
+      speechText: createSpeechSummaryForOutcome(outcome, finalText) ?? null,
     });
     if (approvalProbe && (!sawApproval || !blockedUserAction)) {
       throw new Error("Codex approval probe completed without a blocking approval request");
     }
     if (blockedUserAction && !approvalProbe) {
       throw new Error("Codex requested interactive approval or clarification");
+    }
+    if (failureProbe && outcome !== "request.failed") {
+      throw new Error("Codex failure probe did not produce request.failed");
     }
   } finally {
     if (interruptTimer) clearTimeout(interruptTimer);
@@ -178,6 +191,7 @@ async function hermes(args: ParsedArgs): Promise<void> {
   });
   print({ kind: "run_started", run });
   let fullText = "";
+  let outcome: TerminalAgentEventType | undefined;
   for await (const event of client.streamRunEvents(run)) {
     print({ kind: "agent_event", event });
     if (event.type === "approval.required" || event.type === "clarification.required") {
@@ -192,19 +206,23 @@ async function hermes(args: ParsedArgs): Promise<void> {
       const payload = event.payload as { text?: unknown };
       if (typeof payload.text === "string" && payload.text) fullText = payload.text;
     }
+    if (isTerminalAgentEventType(event.type)) outcome = event.type;
   }
   print({
     kind: "result",
+    outcome: outcome ?? "unknown",
     fullText,
-    speechText: createDeterministicSpeechSummary(fullText),
+    speechText: createSpeechSummaryForOutcome(outcome, fullText) ?? null,
   });
+  if (outcome === undefined) throw new Error("Hermes event stream ended without a terminal event");
+  if (outcome === "request.failed") throw new Error("Hermes request failed");
 }
 
 function usage(): void {
   process.stdout.write(`Agent Talk protocol PoC\n\n`);
   process.stdout.write(`  doctor\n`);
   process.stdout.write(
-    `  codex --prompt TEXT [--cwd PATH] [--thread ID] [--interrupt-after-ms N] [--approval-probe]\n`,
+    `  codex --prompt TEXT [--cwd PATH] [--thread ID] [--interrupt-after-ms N] [--approval-probe|--failure-probe]\n`,
   );
   process.stdout.write(
     `  hermes --prompt TEXT [--base-url URL] [--token-env NAME] [--session ID]\n`,
