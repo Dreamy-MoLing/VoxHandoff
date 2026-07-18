@@ -1,6 +1,11 @@
 import type { Pool, PoolClient } from "pg";
 
 import type {
+  ControlLeaseChange,
+  ControlLeaseLedger,
+  ControlLeaseTransaction,
+} from "./control-lease.js";
+import type {
   AcceptanceFacts,
   AcceptedRequestRecord,
   AgentTargetRecord,
@@ -89,7 +94,7 @@ const requestColumns = `
   confirmed_text_sha256, accepted_sequence, accepted_at
 `;
 
-class PostgresGatewayTransaction implements GatewayLedgerTransaction {
+class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLeaseTransaction {
   constructor(private readonly client: PoolClient) {}
 
   async lockDevice(deviceId: string): Promise<DeviceRecord | undefined> {
@@ -110,6 +115,14 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction {
       active: stringAt(data, "status") === "active",
       scopes,
     };
+  }
+
+  async lockConversation(conversationId: string): Promise<boolean> {
+    const result = await this.client.query(
+      "SELECT 1 FROM agent_talk.conversations WHERE conversation_id = $1 FOR UPDATE",
+      [conversationId],
+    );
+    return result.rowCount === 1;
   }
 
   async findRequestByIdempotency(
@@ -156,6 +169,68 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction {
       revision: bigintAt(data, "revision"),
       expiresAt: dateAt(data, "expires_at"),
     };
+  }
+
+  async insertControlLease(change: ControlLeaseChange): Promise<void> {
+    await this.client.query(
+      `INSERT INTO agent_talk.control_leases (
+         conversation_id, lease_id, device_id, revision, expires_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        change.lease.conversationId,
+        change.lease.leaseId,
+        change.lease.deviceId,
+        change.lease.revision.toString(),
+        change.lease.expiresAt,
+        change.audit.occurredAt,
+      ],
+    );
+    await this.insertAudit(change);
+  }
+
+  async replaceControlLease(
+    expectedLeaseId: string,
+    expectedRevision: bigint,
+    change: ControlLeaseChange,
+  ): Promise<boolean> {
+    const result = await this.client.query(
+      `UPDATE agent_talk.control_leases
+       SET lease_id = $1, device_id = $2, revision = $3, expires_at = $4, updated_at = $5
+       WHERE conversation_id = $6 AND lease_id = $7 AND revision = $8`,
+      [
+        change.lease.leaseId,
+        change.lease.deviceId,
+        change.lease.revision.toString(),
+        change.lease.expiresAt,
+        change.audit.occurredAt,
+        change.lease.conversationId,
+        expectedLeaseId,
+        expectedRevision.toString(),
+      ],
+    );
+    if (result.rowCount !== 1) {
+      return false;
+    }
+    await this.insertAudit(change);
+    return true;
+  }
+
+  private async insertAudit(change: ControlLeaseChange): Promise<void> {
+    await this.client.query(
+      `INSERT INTO agent_talk.security_audit_events (
+         audit_id, device_id, action, outcome, target_type, target_id_sha256, safe_code, occurred_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        change.audit.auditId,
+        change.audit.deviceId,
+        change.audit.action,
+        change.audit.outcome,
+        change.audit.targetType,
+        change.audit.targetIdSha256,
+        change.audit.safeCode,
+        change.audit.occurredAt,
+      ],
+    );
   }
 
   async getAgentTarget(nodeId: string, agentId: string): Promise<AgentTargetRecord | undefined> {
@@ -263,10 +338,18 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction {
   }
 }
 
-export class PostgresGatewayLedger implements GatewayLedger {
+export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger {
   constructor(private readonly pool: Pool) {}
 
   async transaction<T>(work: (transaction: GatewayLedgerTransaction) => Promise<T>): Promise<T> {
+    return this.runTransaction(work);
+  }
+
+  async leaseTransaction<T>(work: (transaction: ControlLeaseTransaction) => Promise<T>): Promise<T> {
+    return this.runTransaction(work);
+  }
+
+  private async runTransaction<T>(work: (transaction: PostgresGatewayTransaction) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");

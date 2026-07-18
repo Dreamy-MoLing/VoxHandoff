@@ -26,6 +26,8 @@
 - 从同一 schema 生成 TypeScript 与 Dart/gRPC binding；Buf lint/build、core 契约对齐、生成物一致性、breaking baseline 和握手协商测试进入质量门；
 - PostgreSQL 初始 migration 与 acceptance ledger：设备/scope、lease、固定 Agent/Node/capability、request/event/sequence 和双 outbox 在同一事务内；
 - Gateway 账本 fake 覆盖并发 duplicate、idempotency/identity conflict、权限/租约/目标失败和完整回滚；隔离 PostgreSQL 17 覆盖 migration 幂等/篡改拒绝、Gateway recreation、并发 duplicate、连续 sequence 与失败回滚；
+- 30 秒 control lease 状态机：只允许带 `send|interrupt|approve` scope 的 active device 获取控制；续租递增 revision，其他设备必须带当前 lease/revision 显式 CAS 接管，过期不推导隐式接管，成功变化写无正文安全审计；
+- `0002_approval_rejected_state.sql` 以只向前 migration 将初始数据库约束的 `denied` 修正为规格唯一名称 `rejected`，不改写已提交的 `0001`；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 

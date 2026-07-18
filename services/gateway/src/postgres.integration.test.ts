@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 
 import { acceptRequest, GatewayCommandError, type AcceptRequestInput } from "./acceptance.js";
+import { acquireControlLease, renewControlLease } from "./control-lease.js";
 import { MigrationError, runMigrations } from "./migrations.js";
 import { PostgresGatewayLedger } from "./postgres-ledger.js";
 
@@ -25,13 +26,15 @@ test(
     const deviceId = `device-${suffix}`;
     const connectionId = `connection-${suffix}`;
     const conversationId = `conversation-${suffix}`;
-    const leaseId = `lease-${suffix}`;
     const nodeId = `node-${suffix}`;
     const agentId = `agent-${suffix}`;
     let nextId = 0;
 
     try {
-      assert.deepEqual(await runMigrations(pool, migrationDirectory), ["0001_gateway_ledger.sql"]);
+      assert.deepEqual(await runMigrations(pool, migrationDirectory), [
+        "0001_gateway_ledger.sql",
+        "0002_approval_rejected_state.sql",
+      ]);
       assert.deepEqual(await runMigrations(pool, migrationDirectory), []);
 
       const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "agent-talk-migration-check-"));
@@ -50,7 +53,7 @@ test(
       await pool.query(
         `INSERT INTO agent_talk.devices (
            device_id, display_name, public_key_sha256, status, scopes, paired_at
-         ) VALUES ($1, 'test device', $2, 'active', ARRAY['agent:send'], $3)`,
+         ) VALUES ($1, 'test device', $2, 'active', ARRAY['send'], $3)`,
         [deviceId, "a".repeat(64), pairedAt],
       );
       await pool.query(
@@ -71,11 +74,30 @@ test(
          ) VALUES ($1, $2, $3, $3)`,
         [conversationId, deviceId, pairedAt],
       );
-      await pool.query(
-        `INSERT INTO agent_talk.control_leases (
-           conversation_id, lease_id, device_id, revision, expires_at, updated_at
-         ) VALUES ($1, $2, $3, 1, $4, $5)`,
-        [conversationId, leaseId, deviceId, new Date("2030-01-01T00:00:30.000Z"), pairedAt],
+      const dependencies = {
+        now: () => new Date("2030-01-01T00:00:10.000Z"),
+        newOpaqueId: () => `generated-${++nextId}-${suffix}`,
+      };
+      const leaseDependencies = {
+        ...dependencies,
+        now: () => new Date("2030-01-01T00:00:01.000Z"),
+        durationMs: 30_000,
+      };
+      const ledger = new PostgresGatewayLedger(pool);
+      const acquired = await acquireControlLease(
+        ledger,
+        { deviceId, conversationId, explicitTakeover: false },
+        leaseDependencies,
+      );
+      const renewed = await renewControlLease(
+        ledger,
+        {
+          deviceId,
+          conversationId,
+          leaseId: acquired.lease.leaseId,
+          expectedRevision: acquired.lease.revision,
+        },
+        { ...leaseDependencies, now: () => new Date("2030-01-01T00:00:09.000Z") },
       );
 
       const makeInput = (ordinal: number): AcceptRequestInput => ({
@@ -86,19 +108,13 @@ test(
         connectionId,
         conversationId,
         sessionId: `session-${suffix}`,
-        leaseId,
-        leaseRevision: 1n,
+        leaseId: renewed.lease.leaseId,
+        leaseRevision: renewed.lease.revision,
         nodeId,
         agentId,
         capabilityRevision: "cap-1",
         confirmedText: `confirmed prompt ${ordinal}`,
       });
-      const dependencies = {
-        now: () => new Date("2030-01-01T00:00:01.000Z"),
-        newOpaqueId: () => `generated-${++nextId}-${suffix}`,
-      };
-
-      const ledger = new PostgresGatewayLedger(pool);
       const duplicateResults = await Promise.all([
         acceptRequest(ledger, makeInput(1), dependencies),
         acceptRequest(ledger, makeInput(1), dependencies),
@@ -150,6 +166,44 @@ test(
         [conversationId],
       );
       assert.equal(afterFailure.rows[0]?.last_sequence, "2");
+
+      const secondDeviceId = `device-2-${suffix}`;
+      await pool.query(
+        `INSERT INTO agent_talk.devices (
+           device_id, display_name, public_key_sha256, status, scopes, paired_at
+         ) VALUES ($1, 'second test device', $2, 'active', ARRAY['interrupt'], $3)`,
+        [secondDeviceId, "b".repeat(64), pairedAt],
+      );
+      const takeover = await acquireControlLease(
+        recreatedGatewayLedger,
+        {
+          deviceId: secondDeviceId,
+          conversationId,
+          explicitTakeover: true,
+          expectedLeaseId: renewed.lease.leaseId,
+          expectedRevision: renewed.lease.revision,
+        },
+        { ...leaseDependencies, now: () => new Date("2030-01-01T00:00:20.000Z") },
+      );
+      assert.equal(takeover.lease.revision, 3n);
+      await assert.rejects(
+        renewControlLease(
+          recreatedGatewayLedger,
+          {
+            deviceId,
+            conversationId,
+            leaseId: renewed.lease.leaseId,
+            expectedRevision: renewed.lease.revision,
+          },
+          { ...leaseDependencies, now: () => new Date("2030-01-01T00:00:21.000Z") },
+        ),
+        (error: unknown) => error instanceof GatewayCommandError && error.code === "control_lease_lost",
+      );
+      const auditCount = await pool.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM agent_talk.security_audit_events WHERE target_id_sha256 = $1",
+        [takeover.audit.targetIdSha256],
+      );
+      assert.equal(auditCount.rows[0]?.count, "3");
     } finally {
       await pool.end();
     }

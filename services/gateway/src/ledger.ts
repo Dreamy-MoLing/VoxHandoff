@@ -1,4 +1,4 @@
-export const requiredSendScope = "agent:send";
+export const requiredSendScope = "send";
 
 export interface DeviceRecord {
   deviceId: string;
@@ -75,6 +75,7 @@ export interface AcceptanceFacts {
 
 export interface GatewayLedgerTransaction {
   lockDevice(deviceId: string): Promise<DeviceRecord | undefined>;
+  lockConversation(conversationId: string): Promise<boolean>;
   findRequestByIdempotency(deviceId: string, idempotencyKey: string): Promise<AcceptedRequestRecord | undefined>;
   findRequestByCommand(deviceId: string, commandId: string): Promise<AcceptedRequestRecord | undefined>;
   findRequestById(requestId: string): Promise<AcceptedRequestRecord | undefined>;

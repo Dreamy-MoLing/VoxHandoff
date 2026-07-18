@@ -43,7 +43,7 @@ class MemoryLedger implements GatewayLedger, GatewayLedgerTransaction {
   constructor() {
     this.state = {
       devices: new Map([
-        ["device-1", { deviceId: "device-1", active: true, scopes: ["agent:send"] }],
+        ["device-1", { deviceId: "device-1", active: true, scopes: ["send"] }],
       ]),
       leases: new Map([
         [
@@ -105,6 +105,10 @@ class MemoryLedger implements GatewayLedger, GatewayLedgerTransaction {
   ): Promise<AcceptedRequestRecord | undefined> {
     const requestId = this.state.idempotency.get(idempotencyKey(deviceId, key));
     return requestId === undefined ? undefined : this.state.requests.get(requestId);
+  }
+
+  async lockConversation(conversationId: string): Promise<boolean> {
+    return this.state.sequences.has(conversationId);
   }
 
   async findRequestById(requestId: string): Promise<AcceptedRequestRecord | undefined> {
