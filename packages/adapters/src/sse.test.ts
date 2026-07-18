@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseSseStream } from "./sse.js";
+import { parseSseStream, SseTransportError } from "./sse.js";
 
 test("SSE parser handles chunk boundaries and multiline data", async () => {
   const encoder = new TextEncoder();
@@ -49,5 +49,27 @@ test("SSE parser rejects invalid limits before reading", async () => {
       }
     },
     /positive safe integer/,
+  );
+});
+
+test("SSE parser replaces reader failures with a generic transport error", async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.error(new Error("native transport secret"));
+    },
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _message of parseSseStream(stream)) {
+        // No message should be yielded.
+      }
+    },
+    (error: unknown) => {
+      assert.ok(error instanceof SseTransportError);
+      assert.equal(error.message, "SSE transport disconnected");
+      assert.doesNotMatch(error.message, /secret/);
+      return true;
+    },
   );
 });

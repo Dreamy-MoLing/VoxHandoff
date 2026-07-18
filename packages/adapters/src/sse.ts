@@ -9,6 +9,13 @@ export interface SseParserOptions {
   maxEventBytes?: number;
 }
 
+export class SseTransportError extends Error {
+  constructor() {
+    super("SSE transport disconnected");
+    this.name = "SseTransportError";
+  }
+}
+
 const defaultMaxEventBytes = 256 * 1024;
 const textEncoder = new TextEncoder();
 
@@ -48,7 +55,13 @@ export async function* parseSseStream(
   let buffer = "";
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch {
+        throw new SseTransportError();
+      }
+      const { done, value } = chunk;
       buffer += decoder.decode(value, { stream: !done });
       let boundary: number;
       while ((boundary = buffer.search(/\r?\n\r?\n/)) !== -1) {

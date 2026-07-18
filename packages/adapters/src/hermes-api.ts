@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentCapabilities, AgentEvent } from "@agent-talk/core";
 
 import { isRecord, numberAt, stringAt } from "./guards.js";
-import { parseSseStream } from "./sse.js";
+import { parseSseStream, SseTransportError } from "./sse.js";
 
 export interface HermesApiOptions {
   baseUrl: string;
@@ -96,22 +96,36 @@ export class HermesApiClient {
     if (!response.body) throw new Error("Hermes event stream returned no response body");
 
     let localSequence = 0;
-    for await (const message of parseSseStream(response.body)) {
-      if (message.data === "[DONE]") continue;
-      let native: unknown;
-      try {
-        native = JSON.parse(message.data);
-      } catch {
-        throw new Error("Hermes event stream returned invalid JSON");
+    let terminalSeen = false;
+    try {
+      for await (const message of parseSseStream(response.body)) {
+        if (message.data === "[DONE]") continue;
+        let native: unknown;
+        try {
+          native = JSON.parse(message.data);
+        } catch {
+          throw new Error("Hermes event stream returned invalid JSON");
+        }
+        localSequence += 1;
+        const event = normalizeHermesEvent({
+          native,
+          ...(message.event === undefined ? {} : { eventName: message.event }),
+          fallbackSequence: localSequence,
+          connectionId: this.connectionId,
+          run,
+        });
+        terminalSeen = terminalSeen || isTerminalEvent(event);
+        yield event;
       }
+    } catch (error) {
+      if (!(error instanceof SseTransportError) || terminalSeen) throw error;
       localSequence += 1;
-      yield normalizeHermesEvent({
-        native,
-        ...(message.event === undefined ? {} : { eventName: message.event }),
-        fallbackSequence: localSequence,
-        connectionId: this.connectionId,
-        run,
-      });
+      yield connectionLostEvent(this.connectionId, run, localSequence, "transport_disconnected");
+      return;
+    }
+    if (!terminalSeen) {
+      localSequence += 1;
+      yield connectionLostEvent(this.connectionId, run, localSequence, "unexpected_eof");
     }
   }
 
@@ -163,6 +177,33 @@ export class HermesApiClient {
     }
     return response;
   }
+}
+
+function isTerminalEvent(event: AgentEvent): boolean {
+  return (
+    event.type === "request.completed" ||
+    event.type === "request.failed" ||
+    event.type === "request.cancelled" ||
+    event.type === "request.interrupted"
+  );
+}
+
+function connectionLostEvent(
+  connectionId: string,
+  run: HermesRun,
+  sequence: number,
+  reason: "transport_disconnected" | "unexpected_eof",
+): AgentEvent {
+  return {
+    eventId: randomUUID(),
+    connectionId,
+    ...(run.sessionId === undefined ? {} : { sessionId: run.sessionId }),
+    requestId: run.requestId,
+    sequence,
+    occurredAt: new Date().toISOString(),
+    type: "connection.lost",
+    payload: { reason },
+  };
 }
 
 export function normalizeHermesCapabilities(native: unknown): AgentCapabilities {

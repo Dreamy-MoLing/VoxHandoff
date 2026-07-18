@@ -139,6 +139,47 @@ test("Hermes SSE rejects malformed JSON instead of leaking native payloads", asy
   );
 });
 
+test("Hermes normalizes an interrupted SSE transport as connection lost", async () => {
+  const encoder = new TextEncoder();
+  let pullCount = 0;
+  const fakeFetch: typeof fetch = async () =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pullCount += 1;
+          if (pullCount === 1) {
+            controller.enqueue(
+              encoder.encode('event: assistant.delta\ndata: {"delta":"partial"}\n\n'),
+            );
+          } else {
+            controller.error(new Error("native transport secret"));
+          }
+        },
+      }),
+    );
+  const client = new HermesApiClient({
+    baseUrl: "https://hermes.example.test",
+    token: "test",
+    fetch: fakeFetch,
+  });
+
+  const events = [];
+  for await (const event of client.streamRunEvents({
+    runId: "run-1",
+    requestId: "request-1",
+  })) {
+    events.push(event);
+  }
+  assert.deepEqual(
+    events.map((event) => [event.sequence, event.type, event.payload]),
+    [
+      [1, "message.delta", { delta: "partial" }],
+      [2, "connection.lost", { reason: "transport_disconnected" }],
+    ],
+  );
+  assert.doesNotMatch(JSON.stringify(events), /native transport secret/);
+});
+
 test("Hermes approval, stop, and client recreation preserve explicit command identity", async () => {
   const encoder = new TextEncoder();
   const fixture = await readFile(

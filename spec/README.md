@@ -1,6 +1,6 @@
 # Agent Talk 正式开发基线
 
-> 基线版本：1.12<br>
+> 基线版本：1.13<br>
 > 生效日期：2026-07-18<br>
 > 状态：Active
 
@@ -29,6 +29,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.13 | 2026-07-18 | 固定 Hermes 非优雅断线到 `connection.lost`/uncertain 的真链路并关闭 M0 |
 | 1.12 | 2026-07-18 | 固定隔离 Hermes 10 轮、stop、manual approval 与跨 gateway 重启恢复证据 |
 | 1.11 | 2026-07-18 | 固定 Codex failure probe，并禁止非完成终态生成成功式语音摘要 |
 | 1.10 | 2026-07-18 | 固定 Codex user-reviewed approval probe、阻塞和 interrupt 真链路证据 |

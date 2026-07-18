@@ -179,12 +179,18 @@ async function hermes(args: ParsedArgs): Promise<void> {
   const rounds = optionalPositiveInteger(args, "rounds") ?? 1;
   const stopAfterMs = optionalPositiveInteger(args, "stop-after-ms");
   const approvalProbe = args.flags.has("approval-probe");
+  const disconnectProbe = args.flags.has("disconnect-probe");
   if (rounds > 100) throw new Error("Option --rounds cannot exceed 100");
   if (rounds > 1 && stopAfterMs !== undefined) {
     throw new Error("Option --stop-after-ms requires --rounds 1");
   }
   if (approvalProbe && (rounds > 1 || stopAfterMs !== undefined)) {
     throw new Error("Option --approval-probe requires one round without --stop-after-ms");
+  }
+  if (disconnectProbe && (rounds > 1 || stopAfterMs !== undefined || approvalProbe)) {
+    throw new Error(
+      "Option --disconnect-probe requires one round without stop or approval probes",
+    );
   }
   const tokenEnv = args.values.get("token-env") ?? "HERMES_API_KEY";
   const token = process.env[tokenEnv];
@@ -211,6 +217,7 @@ async function hermes(args: ParsedArgs): Promise<void> {
     let outcome: TerminalAgentEventType | undefined;
     let lastSequence = 0;
     let blockedUserAction = false;
+    let connectionLost = false;
     let stopAttempt: Promise<void> | undefined;
     let stopError: Error | undefined;
     let stopTimer: ReturnType<typeof setTimeout> | undefined;
@@ -246,6 +253,7 @@ async function hermes(args: ParsedArgs): Promise<void> {
           print({ kind: "blocked", round, reason: "user_action_required" });
           requestStop("user_action_required");
         }
+        if (event.type === "connection.lost") connectionLost = true;
         if (event.type === "message.delta") {
           const payload = event.payload as { delta?: unknown };
           if (typeof payload.delta === "string") fullText += payload.delta;
@@ -267,11 +275,18 @@ async function hermes(args: ParsedArgs): Promise<void> {
       kind: "result",
       round,
       rounds,
-      outcome: outcome ?? "unknown",
+      outcome: outcome ?? (connectionLost ? "uncertain" : "unknown"),
       blockedUserAction,
+      connectionLost,
       fullText,
       speechText: createSpeechSummaryForOutcome(outcome, fullText) ?? null,
     });
+    if (disconnectProbe) {
+      if (!connectionLost || outcome !== undefined) {
+        throw new Error("Hermes disconnect probe did not produce an uncertain connection loss");
+      }
+      continue;
+    }
     if (outcome === undefined) {
       throw new Error(`Hermes round ${round} ended without a terminal event`);
     }
@@ -299,7 +314,7 @@ function usage(): void {
     `  codex --prompt TEXT [--cwd PATH] [--thread ID] [--interrupt-after-ms N] [--approval-probe|--failure-probe]\n`,
   );
   process.stdout.write(
-    `  hermes --prompt TEXT [--base-url URL] [--token-env NAME] [--session ID|--create-session] [--rounds N] [--stop-after-ms N] [--approval-probe]\n`,
+    `  hermes --prompt TEXT [--base-url URL] [--token-env NAME] [--session ID|--create-session] [--rounds N] [--stop-after-ms N] [--approval-probe|--disconnect-probe]\n`,
   );
 }
 

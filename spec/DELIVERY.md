@@ -4,7 +4,7 @@
 
 基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2。
 
-当前阶段：M0 协议核心。M-1 已完成；Codex 真链路和隔离 Hermes 10 轮、stop、approval、重启恢复已固定，当前完成 Hermes 运行中断线/uncertain 真链路后关闭 M0。
+当前阶段：M1 公共协议与 Gateway。M-1 与 M0 已完成；当前先固定 Protobuf/Buf 公共协议、生成边界和兼容测试，再实现耐久 Gateway 控制面。
 
 已完成：
 
@@ -21,12 +21,12 @@
 - Codex 真 failure probe：无效模型产生连续的 `request.accepted` sequence 1、`request.failed` sequence 2，无自动重试，失败/中断/取消终态均不生成可误解为成功的 speech text；
 - Hermes fake HTTP/SSE 契约测试、脱敏 fixture、事件大小上限、错误正文隔离、approval/stop idempotency 和 client recreation；
 - Hermes 0.18.2 隔离真链路：独立 `/tmp` HERMES_HOME、loopback API、无消息平台凭据；同一 session 10/10 轮完成且 identity/sequence 连续，stop 得到 `request.cancelled`，manual approval 保持阻塞且只以 stop 结束，gateway 重启后 session 可继续；
+- Hermes 非优雅断线：在 `tool.started` 后 SIGKILL 仅监听 18642 的隔离 PID，partial lifecycle 后追加连续 `connection.lost`，PoC 进入 `uncertain`、不生成 speech、不自动重提；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
 未完成或未实测：
 
-- Hermes 运行中断线与 uncertain 真链路；
 - OpenClaw adapter；
 - Protobuf/Buf 与 gRPC Gateway；
 - PostgreSQL/PowerSync/Drift 同步；
@@ -134,7 +134,7 @@ scripts/                # 协议、质量与构建脚本
 
 退出条件：上述 P0 决策进入正式规格；本地统一质量命令可重复运行；威胁模型覆盖信任边界和高风险数据流；工作树在聚焦提交后保持干净。
 
-### M0 — 协议核心完成
+### M0 — 协议核心（完成：2026-07-18）
 
 目标：把已有 PoC 提升为可依赖的 Agent 领域层。
 
@@ -146,6 +146,8 @@ scripts/                # 协议、质量与构建脚本
 - `check`、`test`、`protocol:codex` 全绿。
 
 退出条件：Codex/Hermes 不靠 UI 抓取完成可靠多轮；断线不重复提交；审批不丢失。
+
+完成证据：Codex completion/resume/interrupt/approval/failure 真链路；Hermes 隔离 10 轮、stop、approval、gateway restart/session resume、SIGKILL/uncertain 真链路；统一 taxonomy、failure/property tests、脱敏 fixture、协议兼容检查和完整本地质量门均通过。
 
 ### M1 — 公共协议与 Gateway
 
@@ -314,7 +316,14 @@ npm run poc -- hermes \
   --token-env HERMES_API_KEY \
   --prompt "Use the terminal tool to run bash -lc 'exit 0'. Do not do anything else." \
   --approval-probe
+npm run poc -- hermes \
+  --base-url http://127.0.0.1:18642 \
+  --token-env HERMES_API_KEY \
+  --prompt "Use the terminal tool to run sleep 30, then reply: finished." \
+  --disconnect-probe
 ```
+
+`--disconnect-probe` 只在隔离 gateway 中使用：先从独占 loopback 端口精确解析临时 PID，观察到 `tool.started` 后终止该 PID。禁止用进程名、宽泛 PID 匹配或默认 gateway 做故障注入。
 
 新工作区加入 Flutter、Buf、PostgreSQL 等工具后，在这里添加统一命令，不把关键检查藏在个人 IDE task 中。
 
