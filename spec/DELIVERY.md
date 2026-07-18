@@ -2,9 +2,9 @@
 
 ## 1. 当前状态
 
-基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1 和远程 Dart generator 25.0.0。当前主机尚未安装 Dart/Flutter SDK，Dart 真编译从 M2 工具链开始执行。
+基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和远程 Dart generator 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。当前主机尚未安装 Dart/Flutter SDK，Dart 真编译从 M2 工具链开始执行。
 
-当前阶段：M1 公共协议与 Gateway。M-1 与 M0 已完成；当前先固定 Protobuf/Buf 公共协议、生成边界和兼容测试，再实现耐久 Gateway 控制面。
+当前阶段：M1 公共协议与 Gateway。M-1 与 M0 已完成；公共协议和 acceptance/sequence/outbox 初始 PostgreSQL 账本已建立，当前继续实现 control lease、outbox worker、gRPC/HTTPS 运行时和重连收敛。
 
 已完成：
 
@@ -24,6 +24,8 @@
 - Hermes 非优雅断线：在 `tool.started` 后 SIGKILL 仅监听 18642 的隔离 PID，partial lifecycle 后追加连续 `connection.lost`，PoC 进入 `uncertain`、不生成 speech、不自动重提；
 - `agent_talk.v1` Protobuf/Buf 公共 schema：版本握手、固定 capability/error/event taxonomy、Client/Node 双向流、配对和耐久命令消息；
 - 从同一 schema 生成 TypeScript 与 Dart/gRPC binding；Buf lint/build、core 契约对齐、生成物一致性、breaking baseline 和握手协商测试进入质量门；
+- PostgreSQL 初始 migration 与 acceptance ledger：设备/scope、lease、固定 Agent/Node/capability、request/event/sequence 和双 outbox 在同一事务内；
+- Gateway 账本 fake 覆盖并发 duplicate、idempotency/identity conflict、权限/租约/目标失败和完整回滚；隔离 PostgreSQL 17 覆盖 migration 幂等/篡改拒绝、Gateway recreation、并发 duplicate、连续 sequence 与失败回滚；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
@@ -50,11 +52,11 @@ packages/
   protocol/             # Protobuf/Buf schema、TS/Dart binding 与协商测试
   sidecar/              # desktop stdio host（待建）
 services/
-  gateway/              # gRPC/HTTPS Gateway（待建）
+  gateway/              # acceptance ledger 与 PostgreSQL adapter；gRPC/HTTPS 运行时待建
   node/                 # Agent 主机 Connector（待建）
   stt/                  # Python STT sidecar（待建）
 infra/
-  postgres/             # migrations、seed、backup tests（待建）
+  postgres/             # forward-only migrations；backup/restore tests 待建
   powersync/            # service/sync config（待建）
 spec/                   # 唯一正式开发基线
 scripts/                # 协议、质量与构建脚本
@@ -127,6 +129,8 @@ scripts/                # 协议、质量与构建脚本
 | `@bufbuild/protoc-gen-es` / `@bufbuild/protobuf` | 2.12.1，npm lockfile | Apache-2.0；runtime 另含 BSD-3-Clause | Buf 官方 Protobuf-ES，Node 22 strict 编译已通过 | wire schema 不变时替换 TS generator/runtime，并以 fixture 验证 |
 | `protoc_plugin` Dart remote plugin | 25.0.0，`buf.gen.dart.yaml` | BSD-3-Clause | Dart 官方维护的 generator；已生成 Dart 3.3+ 与 gRPC binding | 安装同版本本地 plugin，或在保持 wire schema 下替换生成器 |
 | Dart `protobuf` / `grpc` / `fixnum` | `^5.1.0` / `^5.1.0` / `^1.1.1` | BSD-3-Clause / Apache-2.0 / BSD-3-Clause | dart.dev/google.dev 发布，覆盖 Flutter 五端；M2 做真实 analyze/build | 生成层隔离在 `agent_talk_protocol`，替换 transport 不改变 Core/UI 契约 |
+| `pg` / `@types/pg` | 8.22.0 / 8.20.0，npm lockfile | MIT | node-postgres 长期维护；使用底层 Pool/transaction API，不引入 ORM | `GatewayLedger` 隔离 SQL；可替换其他 PostgreSQL driver 而不改变 acceptance 语义 |
+| PostgreSQL test image | 17 Alpine，固定 manifest digest | PostgreSQL License；镜像含各组件许可证 | 官方镜像；本地隔离测试和 CI 使用同一 digest | 生产部署独立；测试可换受支持 PostgreSQL 版本并先跑 migration/fixture gate |
 
 Buf remote generation 需要网络，但普通 `npm run check` 和离线测试只校验已提交 TypeScript 生成物；CI 与显式 `protocol:check:dart` 重新生成 Dart 并逐字比较。Dart SDK 未安装前不把“生成成功”表述为“五端编译成功”。
 
@@ -296,6 +300,7 @@ npm test
 npm run protocol:generate
 npm run protocol:breaking
 npm run protocol:check:dart
+AGENT_TALK_POSTGRES_URL=<isolated-loopback-url> npm run test:postgres
 npm run protocol:codex
 npm run poc -- doctor
 ```
