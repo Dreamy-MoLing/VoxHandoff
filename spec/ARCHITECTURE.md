@@ -440,3 +440,55 @@ shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值�
 - [Codex App Server](https://developers.openai.com/codex/app-server/)
 - [Hermes Programmatic Integration](https://hermes-agent.nousresearch.com/docs/developer-guide/programmatic-integration)
 - [OpenClaw Gateway Protocol](https://docs.openclaw.ai/gateway/protocol)
+
+## 15. 仓库级威胁模型
+
+### 15.1 关键资产与攻击者
+
+关键资产包括：Agent 执行/中断/审批权限；设备私钥和可续期凭据；Agent/STT/TTS token；请求与实际 Agent/Node/原生会话的绑定；用户确认文本、完整回复、审批记录、音频和 transcript；acceptance、sequence、idempotency、lease、revocation、tombstone 和审计事实。
+
+必须假设以下输入不可信，即使连接已认证：
+
+- Agent 的 JSON-RPC/SSE/WSS、stdout/stderr、delta、tool/approval 摘要、原生 ID、时间和 sequence；
+- Client/Gateway/Node 的网络帧、重放 token、配对 challenge、ack、游标、旧 schema 和离线副本；
+- STT transcript、TTS 文本/音频、模型生成 Markdown/链接/控制字符；
+- operator 配置的 URL、代理、TLS、自定义 executable/model path；
+- dependency、生成协议、CI action、migration、安装包和更新制品。
+
+当前假设单 owner 控制 Gateway/OS/数据库/备份并保护本机控制台。root/管理员 OS 已完全失陷超出保密保证，但实现仍不得扩大 secret 的持久化与传播。Agent sandbox、OS secure storage、TLS 和签名包是外部信任基础；已认证 Agent/语音服务只证明身份，不证明返回内容安全。
+
+### 15.2 信任边界
+
+| 边界 | 主要威胁 | 必需控制 |
+| --- | --- | --- |
+| 用户意图 → STT/final transcript | 误识别、目标变化、直接发送绕过确认 | 默认确认；直发按设备/Agent关闭；目标变化重置；审批仍独立 |
+| Flutter host → Embedded sidecar | 假 sidecar、帧注入、账本分叉 | 私有 stdio、一次性 challenge、版本握手、sidecar 耐久账本 |
+| Client → Gateway | 未认证、scope 越权、重放、旧 lease | TLS、设备密钥、短 token、逐命令 scope/lease、idempotency |
+| Gateway → PostgreSQL/Sync | 越权同步、删除复活、撤销失效 | 权威事务、最小同步规则、tombstone、恢复后重放撤销 |
+| Gateway → Node | 主机替换、重复投递、静默故障转移 | Node 出站认证、opaque ID、target/capability 固定、耐久 outbox |
+| Node → Agent | 恶意/畸形原生事件、审批混淆、无限流 | `unknown` 解析、大小/速率/超时、规范事件、CAS 审批、取消 |
+| Client/sidecar → OS | PATH 替换、权限滥用、缓存/密钥泄露 | 规范化受信 executable、最小平台权限、私有目录、安全存储 |
+| Client → remote STT/TTS | 未同意上传、目标/TLS 改变、第三方保留 | 默认关闭、provider 同意、origin/TLS/保留展示、凭据隔离 |
+| 开发/CI → 发布制品 | 依赖/Action/生成物投毒、签名泄露 | lockfile、最小依赖、固定 CI 权限、SBOM、签名和可重复质量门 |
+
+### 15.3 重点攻击故事与控制
+
+- **重复执行/错主机执行**：重放、重连或 failover 让命令执行两次或改投同名主机。以数据库 uniqueness、acceptance + dispatch outbox 同事务、opaque target、status lookup 代替 resend；任何重复执行为发布阻断。
+- **审批混淆**：迟到/并发响应、摘要替换或 approval ID 复用。响应必须绑定 request/Agent/Node/native ID、摘要 hash、device、scope、lease、expiry 和 idempotency，只允许 pending 的 CAS 进入一个终态。
+- **事件串线/伪完成**：恶意 sequence、旧 connection、未知事件或可修订 delta 改变当前会话。Core 按 connection/session/request/sequence/terminal state 拒绝；未知事件不得映射为成功；uncertain 不播报完成。
+- **secret/正文泄露**：Authorization、URL、stderr、上游错误体、native payload 或诊断导出携带凭据/正文。所有日志在序列化前递归脱敏，普通诊断只存 metadata，raw payload 只进入受限、限时且显式选择的诊断域。
+- **本地 executable 替换**：PATH 中伪造 `codex`、`hermes`、Python 或播放器。PoC 可接受开发者显式命令；发行版只能启动 bundled 或显式信任且校验 canonical path、owner 和版本的 executable。
+- **资源耗尽**：无限 SSE、巨大帧/错误体、深对象、delta 洪泛或音频队列拖垮进程。每个边界定义 frame/body/depth/rate/queue 上限、deadline、backpressure、cancel 和 supervisor；单域崩溃退化而不丢文字事实。
+- **UI/语音欺骗**：Agent 内容伪装成审批框、完成状态或危险链接。trusted chrome 与 untrusted content 分层，清理主动内容和控制字符；安全状态只来自规范事件，TTS 不朗读 uncertain/approval-pending 为成功。
+- **供应链/迁移攻击**：恶意 dependency、CI action、schema 或 migration 继承高权限。使用 lockfile、协议生成检查、最小 CI 权限、SBOM/许可证/secret scan、签名制品和 expand-first migration；生产禁止 destructive reset。
+
+### 15.4 严重度校准
+
+| 严重度 | Agent Talk 语境 |
+| --- | --- |
+| Critical | 未认证/已撤销设备获得 administer/approve；自动批准高风险操作；重放导致重复或错主机执行；公网可达 RCE/管理员凭据泄露 |
+| High | observe-only/旧设备可 send/interrupt/approve；跨会话串线影响用户操作；远程 STT 未同意上传；普通日志持久化可用 secret/大量私密正文；协议降级把失败/uncertain 变成功 |
+| Medium | 已认证低权限设备或恶意 Agent 造成有界 DoS/崩溃但无执行越权；保留/删除延迟违反已展示策略；单个 sidecar 失败但耐久事实完整 |
+| Low | 无实际攻击路径的版本/粗粒度 timing 暴露；仅开发 PoC 的本地不便；不影响可信文字和审批的视觉/TTS 偏差 |
+
+威胁模型在新增网络入口、附件、多用户、公共云、后台音频、Agent 类型、权限 scope、存储权威、更新机制或 trust boundary 时必须先更新。安全扫描发现的新攻击故事应先回写本节和相应验收门，再进入实现修复。
