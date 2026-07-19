@@ -4,7 +4,7 @@
 
 基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和远程 Dart generator 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。当前主机尚未安装 Dart/Flutter SDK，Dart 真编译从 M2 工具链开始执行。
 
-当前阶段：M1 公共协议与 Gateway。M-1 与 M0 已完成；耐久 Client/Node 控制面、交互命令、live event、HTTPS 配对、设备凭据和 owner 恢复已建立，当前继续完成端到端重连收敛验收。
+当前阶段：M2 Flutter 文字客户端与同步。M-1、M0 与 M1 已完成；公共协议、耐久 Gateway 控制面、HTTPS 配对、设备凭据、owner 恢复及 Client/Node 组合收敛门已建立，当前先完成 Flutter/Dart 工具链与五端文字骨架。
 
 已完成：
 
@@ -50,13 +50,13 @@
 - PairingService 已接通全部七个 RPC；Inspect/Approve/Revoke 从当前 bearer 绑定管理员 device/credential，rate-limit identity 由受信 server callback 提供而不信任客户端转发头。PostgreSQL access authority 只接受 active device+credential、匹配 audience/scope、未过期且当前 generation/token hash；Client 每帧与 live 出站复核 generation，refresh 立即关闭旧流，revoke 关闭全部流。真实 HTTP/2 TLS 测试确认未信任自签名证书失败、显式 CA 信任后 Begin 成功；
 - Client Approval 执行层强制 Ed25519 设备签名，payload 绑定 credential/device、实际 Node host、Gateway audience、request/approval、原 operation hash、approve/deny 和单次 nonce；credential active/scope/key binding、签名、nonce 消费与 approval CAS 同一事务。签名与 nonce 进入 control-command payload hash，精确重试验证原签名后返回既有决定；缺失、篡改、跨 host/audience 或重放不能产生 Node dispatch；
 - 初始 owner 只通过 Gateway 进程内本机/部署私有入口创建，不增加未认证网络 RPC；调用方必须提交绑定规范 Gateway audience、完整 owner scope、公钥 fingerprint 和 nonce 的 Ed25519 持钥证明。恢复使用独立签名 domain，不能复用初始引导证明；PostgreSQL advisory transaction lock 在同一事务撤销旧 owner 设备及 credential family、清空 bearer hash、激活新 owner 并写两条无正文审计。真实 PostgreSQL 已覆盖重复引导拒绝、旧流 revalidation 失败、新 owner 认证与 Gateway 重建后的完整凭据链路；
+- fake Client 与 fake Node 已经同一 Gateway 双向流和真实 PostgreSQL 完成组合退出验收：首次 acceptance 响应丢失后重建 Gateway，精确 Client 重试仍只保留一个 request；Node 连续换连接收到同一 dispatch identity，旧 source sequence 以稳定错误拒绝，精确事件重试不增写；最终 request、dispatch、四条连续 Gateway event 与 Client cursor 收敛；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
 未完成或未实测：
 
 - OpenClaw adapter；
-- fake Client + fake Node 端到端重连/重复/乱序/Gateway 重启收敛；
 - PostgreSQL/PowerSync/Drift 同步；
 - Flutter 五端客户端；
 - STT、GPT-SoVITS 和音频播放真链路；
@@ -76,7 +76,7 @@ packages/
   protocol/             # Protobuf/Buf schema、TS/Dart binding 与协商测试
   sidecar/              # desktop stdio host（待建）
 services/
-  gateway/              # acceptance ledger 与 PostgreSQL adapter；gRPC/HTTPS 运行时待建
+  gateway/              # 耐久控制面、gRPC/HTTPS、配对、凭据与 PostgreSQL adapter
   node/                 # Agent 主机 Connector（待建）
   stt/                  # Python STT sidecar（待建）
 infra/
@@ -191,7 +191,7 @@ Buf remote generation 需要网络，但普通 `npm run check` 和离线测试�
 
 完成证据：Codex completion/resume/interrupt/approval/failure 真链路；Hermes 隔离 10 轮、stop、approval、gateway restart/session resume、SIGKILL/uncertain 真链路；统一 taxonomy、failure/property tests、脱敏 fixture、协议兼容检查和完整本地质量门均通过。
 
-### M1 — 公共协议与 Gateway
+### M1 — 公共协议与 Gateway（完成：2026-07-18）
 
 目标：建立五端和远程 Node 都能依赖的耐久控制面。
 
@@ -203,6 +203,8 @@ Buf remote generation 需要网络，但普通 `npm run check` 和离线测试�
 - 本地 embedded 模式可不开放固定端口。
 
 退出条件：fake Client + fake Node 能在重连、重复、乱序、Gateway 重启后收敛。
+
+完成证据：同一组合测试经实际 `ConnectClient`/`ConnectNode` 双向流和固定 PostgreSQL 17 执行；首次响应丢失、Gateway 实例重建、Client 精确重试、Node dispatch 重投、旧序拒绝、事件精确重试、终态 replay 与 cursor Ack 后，数据库只有一个 request/dispatch，request=`completed`、dispatch=`delivered`、Gateway sequence 和 cursor 均为 4。协议、离线测试、真实 HTTP/2 TLS 与 PostgreSQL 门同时通过。
 
 ### M2 — Flutter 文字客户端与同步
 

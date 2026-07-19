@@ -20,6 +20,7 @@ import {
 import { acceptRequest, GatewayCommandError, type AcceptRequestInput } from "./acceptance.js";
 import { acquireControlLease, renewControlLease } from "./control-lease.js";
 import { EventOutboxPump } from "./event-publication.js";
+import { runGatewayConvergenceIntegration } from "./gateway-convergence.integration.js";
 import {
   acceptApprovalCommand,
   acceptClarificationCommand,
@@ -905,6 +906,14 @@ test(
         [takeover.audit.targetIdSha256],
       );
       assert.equal(auditCount.rows[0]?.count, "3");
+
+      await runGatewayConvergenceIntegration(pool, {
+        suffix,
+        deviceId,
+        accessToken: owner.accessToken,
+        nodeId: `convergence-node-${suffix}`,
+        agentId: `convergence-agent-${suffix}`,
+      });
 
       const ownerVerifierBeforeRecovery = new DeviceStreamIdentityVerifier(
         new PostgresDeviceCredentialAuthority(pool),
