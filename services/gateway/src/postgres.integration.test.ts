@@ -14,6 +14,7 @@ import {
   credentialRefreshPayload,
   deviceRevocationPayload,
   ownerBootstrapPayload,
+  ownerRecoveryPayload,
 } from "@agent-talk/protocol";
 
 import { acceptRequest, GatewayCommandError, type AcceptRequestInput } from "./acceptance.js";
@@ -32,7 +33,7 @@ import { normalizeEd25519PublicKey, sha256 } from "./device-crypto.js";
 import { DeviceStreamIdentityVerifier, PostgresDeviceCredentialAuthority } from "./device-identity.js";
 import { PairingCoordinator } from "./pairing.js";
 import { PostgresPairingLedger } from "./postgres-pairing-ledger.js";
-import { bootstrapInitialOwner, PostgresOwnerBootstrapStore } from "./owner-bootstrap.js";
+import { bootstrapInitialOwner, PostgresOwnerBootstrapStore, recoverOwner } from "./owner-bootstrap.js";
 
 const databaseUrl = process.env.AGENT_TALK_POSTGRES_URL;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -904,6 +905,97 @@ test(
         [takeover.audit.targetIdSha256],
       );
       assert.equal(auditCount.rows[0]?.count, "3");
+
+      const ownerVerifierBeforeRecovery = new DeviceStreamIdentityVerifier(
+        new PostgresDeviceCredentialAuthority(pool),
+        {
+          gatewayAudience: "https://gateway.example",
+          now: () => new Date("2030-01-01T00:10:00.000Z"),
+        },
+      );
+      const priorOwnerPrincipal = await ownerVerifierBeforeRecovery.authenticate(
+        new Headers({ authorization: `Bearer ${owner.accessToken}` }),
+        "client",
+      );
+      const replacementKeys = generateKeyPairSync("ed25519");
+      const replacementSpki = new Uint8Array(
+        replacementKeys.publicKey.export({ format: "der", type: "spki" }),
+      );
+      const replacementPublicKey = normalizeEd25519PublicKey(replacementSpki);
+      const recoveryNonce = new Uint8Array(32).fill(12);
+      const recoveryPayload = ownerRecoveryPayload({
+        gatewayAudience: "https://gateway.example",
+        deviceFingerprint: replacementPublicKey.fingerprint,
+        scopes: ["administer", "approve", "interrupt", "observe", "send"],
+        nonce: recoveryNonce,
+      });
+      const replacementDeviceId = `replacement-owner-${suffix}`;
+      const replacementCredentialId = `replacement-credential-${suffix}`;
+      let recoveryAudit = 0;
+      const replacementOwner = await recoverOwner(new PostgresOwnerBootstrapStore(pool), {
+        deviceDisplayName: "replacement owner",
+        devicePublicKey: replacementSpki,
+        expectedGatewayAudience: "https://gateway.example",
+        deviceSignature: {
+          $typeName: "agent_talk.v1.DeviceSignature",
+          credentialId: "",
+          nonce: recoveryNonce,
+          signature: new Uint8Array(sign(null, recoveryPayload, replacementKeys.privateKey)),
+          algorithm: DeviceSignatureAlgorithm.ED25519,
+        },
+      }, {
+        gatewayAudience: "https://gateway.example",
+        now: () => new Date("2030-01-01T00:10:01.000Z"),
+        newOpaqueId: (prefix) => {
+          if (prefix === "device") return replacementDeviceId;
+          if (prefix === "credential") return replacementCredentialId;
+          return `recovery-audit-${++recoveryAudit}-${suffix}`;
+        },
+        newOpaqueSecret: (bytes = 32) => `${bytes}-${"z".repeat(bytes)}`,
+      });
+      await assert.rejects(ownerVerifierBeforeRecovery.revalidate(priorOwnerPrincipal));
+      const replacementVerifier = new DeviceStreamIdentityVerifier(
+        new PostgresDeviceCredentialAuthority(pool),
+        {
+          gatewayAudience: "https://gateway.example",
+          now: () => new Date("2030-01-01T00:10:02.000Z"),
+        },
+      );
+      assert.equal(
+        (await replacementVerifier.authenticate(
+          new Headers({ authorization: `Bearer ${replacementOwner.accessToken}` }),
+          "client",
+        )).principalId,
+        replacementDeviceId,
+      );
+      const recoveryFacts = await pool.query<{
+        old_device_status: string;
+        old_credential_state: string;
+        old_access_token_sha256: string | null;
+        new_device_status: string;
+        new_credential_state: string;
+        recovery_audits: string;
+      }>(
+        `SELECT old_d.status AS old_device_status, old_c.state AS old_credential_state,
+                old_c.access_token_sha256 AS old_access_token_sha256,
+                new_d.status AS new_device_status, new_c.state AS new_credential_state,
+                (SELECT count(*)::text FROM agent_talk.security_audit_events
+                 WHERE action = 'owner.recover') AS recovery_audits
+         FROM agent_talk.devices old_d
+         JOIN agent_talk.device_credentials old_c ON old_c.device_id = old_d.device_id
+         JOIN agent_talk.devices new_d ON new_d.device_id = $2
+         JOIN agent_talk.device_credentials new_c ON new_c.device_id = new_d.device_id
+         WHERE old_d.device_id = $1`,
+        [deviceId, replacementDeviceId],
+      );
+      assert.deepEqual(recoveryFacts.rows[0], {
+        old_device_status: "revoked",
+        old_credential_state: "revoked",
+        old_access_token_sha256: null,
+        new_device_status: "active",
+        new_credential_state: "active",
+        recovery_audits: "2",
+      });
     } finally {
       await pool.end();
     }

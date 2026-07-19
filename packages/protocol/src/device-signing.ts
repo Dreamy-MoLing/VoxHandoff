@@ -253,3 +253,12 @@ export function ownerBootstrapPayload(input: OwnerBootstrapPayloadInput): Uint8A
     ...scopeFields(input.scopes),
   ]);
 }
+
+export function ownerRecoveryPayload(input: OwnerBootstrapPayloadInput): Uint8Array {
+  return canonicalSignedPayload("agent-talk/owner-recovery/v1", [
+    { name: "gateway_audience", value: input.gatewayAudience },
+    { name: "device_fingerprint", value: input.deviceFingerprint },
+    { name: "nonce", value: input.nonce },
+    ...scopeFields(input.scopes),
+  ]);
+}

@@ -9,6 +9,7 @@ import {
   credentialRefreshPayload,
   normalizeDeviceScopes,
   ownerBootstrapPayload,
+  ownerRecoveryPayload,
   pairingProofPayload,
 } from "./device-signing.js";
 
@@ -148,4 +149,5 @@ test("owner bootstrap proof binds audience, fingerprint, full scopes, and nonce"
     payload,
     ownerBootstrapPayload({ ...input, nonce: new Uint8Array(32).fill(6) }),
   );
+  assert.notDeepEqual(payload, ownerRecoveryPayload(input));
 });
