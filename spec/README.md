@@ -1,6 +1,6 @@
 # Agent Talk 正式开发基线
 
-> 基线版本：1.45<br>
+> 基线版本：1.46<br>
 > 生效日期：2026-07-19<br>
 > 状态：Active
 
@@ -29,6 +29,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.46 | 2026-07-19 | 建立 Flutter 认证 Gateway 双向流、有限握手门、协议身份校验与 schema hash 漂移门 |
 | 1.45 | 2026-07-19 | 增加 active device credential 安全索引、重启发现与冲突 fail-closed 门 |
 | 1.44 | 2026-07-19 | 接通 Riverpod 配对 workflow 与原创手动链路面板，增加全状态交互、手机/桌面 golden 和可访问性门 |
 | 1.43 | 2026-07-19 | 增加 Flutter Gateway TLS channel factory、显式 CA 导入和明文降级拒绝门 |

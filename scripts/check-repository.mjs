@@ -1,4 +1,5 @@
 import { readFile, readdir, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -186,6 +187,49 @@ async function checkWorkspaceVersions() {
   }
 }
 
+async function checkProtocolSchemaManifest() {
+  const manifestPath = "toolchains/protocol.json";
+  const manifest = JSON.parse(await readFile(path.join(root, manifestPath), "utf8"));
+  if (
+    typeof manifest.schemaBuild !== "string" ||
+    !Array.isArray(manifest.sources) ||
+    !manifest.sources.every((source) => typeof source === "string") ||
+    !/^[0-9a-f]{64}$/u.test(manifest.schemaSha256)
+  ) {
+    errors.push(`${manifestPath}: invalid protocol schema manifest`);
+    return;
+  }
+
+  const hash = createHash("sha256");
+  for (const source of manifest.sources) {
+    const normalized = path.posix.normalize(source);
+    if (!normalized.startsWith("packages/protocol/proto/") || normalized.includes("..")) {
+      errors.push(`${manifestPath}: invalid protocol source path: ${source}`);
+      return;
+    }
+    hash.update(await readFile(path.join(root, normalized)));
+  }
+  const actualHash = hash.digest("hex");
+  if (actualHash !== manifest.schemaSha256) {
+    errors.push(
+      `${manifestPath}: schema hash ${manifest.schemaSha256} does not match sources ${actualHash}`,
+    );
+  }
+
+  const dartTransportPath =
+    "apps/client/lib/infrastructure/gateway/grpc_gateway_live_transport.dart";
+  if (!(await exists(dartTransportPath))) {
+    return;
+  }
+  const dartTransport = await readFile(path.join(root, dartTransportPath), "utf8");
+  if (!dartTransport.includes(`static const schemaBuild = '${manifest.schemaBuild}';`)) {
+    errors.push(`${dartTransportPath}: schema build does not match ${manifestPath}`);
+  }
+  if (!dartTransport.includes(`'${manifest.schemaSha256}'`)) {
+    errors.push(`${dartTransportPath}: schema hash does not match ${manifestPath}`);
+  }
+}
+
 for (const relativePath of requiredFiles) {
   if (!(await exists(relativePath))) {
     errors.push(`${relativePath}: required repository baseline file is missing`);
@@ -207,6 +251,7 @@ for (const relativePath of files) {
 }
 
 await checkWorkspaceVersions();
+await checkProtocolSchemaManifest();
 
 if (errors.length > 0) {
   for (const error of errors) {

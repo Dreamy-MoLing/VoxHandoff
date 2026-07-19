@@ -1,0 +1,12 @@
+{
+  "protocolMajor": 1,
+  "protocolMinor": 0,
+  "schemaBuild": "agent-talk-proto-v1.0",
+  "schemaSha256": "6c4abbfd352a763b1674415ce4895c9d5089f09bf645230c116276bfd7bda886",
+  "sources": [
+    "packages/protocol/proto/agent_talk/v1/common.proto",
+    "packages/protocol/proto/agent_talk/v1/control.proto",
+    "packages/protocol/proto/agent_talk/v1/event.proto",
+    "packages/protocol/proto/agent_talk/v1/gateway.proto"
+  ]
+}
