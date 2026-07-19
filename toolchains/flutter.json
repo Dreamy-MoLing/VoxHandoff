@@ -1,0 +1,7 @@
+{
+  "channel": "stable",
+  "flutterVersion": "3.44.6",
+  "dartVersion": "3.12.2",
+  "linuxArchive": "stable/linux/flutter_linux_3.44.6-stable.tar.xz",
+  "linuxArchiveSha256": "a6320fd72e9a2690c08e2a6a70874a30cb120dee7c78f49d2c628bd7c9e20525"
+}

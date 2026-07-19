@@ -15,6 +15,7 @@
     "test": "npm run test -w @agent-talk/protocol && npm run test -w @agent-talk/core && npm run test -w @agent-talk/adapters && npm run test -w @agent-talk/gateway && npm run test -w @agent-talk/poc-cli",
     "test:postgres": "npm run test:postgres -w @agent-talk/gateway",
     "test:transport": "npm run test:transport -w @agent-talk/gateway",
+    "flutter:check": "node scripts/run-flutter-check.mjs",
     "protocol:lint": "node scripts/run-buf.mjs lint && node scripts/run-buf.mjs build",
     "protocol:generate": "node scripts/run-buf.mjs generate --template buf.gen.yaml",
     "protocol:generate:dart": "node scripts/run-buf.mjs generate --template buf.gen.dart.yaml",

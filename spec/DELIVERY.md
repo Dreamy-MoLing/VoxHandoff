@@ -2,7 +2,7 @@
 
 ## 1. 当前状态
 
-基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和远程 Dart generator 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。当前主机尚未安装 Dart/Flutter SDK，Dart 真编译从 M2 工具链开始执行。
+基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和远程 Dart generator 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。M2 使用官方 stable Flutter 3.44.6 / Dart 3.12.2 用户级 SDK，Linux archive SHA-256 固定于 `toolchains/flutter.json`；当前主机尚无 Android SDK，Linux native build 仍缺 Clang 与 GTK 3 development headers。
 
 当前阶段：M2 Flutter 文字客户端与同步。M-1、M0 与 M1 已完成；公共协议、耐久 Gateway 控制面、HTTPS 配对、设备凭据、owner 恢复及 Client/Node 组合收敛门已建立，当前先完成 Flutter/Dart 工具链与五端文字骨架。
 
@@ -51,14 +51,17 @@
 - Client Approval 执行层强制 Ed25519 设备签名，payload 绑定 credential/device、实际 Node host、Gateway audience、request/approval、原 operation hash、approve/deny 和单次 nonce；credential active/scope/key binding、签名、nonce 消费与 approval CAS 同一事务。签名与 nonce 进入 control-command payload hash，精确重试验证原签名后返回既有决定；缺失、篡改、跨 host/audience 或重放不能产生 Node dispatch；
 - 初始 owner 只通过 Gateway 进程内本机/部署私有入口创建，不增加未认证网络 RPC；调用方必须提交绑定规范 Gateway audience、完整 owner scope、公钥 fingerprint 和 nonce 的 Ed25519 持钥证明。恢复使用独立签名 domain，不能复用初始引导证明；PostgreSQL advisory transaction lock 在同一事务撤销旧 owner 设备及 credential family、清空 bearer hash、激活新 owner 并写两条无正文审计。真实 PostgreSQL 已覆盖重复引导拒绝、旧流 revalidation 失败、新 owner 认证与 Gateway 重建后的完整凭据链路；
 - fake Client 与 fake Node 已经同一 Gateway 双向流和真实 PostgreSQL 完成组合退出验收：首次 acceptance 响应丢失后重建 Gateway，精确 Client 重试仍只保留一个 request；Node 连续换连接收到同一 dispatch identity，旧 source sequence 以稳定错误拒绝，精确事件重试不增写；最终 request、dispatch、四条连续 Gateway event 与 Client cursor 收敛；
+- 官方 Flutter 3.44.6 / Dart 3.12.2 SDK archive 已固定版本与 SHA-256，生成 Windows/Linux/macOS/iOS/Android 共用客户端工程；Dart protocol package 和客户端均进入 `npm run flutter:check` 的真实 analyze/test 门；
+- Flutter shell 已建立 Riverpod application/domain 分层、原创“夜航信号台”token/静态信号镜和未配对本地草稿体验；发送默认禁用，草稿须显式确认，request acceptance 必须匹配预生成 identity，`uncertain` 禁止覆盖或静默重提；桌面/390px 手机 golden、响应式 widget 和文字对比度/标签/触控目标 accessibility test 已进入质量门；
+- Dart protocol 依赖经真实 pub solver 将 `protobuf` 修正为与 `grpc 5.1.0` 相容的 6.x，不使用 dependency override；PowerSync/Drift 尚未进入运行依赖，等待 M2 同步 spike 和许可证/运维 gate；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
 未完成或未实测：
 
 - OpenClaw adapter；
-- PostgreSQL/PowerSync/Drift 同步；
-- Flutter 五端客户端；
+- PostgreSQL/PowerSync/Drift 同步决策与实现；
+- Flutter 客户端的配对、安全存储、Gateway transport、会话/事件/审批和真实平台构建；
 - STT、GPT-SoVITS 和音频播放真链路；
 - 跨设备、远程网络、打包和发布测试。
 
@@ -69,7 +72,7 @@ Hermes 默认 gateway 当前由 user systemd service 运行并关联 QQBot；它
 ```text
 apps/
   poc-cli/              # 可重复协议/故障 PoC
-  client/               # Flutter 五端客户端（待建）
+  client/               # Flutter 五端共享 shell、领域/application 层与平台 runner
 packages/
   core/                 # 无外部依赖的领域模型和状态机
   adapters/             # Agent 原生协议适配器
@@ -137,7 +140,7 @@ scripts/                # 协议、质量与构建脚本
 ### 3.6 Git 与版本治理
 
 - `main` 保持可构建、可测试；不在 `main` 上强制改写已提交历史，修正使用新提交或 `revert`；
-- 提交采用 `feat:`、`fix:`、`spec:`、`test:`、`refactor:`、`build:`、`chore:` 等清晰前缀，一个提交只包含一个可解释、可回退的逻辑变化；
+- 提交采用 `feat:`、`fix:`、`spec:`、`test:`、`refactor:`、`build:`、`chore:` 等清晰前缀，冒号后的主题和正文默认使用中文；一个提交只包含一个可解释、可回退的逻辑变化；
 - 提交前至少运行与改动相关的 check/test，规格或脚本变化额外运行 repository consistency check；失败证据不得通过跳过测试隐藏；
 - 自动化 Agent 可以在验证后创建聚焦的本地提交，但 push、PR、tag、发布和远程部署仍需明确授权；
 - 产品发行使用 SemVer 和 annotated tag `vX.Y.Z`；首个公开稳定协议前保持 `0.y.z`，但任何已发布 wire/data breaking change 仍须提升 protocol major 并提供迁移说明；
@@ -145,19 +148,20 @@ scripts/                # 协议、质量与构建脚本
 - 每个发布 tag 对应变更记录、依赖/许可证快照、SBOM、migration/rollback 说明和已通过的发布门；
 - 不提交 secret、`.env`、原始 live payload、原始录音、临时生成的 Codex binding 或设备专属产物。
 
-### 3.7 公共协议依赖记录
+### 3.7 关键依赖记录
 
 | 依赖 | 固定基线 | 许可证 | 维护/覆盖证据 | 退出路径 |
 | --- | --- | --- | --- | --- |
 | `@bufbuild/buf` | 1.72.0，npm lockfile | Apache-2.0 | Buf 官方 CLI；本地和 CI 使用同一项目内二进制 | 保留标准 `.proto`，可退回 `protoc` + 独立 lint/breaking 工具 |
 | `@bufbuild/protoc-gen-es` / `@bufbuild/protobuf` | 2.12.1，npm lockfile | Apache-2.0；runtime 另含 BSD-3-Clause | Buf 官方 Protobuf-ES，Node 22 strict 编译已通过 | wire schema 不变时替换 TS generator/runtime，并以 fixture 验证 |
 | `protoc_plugin` Dart remote plugin | 25.0.0，`buf.gen.dart.yaml` | BSD-3-Clause | Dart 官方维护的 generator；已生成 Dart 3.3+ 与 gRPC binding | 安装同版本本地 plugin，或在保持 wire schema 下替换生成器 |
-| Dart `protobuf` / `grpc` / `fixnum` | `^5.1.0` / `^5.1.0` / `^1.1.1` | BSD-3-Clause / Apache-2.0 / BSD-3-Clause | dart.dev/google.dev 发布，覆盖 Flutter 五端；M2 做真实 analyze/build | 生成层隔离在 `agent_talk_protocol`，替换 transport 不改变 Core/UI 契约 |
+| Dart `protobuf` / `grpc` / `fixnum` | `^6.0.0` / `^5.1.0` / `^1.1.1` | BSD-3-Clause / Apache-2.0 / BSD-3-Clause | dart.dev/google.dev 发布，覆盖 Flutter 五端；Flutter 3.44.6 的真实 pub solver 已验证 grpc 5.1.0 要求 protobuf 6.x | 生成层隔离在 `agent_talk_protocol`，替换 transport 不改变 Core/UI 契约 |
+| `flutter_riverpod` | 3.3.2，Flutter lockfile | MIT | pub.dev 五平台声明；只承载可重建 application/view state，真实 analyze/widget test 已通过 | provider 后方保留普通 Dart domain/controller；可替换状态管理而不改变 Gateway 耐久事实 |
 | `pg` / `@types/pg` | 8.22.0 / 8.20.0，npm lockfile | MIT | node-postgres 长期维护；使用底层 Pool/transaction API，不引入 ORM | `GatewayLedger` 隔离 SQL；可替换其他 PostgreSQL driver 而不改变 acceptance 语义 |
 | PostgreSQL test image | 17 Alpine，固定 manifest digest | PostgreSQL License；镜像含各组件许可证 | 官方镜像；本地隔离测试和 CI 使用同一 digest | 生产部署独立；测试可换受支持 PostgreSQL 版本并先跑 migration/fixture gate |
 | `@connectrpc/connect` / `@connectrpc/connect-node` | 2.1.2，npm lockfile | Apache-2.0 | Buf/CNCF Connect 官方 TypeScript 实现；支持 Node、gRPC 与 streaming，真实 HTTP/2 测试通过 | service 只依赖生成的标准 Protobuf descriptor；可换 `grpc-js` 而不改变 wire schema/账本 |
 
-Buf remote generation 需要网络，但普通 `npm run check` 和离线测试只校验已提交 TypeScript 生成物；CI 与显式 `protocol:check:dart` 重新生成 Dart 并逐字比较。Dart SDK 未安装前不把“生成成功”表述为“五端编译成功”。
+Buf remote generation 需要网络，但普通 `npm run check` 和离线测试只校验已提交 TypeScript 生成物；CI 与显式 `protocol:check:dart` 重新生成 Dart 并逐字比较。`npm run flutter:check` 已使用固定 Flutter/Dart SDK 真编译 protocol package 并分析、测试共享客户端；在各目标平台 toolchain 和 runner build 实际通过前，仍不得把它表述为“五端编译成功”。
 
 ## 4. 里程碑
 
@@ -210,7 +214,8 @@ Buf remote generation 需要网络，但普通 `npm run check` 和离线测试�
 
 目标：先完成五端共享的文字 Agent 产品骨架。
 
-- Flutter shell、Riverpod application layer 和 Fairy 静态核心；
+- Flutter shell、Riverpod application layer 和 Fairy 静态信号镜核心；
+- 原创“夜航信号台”token、组件状态目录、手机/桌面 golden 与 accessibility gate；
 - 登录/配对、Agent/会话选择、完整回复、工具事件和审批；
 - gRPC live stream；
 - PowerSync/Drift spike 与许可证/运维 gate；
@@ -406,6 +411,7 @@ UI 不展示虚构完成百分比。诊断页面显示最后真实事件、同�
 | TTS 冷启动/崩溃 | 常驻预热、分段、纯文字降级 | 不达标时限制自动播报长度 |
 | STT 技术词误识别 | 默认确认、高风险审批独立 | 30 条基准不达标切换后端 |
 | 多设备重复提交 | DB uniqueness、idempotency、lease、uncertain | 任何重复执行为发布阻断 |
+| 视觉模板化或近似第三方资产 | 原创视觉主命题、语义 token、组件状态目录、golden 和许可证记录 | 出现禁止的泛 AI 模板或无来源资产即退回设计门 |
 | 视觉耗电或不可访问 | 档位、减少动态、静态回退 | 中档设备不达标降低 shader 复杂度 |
 | 远程高权限泄露 | device scope、TLS、Node 出站、Agent loopback | 安全门失败停止远程发布 |
 

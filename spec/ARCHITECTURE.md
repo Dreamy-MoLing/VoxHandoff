@@ -390,12 +390,15 @@ GPT-SoVITS adapter 生成规范音频块，`media_kit` adapter 播放。TTS 队�
 
 ## 11. 视觉架构
 
+- `ThemeExtension`/普通 Dart token：颜色、间距、圆角、线宽、排版、状态语义和动效时长；业务 widget 不直接散布常量；
 - Widget/CustomPainter：布局、文字、交互、静态核心和可访问性；
 - GLSL fragment shader：核心能量场、扫描线、噪声、色差和音频波纹；
 - Rive：按钮、连接图标等非核心矢量微动效；
 - Platform plugins：麦克风会话、安全存储、全局快捷键、通知和窗口行为。
 
-shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值，不接收领域对象。所有状态必须有无动画等价表现。
+设计系统组件以独立 catalog/use case 覆盖真实状态，再进入业务页面；catalog 工具、第三方组件库和 styling package 都只能是开发或表现层依赖，不得成为领域状态权威。优先使用 Flutter 内建语义、focus、Theme 和自有小组件；只有组件隔离测试或跨端一致性收益足以抵消依赖/迁移成本时才引入社区包。
+
+shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值，不接收领域对象。所有状态必须有无动画等价表现；减少动态时禁用扫描、故障和持续波纹，只保留静态几何、文字和高对比状态标记。
 
 ## 12. 网络与安全
 
