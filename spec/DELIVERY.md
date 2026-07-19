@@ -55,6 +55,7 @@
 - Flutter shell 已建立 Riverpod application/domain 分层、原创“夜航信号台”token/静态信号镜和未配对本地草稿体验；发送默认禁用，草稿须显式确认，request acceptance 必须匹配预生成 identity，`uncertain` 禁止覆盖或静默重提；桌面/390px 手机 golden、响应式 widget 和文字对比度/标签/触控目标 accessibility test 已进入质量门；
 - Dart 客户端在签署配对 proof/confirmation 前必须严格解析 Gateway 待签 bytes，并以本地已检查的 audience、fingerprint、scope 与 credential facts 逐字节重建比对；`DeviceKeyVault` 已隔离待配对 Ed25519 seed、规范 SPKI/fingerprint 与签名能力，RFC 8032 向量、重启读回、损坏拒绝和显式丢弃均有离线测试。真实 OS secure storage adapter 与五端设备测试仍是 M2 后续门；
 - 客户端配对 application coordinator 已固定 `Begin → owner approval → Complete → Confirm → credential commit` 状态机：challenge/signature/token 不进入公开 UI state，Complete 兼容 token 非空即拒绝，Confirm 成功和 credential vault 落盘前不显示 paired；网络结果不明不自动重试，只有用户显式恢复才复用同一签名，恢复冲突继续保持 `uncertain`。待配对密钥仅在凭据保存后幂等提升为 active，离线测试覆盖双签名、未批准、篡改事实、提前 token、落盘失败、重启恢复与远端可能已激活时的删除确认；
+- `FlutterSecureValueStore` 已把 key、checkpoint 与 access/refresh credential 接到五平台 OS-backed 安全存储；Android 使用独立 namespace、关闭损坏自动清空与应用备份，iOS/macOS 声明 Keychain Sharing，credential 存储键只含 credential ID 的 SHA-256。严格版本化 codec 对 malformed bytes、未知 enum、重复 scope、identity 冲突 fail closed，测试覆盖完整秘密读回、幂等保存和日志字符串不含 token；Linux 真构建/读回仍等待 `libsecret-devel` 与原生工具链门；
 - Dart protocol 依赖经真实 pub solver 将 `protobuf` 修正为与 `grpc 5.1.0` 相容的 6.x，不使用 dependency override；PowerSync/Drift 尚未进入运行依赖，等待 M2 同步 spike 和许可证/运维 gate；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
@@ -160,6 +161,7 @@ scripts/                # 协议、质量与构建脚本
 | Dart `protobuf` / `grpc` / `fixnum` | `^6.0.0` / `^5.1.0` / `^1.1.1` | BSD-3-Clause / Apache-2.0 / BSD-3-Clause | dart.dev/google.dev 发布，覆盖 Flutter 五端；Flutter 3.44.6 的真实 pub solver 已验证 grpc 5.1.0 要求 protobuf 6.x | 生成层隔离在 `agent_talk_protocol`，替换 transport 不改变 Core/UI 契约 |
 | `flutter_riverpod` | 3.3.2，Flutter lockfile | MIT | pub.dev 五平台声明；只承载可重建 application/view state，真实 analyze/widget test 已通过 | provider 后方保留普通 Dart domain/controller；可替换状态管理而不改变 Gateway 耐久事实 |
 | Dart `cryptography` | 2.9.0，Flutter lockfile | Apache-2.0 | Ed25519/SHA-256 覆盖 Android/iOS/Linux/macOS/Windows；短配对签名使用统一 API 和纯 Dart fallback | `DeviceKeyVault` 隔离算法/密钥实现；可切 OS-backed signer 而不改变 pairing/application 契约 |
+| `flutter_secure_storage` | 10.3.1，Flutter lockfile | BSD-3-Clause | 发布者验证、五平台 federated plugin；Android RSA-OAEP/AES-GCM、Apple Keychain、Linux libsecret、Windows 平台实现；完整 Dart analyze/test 已通过 | 所有调用隔离在 `SecureValueStore`，可逐平台替换原生 signer/store；普通数据库只保留 opaque 引用 |
 | `pg` / `@types/pg` | 8.22.0 / 8.20.0，npm lockfile | MIT | node-postgres 长期维护；使用底层 Pool/transaction API，不引入 ORM | `GatewayLedger` 隔离 SQL；可替换其他 PostgreSQL driver 而不改变 acceptance 语义 |
 | PostgreSQL test image | 17 Alpine，固定 manifest digest | PostgreSQL License；镜像含各组件许可证 | 官方镜像；本地隔离测试和 CI 使用同一 digest | 生产部署独立；测试可换受支持 PostgreSQL 版本并先跑 migration/fixture gate |
 | `@connectrpc/connect` / `@connectrpc/connect-node` | 2.1.2，npm lockfile | Apache-2.0 | Buf/CNCF Connect 官方 TypeScript 实现；支持 Node、gRPC 与 streaming，真实 HTTP/2 测试通过 | service 只依赖生成的标准 Protobuf descriptor；可换 `grpc-js` 而不改变 wire schema/账本 |
