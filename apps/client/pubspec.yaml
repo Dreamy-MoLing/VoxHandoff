@@ -9,6 +9,7 @@ environment:
 dependencies:
   agent_talk_protocol:
     path: ../../packages/protocol/dart
+  cryptography: ^2.9.0
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.3.2

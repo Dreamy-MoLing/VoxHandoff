@@ -2,7 +2,7 @@
 
 ## 1. 当前状态
 
-基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和远程 Dart generator 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。M2 使用官方 stable Flutter 3.44.6 / Dart 3.12.2 用户级 SDK，Linux archive SHA-256 固定于 `toolchains/flutter.json`；当前主机尚无 Android SDK，Linux native build 仍缺 Clang 与 GTK 3 development headers。
+基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和远程 Dart generator 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。M2 使用官方 stable Flutter 3.44.6 / Dart 3.12.2 用户级 SDK，Linux archive SHA-256 固定于 `toolchains/flutter.json`；当前主机尚无 Android SDK，Linux native build 仍缺 Clang、GTK 3 与 libsecret development headers。
 
 当前阶段：M2 Flutter 文字客户端与同步。M-1、M0 与 M1 已完成；公共协议、耐久 Gateway 控制面、HTTPS 配对、设备凭据、owner 恢复及 Client/Node 组合收敛门已建立，当前先完成 Flutter/Dart 工具链与五端文字骨架。
 
@@ -53,6 +53,7 @@
 - fake Client 与 fake Node 已经同一 Gateway 双向流和真实 PostgreSQL 完成组合退出验收：首次 acceptance 响应丢失后重建 Gateway，精确 Client 重试仍只保留一个 request；Node 连续换连接收到同一 dispatch identity，旧 source sequence 以稳定错误拒绝，精确事件重试不增写；最终 request、dispatch、四条连续 Gateway event 与 Client cursor 收敛；
 - 官方 Flutter 3.44.6 / Dart 3.12.2 SDK archive 已固定版本与 SHA-256，生成 Windows/Linux/macOS/iOS/Android 共用客户端工程；Dart protocol package 和客户端均进入 `npm run flutter:check` 的真实 analyze/test 门；
 - Flutter shell 已建立 Riverpod application/domain 分层、原创“夜航信号台”token/静态信号镜和未配对本地草稿体验；发送默认禁用，草稿须显式确认，request acceptance 必须匹配预生成 identity，`uncertain` 禁止覆盖或静默重提；桌面/390px 手机 golden、响应式 widget 和文字对比度/标签/触控目标 accessibility test 已进入质量门；
+- Dart 客户端在签署配对 proof/confirmation 前必须严格解析 Gateway 待签 bytes，并以本地已检查的 audience、fingerprint、scope 与 credential facts 逐字节重建比对；`DeviceKeyVault` 已隔离待配对 Ed25519 seed、规范 SPKI/fingerprint 与签名能力，RFC 8032 向量、重启读回、损坏拒绝和显式丢弃均有离线测试。真实 OS secure storage adapter 与五端设备测试仍是 M2 后续门；
 - Dart protocol 依赖经真实 pub solver 将 `protobuf` 修正为与 `grpc 5.1.0` 相容的 6.x，不使用 dependency override；PowerSync/Drift 尚未进入运行依赖，等待 M2 同步 spike 和许可证/运维 gate；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
@@ -157,6 +158,7 @@ scripts/                # 协议、质量与构建脚本
 | `protoc_plugin` Dart remote plugin | 25.0.0，`buf.gen.dart.yaml` | BSD-3-Clause | Dart 官方维护的 generator；已生成 Dart 3.3+ 与 gRPC binding | 安装同版本本地 plugin，或在保持 wire schema 下替换生成器 |
 | Dart `protobuf` / `grpc` / `fixnum` | `^6.0.0` / `^5.1.0` / `^1.1.1` | BSD-3-Clause / Apache-2.0 / BSD-3-Clause | dart.dev/google.dev 发布，覆盖 Flutter 五端；Flutter 3.44.6 的真实 pub solver 已验证 grpc 5.1.0 要求 protobuf 6.x | 生成层隔离在 `agent_talk_protocol`，替换 transport 不改变 Core/UI 契约 |
 | `flutter_riverpod` | 3.3.2，Flutter lockfile | MIT | pub.dev 五平台声明；只承载可重建 application/view state，真实 analyze/widget test 已通过 | provider 后方保留普通 Dart domain/controller；可替换状态管理而不改变 Gateway 耐久事实 |
+| Dart `cryptography` | 2.9.0，Flutter lockfile | Apache-2.0 | Ed25519/SHA-256 覆盖 Android/iOS/Linux/macOS/Windows；短配对签名使用统一 API 和纯 Dart fallback | `DeviceKeyVault` 隔离算法/密钥实现；可切 OS-backed signer 而不改变 pairing/application 契约 |
 | `pg` / `@types/pg` | 8.22.0 / 8.20.0，npm lockfile | MIT | node-postgres 长期维护；使用底层 Pool/transaction API，不引入 ORM | `GatewayLedger` 隔离 SQL；可替换其他 PostgreSQL driver 而不改变 acceptance 语义 |
 | PostgreSQL test image | 17 Alpine，固定 manifest digest | PostgreSQL License；镜像含各组件许可证 | 官方镜像；本地隔离测试和 CI 使用同一 digest | 生产部署独立；测试可换受支持 PostgreSQL 版本并先跑 migration/fixture gate |
 | `@connectrpc/connect` / `@connectrpc/connect-node` | 2.1.2，npm lockfile | Apache-2.0 | Buf/CNCF Connect 官方 TypeScript 实现；支持 Node、gRPC 与 streaming，真实 HTTP/2 测试通过 | service 只依赖生成的标准 Protobuf descriptor；可换 `grpc-js` 而不改变 wire schema/账本 |

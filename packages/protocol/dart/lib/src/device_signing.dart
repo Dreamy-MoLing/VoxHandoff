@@ -19,6 +19,8 @@ enum DeviceSigningErrorCode {
   invalidDomain,
   invalidField,
   duplicateField,
+  malformedPayload,
+  missingField,
   payloadTooLarge,
   invalidScope,
   duplicateScope,
@@ -40,6 +42,84 @@ class SignedPayloadField {
 
   final String name;
   final Object value;
+}
+
+class ParsedSignedPayload {
+  ParsedSignedPayload(this.domain, List<ParsedSignedPayloadField> fields)
+    : fields = List.unmodifiable(fields),
+      _fieldsByName = Map.unmodifiable({
+        for (final field in fields) field.name: field,
+      });
+
+  final String domain;
+  final List<ParsedSignedPayloadField> fields;
+  final Map<String, ParsedSignedPayloadField> _fieldsByName;
+
+  List<int> requireBytes(String name) {
+    final field = _fieldsByName[name];
+    if (field == null) {
+      throw DeviceSigningContractException(
+        DeviceSigningErrorCode.missingField,
+        'The signed payload field "$name" is missing.',
+      );
+    }
+    return List.unmodifiable(field.bytes);
+  }
+
+  String requireText(String name) {
+    final bytes = requireBytes(name);
+    try {
+      return utf8.decode(bytes, allowMalformed: false);
+    } on FormatException {
+      throw DeviceSigningContractException(
+        DeviceSigningErrorCode.malformedPayload,
+        'The signed payload field "$name" is not valid UTF-8.',
+      );
+    }
+  }
+}
+
+class ParsedSignedPayloadField {
+  ParsedSignedPayloadField(this.name, List<int> bytes)
+    : bytes = Uint8List.fromList(bytes);
+
+  final String name;
+  final Uint8List bytes;
+}
+
+class _PayloadCursor {
+  _PayloadCursor(List<int> bytes) : bytes = Uint8List.fromList(bytes);
+
+  final Uint8List bytes;
+  var offset = 0;
+
+  Uint8List read(int length) {
+    if (length < 0 || offset + length > bytes.length) {
+      throw const DeviceSigningContractException(
+        DeviceSigningErrorCode.malformedPayload,
+        'The signed payload is truncated.',
+      );
+    }
+    final value = Uint8List.fromList(bytes.sublist(offset, offset + length));
+    offset += length;
+    return value;
+  }
+
+  int readUint32() {
+    final value = read(4);
+    return ByteData.sublistView(value).getUint32(0, Endian.big);
+  }
+
+  Uint8List readFrame() {
+    final length = readUint32();
+    if (length > _maximumPayloadBytes) {
+      throw const DeviceSigningContractException(
+        DeviceSigningErrorCode.payloadTooLarge,
+        'A signed payload field exceeds one MiB.',
+      );
+    }
+    return read(length);
+  }
 }
 
 Uint8List _uint32(int value) {
@@ -118,6 +198,79 @@ Uint8List canonicalSignedPayload(
   return payload;
 }
 
+ParsedSignedPayload parseCanonicalSignedPayload(List<int> payload) {
+  if (payload.length > _maximumPayloadBytes) {
+    throw const DeviceSigningContractException(
+      DeviceSigningErrorCode.payloadTooLarge,
+      'The signed payload exceeds one MiB.',
+    );
+  }
+  final cursor = _PayloadCursor(payload);
+  if (!_constantTimeEquals(cursor.read(_payloadMagic.length), _payloadMagic)) {
+    throw const DeviceSigningContractException(
+      DeviceSigningErrorCode.malformedPayload,
+      'The signed payload magic is invalid.',
+    );
+  }
+  final domain = _decodeCanonicalText(cursor.readFrame(), 'domain');
+  if (!_domainPattern.hasMatch(domain)) {
+    throw const DeviceSigningContractException(
+      DeviceSigningErrorCode.invalidDomain,
+      'The device-signature domain is invalid.',
+    );
+  }
+  final fieldCount = cursor.readUint32();
+  final fields = <ParsedSignedPayloadField>[];
+  final names = <String>{};
+  for (var index = 0; index < fieldCount; index += 1) {
+    final name = _decodeCanonicalText(cursor.readFrame(), 'field name');
+    if (!_fieldNamePattern.hasMatch(name)) {
+      throw const DeviceSigningContractException(
+        DeviceSigningErrorCode.invalidField,
+        'A device-signature field name is invalid.',
+      );
+    }
+    if (!names.add(name)) {
+      throw const DeviceSigningContractException(
+        DeviceSigningErrorCode.duplicateField,
+        'A device-signature field name is duplicated.',
+      );
+    }
+    fields.add(ParsedSignedPayloadField(name, cursor.readFrame()));
+  }
+  if (cursor.offset != cursor.bytes.length) {
+    throw const DeviceSigningContractException(
+      DeviceSigningErrorCode.malformedPayload,
+      'The signed payload contains trailing bytes.',
+    );
+  }
+  return ParsedSignedPayload(domain, fields);
+}
+
+String _decodeCanonicalText(List<int> bytes, String label) {
+  try {
+    return utf8.decode(bytes, allowMalformed: false);
+  } on FormatException {
+    throw DeviceSigningContractException(
+      DeviceSigningErrorCode.malformedPayload,
+      'The signed payload $label is not valid UTF-8.',
+    );
+  }
+}
+
+bool _constantTimeEquals(List<int> left, List<int> right) {
+  var difference = left.length ^ right.length;
+  final comparedLength = left.length > right.length
+      ? left.length
+      : right.length;
+  for (var index = 0; index < comparedLength; index += 1) {
+    final leftByte = index < left.length ? left[index] : 0;
+    final rightByte = index < right.length ? right[index] : 0;
+    difference |= leftByte ^ rightByte;
+  }
+  return difference == 0;
+}
+
 List<String> normalizeDeviceScopes(Iterable<String> scopes) {
   final normalized = scopes.toList()..sort();
   if (normalized.isEmpty || normalized.length > deviceScopes.length) {
@@ -181,6 +334,37 @@ Uint8List pairingProofPayload({
   ]);
 }
 
+Uint8List verifyPairingProofPayload({
+  required List<int> payload,
+  required String pairingId,
+  required String gatewayAudience,
+  required String deviceFingerprint,
+  required Iterable<String> requestedScopes,
+}) {
+  final parsed = parseCanonicalSignedPayload(payload);
+  if (parsed.domain != 'agent-talk/pairing-proof/v1') {
+    throw const DeviceSigningContractException(
+      DeviceSigningErrorCode.invalidDomain,
+      'The pairing proof has the wrong signing domain.',
+    );
+  }
+  final challenge = parsed.requireBytes('challenge');
+  final expected = pairingProofPayload(
+    pairingId: pairingId,
+    challenge: challenge,
+    gatewayAudience: gatewayAudience,
+    deviceFingerprint: deviceFingerprint,
+    requestedScopes: requestedScopes,
+  );
+  if (!_constantTimeEquals(payload, expected)) {
+    throw const DeviceSigningContractException(
+      DeviceSigningErrorCode.invalidField,
+      'The pairing proof does not match the inspected pairing facts.',
+    );
+  }
+  return Uint8List.fromList(challenge);
+}
+
 Uint8List pairingConfirmationPayload({
   required String pairingId,
   required String credentialId,
@@ -199,6 +383,41 @@ Uint8List pairingConfirmationPayload({
     SignedPayloadField('device_fingerprint', deviceFingerprint),
     ..._scopeFields(approvedScopes),
   ]);
+}
+
+Uint8List verifyPairingConfirmationPayload({
+  required List<int> payload,
+  required String pairingId,
+  required String credentialId,
+  required String deviceId,
+  required String gatewayAudience,
+  required String deviceFingerprint,
+  required Iterable<String> approvedScopes,
+}) {
+  final parsed = parseCanonicalSignedPayload(payload);
+  if (parsed.domain != 'agent-talk/pairing-confirmation/v1') {
+    throw const DeviceSigningContractException(
+      DeviceSigningErrorCode.invalidDomain,
+      'The pairing confirmation has the wrong signing domain.',
+    );
+  }
+  final challenge = parsed.requireBytes('challenge');
+  final expected = pairingConfirmationPayload(
+    pairingId: pairingId,
+    credentialId: credentialId,
+    deviceId: deviceId,
+    challenge: challenge,
+    gatewayAudience: gatewayAudience,
+    deviceFingerprint: deviceFingerprint,
+    approvedScopes: approvedScopes,
+  );
+  if (!_constantTimeEquals(payload, expected)) {
+    throw const DeviceSigningContractException(
+      DeviceSigningErrorCode.invalidField,
+      'The pairing confirmation does not match the inspected credential facts.',
+    );
+  }
+  return Uint8List.fromList(challenge);
 }
 
 Uint8List administratorPairingPayload({

@@ -17,6 +17,10 @@ void main() {
       '000000126167656e742d74616c6b2f746573742f76310000000200000005'
       '616c706861000000036f6e650000000462657461000000020203',
     );
+    final parsed = parseCanonicalSignedPayload(payload);
+    expect(parsed.domain, 'agent-talk/test/v1');
+    expect(parsed.requireText('alpha'), 'one');
+    expect(parsed.requireBytes('beta'), orderedEquals(const [2, 3]));
   });
 
   test('pairing framing canonicalizes scopes and binds the audience', () {
@@ -61,6 +65,87 @@ void main() {
       '0968747470733a2f2f67000000126465766963655f66696e6765727072696e74'
       '0000000266700000000973636f70652e303030000000076f6273657276650000'
       '000973636f70652e3030310000000473656e64',
+    );
+    expect(
+      verifyPairingProofPayload(
+        payload: proof,
+        pairingId: 'pairing-1',
+        gatewayAudience: 'https://gateway.example',
+        deviceFingerprint: fingerprint,
+        requestedScopes: const ['observe', 'send'],
+      ),
+      orderedEquals(List.filled(4, 7)),
+    );
+    expect(
+      () => verifyPairingProofPayload(
+        payload: proof,
+        pairingId: 'pairing-1',
+        gatewayAudience: 'https://other.example',
+        deviceFingerprint: fingerprint,
+        requestedScopes: const ['observe', 'send'],
+      ),
+      throwsA(
+        isA<DeviceSigningContractException>().having(
+          (error) => error.code,
+          'code',
+          DeviceSigningErrorCode.invalidField,
+        ),
+      ),
+    );
+  });
+
+  test('confirmation proof is checked against every credential fact', () {
+    final fingerprint = 'sha256:${List.filled(64, 'b').join()}';
+    final payload = pairingConfirmationPayload(
+      pairingId: 'pairing-2',
+      credentialId: 'credential-2',
+      deviceId: 'device-2',
+      challenge: const [8, 9],
+      gatewayAudience: 'https://gateway.example',
+      deviceFingerprint: fingerprint,
+      approvedScopes: const ['observe'],
+    );
+
+    expect(
+      verifyPairingConfirmationPayload(
+        payload: payload,
+        pairingId: 'pairing-2',
+        credentialId: 'credential-2',
+        deviceId: 'device-2',
+        gatewayAudience: 'https://gateway.example',
+        deviceFingerprint: fingerprint,
+        approvedScopes: const ['observe'],
+      ),
+      orderedEquals(const [8, 9]),
+    );
+    expect(
+      () => verifyPairingConfirmationPayload(
+        payload: payload,
+        pairingId: 'pairing-2',
+        credentialId: 'credential-other',
+        deviceId: 'device-2',
+        gatewayAudience: 'https://gateway.example',
+        deviceFingerprint: fingerprint,
+        approvedScopes: const ['observe'],
+      ),
+      throwsA(isA<DeviceSigningContractException>()),
+    );
+  });
+
+  test('parser rejects trailing bytes and non-canonical server payloads', () {
+    final payload = canonicalSignedPayload('agent-talk/test/v1', const [
+      SignedPayloadField('alpha', 'one'),
+    ]);
+
+    expect(
+      () => parseCanonicalSignedPayload([...payload, 0]),
+      throwsA(
+        isA<DeviceSigningContractException>().having(
+          (error) => error.code,
+          'code',
+          DeviceSigningErrorCode.malformedPayload,
+        ),
+      ),
     );
   });
 
