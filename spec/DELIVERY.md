@@ -45,6 +45,7 @@
 - 配对 schema 已扩展为 `Begin → Inspect/Approve → Complete → Confirm`，固定 requested/approved scope、Gateway/设备 fingerprint 与 audience 核对、Ed25519 proof-of-possession、确认后签发和 refresh rotation；旧 draft proof/token 字段只保留 wire 兼容且不得签发有效凭据；`ResolveApproval`、远程配对授权与撤销携带设备签名，TS/Dart binding、contract 和 breaking gate 已通过；
 - TypeScript/Dart 可复刻的签名 framing 使用 domain separation、固定字段顺序与长度前缀；共享 helper 规范化 scope 并构造 pairing/confirmation/admin/refresh/revoke/approval payload。Gateway 只接受规范 Ed25519 SPKI DER，以 Node CSPRNG 生成 opaque secret/challenge，精确校验 64-byte 签名，并将明文 HTTP audience 限于显式 loopback 测试；
 - Gateway 配对领域状态机已实现 Begin/Inspect/Approve/Complete/Confirm：Begin 受持久化接口限速，owner 只能缩减请求 scope 且必须签署 fingerprint/audience/nonce，设备先证明新私钥、再签署独立 confirmation payload；确认事务前不产生 bearer token，账本只接收 token hash。离线事务 fake 已覆盖 owner 门、双签名、过期事实提交、nonce 重放、scope 越权、并发精确重试和审计无 secret；
+- `0006_device_pairing.sql` 只向前增加 pairing、pending/active credential、owner-bootstrap origin、签名 nonce 和持久限速窗口；pending credential 不进入 active device 权威表，Confirm 才同事务创建设备并保存 bearer hash。固定 PostgreSQL 17 已验证完整双签名配对、Gateway/ledger 重建后确认、migration 幂等/篡改门及数据库中无明文 token；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 

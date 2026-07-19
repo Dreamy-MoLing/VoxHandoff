@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync, sign } from "node:crypto";
 import { appendFile, cp, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { Pool } from "pg";
+import { DeviceSignatureAlgorithm, administratorPairingPayload } from "@agent-talk/protocol";
 
 import { acceptRequest, GatewayCommandError, type AcceptRequestInput } from "./acceptance.js";
 import { acquireControlLease, renewControlLease } from "./control-lease.js";
@@ -19,6 +21,9 @@ import { MigrationError, runMigrations } from "./migrations.js";
 import { PostgresGatewayLedger } from "./postgres-ledger.js";
 import { NodeLedgerError } from "./node-ledger.js";
 import { BoundedLiveEventHub } from "./live-events.js";
+import { normalizeEd25519PublicKey, sha256 } from "./device-crypto.js";
+import { PairingCoordinator } from "./pairing.js";
+import { PostgresPairingLedger } from "./postgres-pairing-ledger.js";
 
 const databaseUrl = process.env.AGENT_TALK_POSTGRES_URL;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -45,6 +50,7 @@ test(
         "0003_request_failure_details.sql",
         "0004_dispatch_ack_facts.sql",
         "0005_interaction_commands.sql",
+        "0006_device_pairing.sql",
       ]);
       assert.deepEqual(await runMigrations(pool, migrationDirectory), []);
 
@@ -61,12 +67,151 @@ test(
       }
 
       const pairedAt = new Date("2030-01-01T00:00:00.000Z");
+      const administratorKeys = generateKeyPairSync("ed25519");
+      const administratorSpki = new Uint8Array(
+        administratorKeys.publicKey.export({ format: "der", type: "spki" }),
+      );
+      const administratorPublicKey = normalizeEd25519PublicKey(administratorSpki);
       await pool.query(
         `INSERT INTO agent_talk.devices (
            device_id, display_name, public_key_sha256, status, scopes, paired_at
-         ) VALUES ($1, 'test device', $2, 'active', ARRAY['send', 'interrupt', 'approve'], $3)`,
-        [deviceId, "a".repeat(64), pairedAt],
+         ) VALUES ($1, 'test device', $2, 'active', ARRAY['send', 'interrupt', 'approve', 'administer'], $3)`,
+        [deviceId, administratorPublicKey.sha256, pairedAt],
       );
+      const administratorCredentialId = `administrator-credential-${suffix}`;
+      await pool.query(
+        `INSERT INTO agent_talk.device_credentials (
+           credential_id, pairing_id, origin, device_id, state, public_key_spki, public_key_sha256,
+           gateway_audience, scopes, generation, access_token_sha256, access_expires_at,
+           refresh_token_sha256, refresh_expires_at, family_expires_at, confirmation_payload,
+           confirmation_expires_at, created_at, activated_at, revoked_at
+         ) VALUES (
+           $1, NULL, 'owner_bootstrap', $2, 'active', $3, $4,
+           'https://gateway.example', ARRAY['send', 'interrupt', 'approve', 'administer'],
+           1, $5, $6, $7, $8, $8, $9, $6, $10, $10, NULL
+         )`,
+        [
+          administratorCredentialId,
+          deviceId,
+          Buffer.from(administratorSpki),
+          administratorPublicKey.sha256,
+          "d".repeat(64),
+          new Date("2030-01-01T00:15:00.000Z"),
+          "e".repeat(64),
+          new Date("2030-01-31T00:00:00.000Z"),
+          Buffer.from([1]),
+          pairedAt,
+        ],
+      );
+
+      const pairingDeviceKeys = generateKeyPairSync("ed25519");
+      const pairingDeviceSpki = new Uint8Array(
+        pairingDeviceKeys.publicKey.export({ format: "der", type: "spki" }),
+      );
+      let pairingIdentity = 0;
+      let pairingChallenge = 0;
+      const pairingDependencies = {
+        now: () => new Date("2030-01-01T00:00:05.000Z"),
+        newOpaqueId: (prefix: string) => `${prefix}-${++pairingIdentity}-${suffix}`,
+        newChallenge: (bytes = 32) => new Uint8Array(bytes).fill(++pairingChallenge),
+        newOpaqueSecret: (bytes = 32) => `${bytes}-${++pairingIdentity}-${"s".repeat(bytes)}`,
+        newUserCode: () => "WXYZ-2345",
+      };
+      const pairingCoordinator = new PairingCoordinator(new PostgresPairingLedger(pool), {
+        gatewayAudience: "https://gateway.example",
+        gatewayFingerprint: `sha256:${"f".repeat(64)}`,
+        verificationUri: "https://gateway.example/pair",
+        dependencies: pairingDependencies,
+      });
+      const begunPairing = await pairingCoordinator.begin({
+        deviceDisplayName: "PostgreSQL paired device",
+        devicePublicKey: pairingDeviceSpki,
+        requestedScopes: ["observe", "send"],
+        expectedGatewayAudience: "https://gateway.example",
+        rateLimitKey: `test-rate-${suffix}`,
+      });
+      assert.equal(
+        (await pairingCoordinator.inspect(begunPairing.userCode, deviceId)).pairingId,
+        begunPairing.pairingId,
+      );
+      const administratorNonce = new Uint8Array(32).fill(7);
+      const administratorPayload = administratorPairingPayload({
+        pairingId: begunPairing.pairingId,
+        userCode: begunPairing.userCode,
+        deviceFingerprint: begunPairing.deviceFingerprint,
+        gatewayFingerprint: begunPairing.gatewayFingerprint,
+        gatewayAudience: begunPairing.gatewayAudience,
+        approvedScopes: ["observe"],
+        nonce: administratorNonce,
+      });
+      await pairingCoordinator.approve({
+        pairingId: begunPairing.pairingId,
+        userCode: begunPairing.userCode,
+        approvedScopes: ["observe"],
+        expectedDeviceFingerprint: begunPairing.deviceFingerprint,
+        expectedGatewayFingerprint: begunPairing.gatewayFingerprint,
+        expectedGatewayAudience: begunPairing.gatewayAudience,
+        administratorDeviceId: deviceId,
+        administratorSignature: {
+          $typeName: "agent_talk.v1.DeviceSignature",
+          credentialId: administratorCredentialId,
+          nonce: administratorNonce,
+          signature: new Uint8Array(sign(null, administratorPayload, administratorKeys.privateKey)),
+          algorithm: DeviceSignatureAlgorithm.ED25519,
+        },
+      });
+      const completedPairing = await pairingCoordinator.complete({
+        pairingId: begunPairing.pairingId,
+        legacyDeviceProof: "",
+        deviceKeyProof: {
+          $typeName: "agent_talk.v1.DeviceSignature",
+          credentialId: "",
+          nonce: new Uint8Array(),
+          signature: new Uint8Array(sign(null, begunPairing.deviceProofPayload, pairingDeviceKeys.privateKey)),
+          algorithm: DeviceSignatureAlgorithm.ED25519,
+        },
+      });
+      const recreatedPairingCoordinator = new PairingCoordinator(new PostgresPairingLedger(pool), {
+        gatewayAudience: "https://gateway.example",
+        gatewayFingerprint: `sha256:${"f".repeat(64)}`,
+        verificationUri: "https://gateway.example/pair",
+        dependencies: pairingDependencies,
+      });
+      const confirmedPairing = await recreatedPairingCoordinator.confirm({
+        pairingId: begunPairing.pairingId,
+        credentialId: completedPairing.credentialId,
+        deviceSignature: {
+          $typeName: "agent_talk.v1.DeviceSignature",
+          credentialId: completedPairing.credentialId,
+          nonce: new Uint8Array(),
+          signature: new Uint8Array(
+            sign(null, completedPairing.confirmationPayload, pairingDeviceKeys.privateKey),
+          ),
+          algorithm: DeviceSignatureAlgorithm.ED25519,
+        },
+      });
+      const pairingFacts = await pool.query<{
+        pairing_state: string;
+        credential_state: string;
+        device_status: string;
+        access_token_sha256: string;
+        refresh_token_sha256: string;
+      }>(
+        `SELECT p.state AS pairing_state, c.state AS credential_state, d.status AS device_status,
+                c.access_token_sha256, c.refresh_token_sha256
+         FROM agent_talk.pairings p
+         JOIN agent_talk.device_credentials c USING (pairing_id)
+         JOIN agent_talk.devices d ON d.device_id = c.device_id
+         WHERE p.pairing_id = $1`,
+        [begunPairing.pairingId],
+      );
+      assert.deepEqual(pairingFacts.rows[0], {
+        pairing_state: "confirmed",
+        credential_state: "active",
+        device_status: "active",
+        access_token_sha256: sha256(confirmedPairing.accessToken),
+        refresh_token_sha256: sha256(confirmedPairing.refreshToken),
+      });
       await pool.query(
         `INSERT INTO agent_talk.nodes (node_id, display_name, platform, version, status, last_seen_at)
          VALUES ($1, 'test node', 'linux', 'test', 'online', $2)`,

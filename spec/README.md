@@ -1,6 +1,6 @@
 # Agent Talk 正式开发基线
 
-> 基线版本：1.27<br>
+> 基线版本：1.28<br>
 > 生效日期：2026-07-18<br>
 > 状态：Active
 
@@ -29,6 +29,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.28 | 2026-07-18 | 增加 pairing/credential/nonce/rate-limit forward migration 与真实 PostgreSQL 重建验收 |
 | 1.27 | 2026-07-18 | 实现事务化配对 Begin/Inspect/Approve/Complete/Confirm 状态机与离线并发/过期验收 |
 | 1.26 | 2026-07-18 | 实现跨客户端确定性签名 payload、Ed25519 SPKI 校验、CSPRNG 和 HTTPS audience 原语 |
 | 1.25 | 2026-07-18 | 固定配对 owner 核验、双阶段密钥证明、token 轮换/重放和高风险设备签名 wire contract |

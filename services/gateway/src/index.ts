@@ -15,4 +15,5 @@ export * from "./node-handlers.js";
 export * from "./pairing.js";
 export * from "./pairing-ledger.js";
 export * from "./postgres-ledger.js";
+export * from "./postgres-pairing-ledger.js";
 export * from "./server.js";
