@@ -12,7 +12,7 @@
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test dist/*.test.js",
     "test:postgres": "npm run build && node --test dist/postgres.integration.test.js",
-    "test:transport": "npm run build && node --test --test-name-pattern='real loopback HTTP/2 gRPC' dist/control-service.test.js"
+    "test:transport": "npm run build && node --test --test-name-pattern='real loopback HTTP/2 gRPC' dist/control-service.test.js dist/pairing-service.test.js"
   },
   "dependencies": {
     "@agent-talk/core": "*",

@@ -31,6 +31,8 @@ export interface AuthenticatedPrincipal {
   principalId: string;
   role: "client" | "node";
   scopes: readonly string[];
+  credentialId?: string;
+  credentialGeneration?: bigint;
 }
 
 export interface StreamIdentityVerifier {

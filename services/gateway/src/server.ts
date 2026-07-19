@@ -3,10 +3,11 @@ import type { AddressInfo } from "node:net";
 
 import type { ServiceImpl } from "@connectrpc/connect";
 import { connectNodeAdapter } from "@connectrpc/connect-node";
-import { GatewayControlService } from "@agent-talk/protocol";
+import { GatewayControlService, PairingService } from "@agent-talk/protocol";
 
 export interface GatewayServerOptions {
   controlService: ServiceImpl<typeof GatewayControlService>;
+  pairingService?: ServiceImpl<typeof PairingService>;
   host: string;
   port: number;
   tls?: SecureServerOptions;
@@ -40,7 +41,12 @@ function validateServerOptions(options: GatewayServerOptions): void {
 export async function startGatewayServer(options: GatewayServerOptions): Promise<RunningGatewayServer> {
   validateServerOptions(options);
   const handler = connectNodeAdapter({
-    routes: (router) => router.service(GatewayControlService, options.controlService),
+    routes: (router) => {
+      router.service(GatewayControlService, options.controlService);
+      if (options.pairingService !== undefined) {
+        router.service(PairingService, options.pairingService);
+      }
+    },
   });
   const server: Http2Server | Http2SecureServer =
     options.tls === undefined ? createServer(handler) : createSecureServer(options.tls, handler);

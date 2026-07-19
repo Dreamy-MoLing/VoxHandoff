@@ -27,6 +27,7 @@ import { PostgresGatewayLedger } from "./postgres-ledger.js";
 import { NodeLedgerError } from "./node-ledger.js";
 import { BoundedLiveEventHub } from "./live-events.js";
 import { normalizeEd25519PublicKey, sha256 } from "./device-crypto.js";
+import { DeviceStreamIdentityVerifier, PostgresDeviceCredentialAuthority } from "./device-identity.js";
 import { PairingCoordinator } from "./pairing.js";
 import { PostgresPairingLedger } from "./postgres-pairing-ledger.js";
 
@@ -218,6 +219,18 @@ test(
         access_token_sha256: sha256(confirmedPairing.accessToken),
         refresh_token_sha256: sha256(confirmedPairing.refreshToken),
       });
+      const deviceIdentityVerifier = new DeviceStreamIdentityVerifier(
+        new PostgresDeviceCredentialAuthority(pool),
+        {
+          gatewayAudience: "https://gateway.example",
+          now: () => new Date("2030-01-01T00:00:06.000Z"),
+        },
+      );
+      const firstAccessPrincipal = await deviceIdentityVerifier.authenticate(
+        new Headers({ authorization: `Bearer ${confirmedPairing.accessToken}` }),
+        "client",
+      );
+      assert.equal(firstAccessPrincipal.principalId, confirmedPairing.deviceId);
       const refreshNonce = new Uint8Array(32).fill(8);
       const refreshPayload = credentialRefreshPayload({
         credentialId: confirmedPairing.credentialId,
@@ -256,6 +269,11 @@ test(
         refresh_token_sha256: sha256(refreshedPairing.refreshToken),
         history_count: "1",
       });
+      await assert.rejects(deviceIdentityVerifier.revalidate(firstAccessPrincipal));
+      const refreshedAccessPrincipal = await deviceIdentityVerifier.authenticate(
+        new Headers({ authorization: `Bearer ${refreshedPairing.accessToken}` }),
+        "client",
+      );
       const revocationNonce = new Uint8Array(32).fill(9);
       const revocationPayload = deviceRevocationPayload({
         administratorDeviceId: deviceId,
@@ -294,6 +312,7 @@ test(
         access_token_sha256: null,
         refresh_token_sha256: null,
       });
+      await assert.rejects(deviceIdentityVerifier.revalidate(refreshedAccessPrincipal));
       await pool.query(
         `INSERT INTO agent_talk.nodes (node_id, display_name, platform, version, status, last_seen_at)
          VALUES ($1, 'test node', 'linux', 'test', 'online', $2)`,
