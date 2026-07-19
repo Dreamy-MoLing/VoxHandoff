@@ -12,5 +12,7 @@ export * from "./interaction-ledger.js";
 export * from "./migrations.js";
 export * from "./node-ledger.js";
 export * from "./node-handlers.js";
+export * from "./pairing.js";
+export * from "./pairing-ledger.js";
 export * from "./postgres-ledger.js";
 export * from "./server.js";
