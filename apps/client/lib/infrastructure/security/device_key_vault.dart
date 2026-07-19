@@ -4,28 +4,14 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 
+import '../../domain/device_pairing.dart';
+
 abstract interface class SecureValueStore {
   Future<String?> read(String key);
 
   Future<void> write(String key, String value);
 
   Future<void> delete(String key);
-}
-
-class DevicePublicIdentity {
-  DevicePublicIdentity({
-    required this.keyReference,
-    required List<int> publicKeySpkiDer,
-    required this.fingerprint,
-  }) : publicKeySpkiDer = List.unmodifiable(publicKeySpkiDer);
-
-  final String keyReference;
-  final List<int> publicKeySpkiDer;
-  final String fingerprint;
-
-  @override
-  String toString() =>
-      'DevicePublicIdentity(keyReference: $keyReference, fingerprint: $fingerprint)';
 }
 
 class DeviceKeyVaultException implements Exception {
@@ -38,7 +24,7 @@ class DeviceKeyVaultException implements Exception {
   String toString() => 'DeviceKeyVaultException($code): $message';
 }
 
-class DeviceKeyVault {
+class DeviceKeyVault implements DeviceKeyVaultPort {
   factory DeviceKeyVault({
     required SecureValueStore store,
     Ed25519? algorithm,
@@ -62,6 +48,7 @@ class DeviceKeyVault {
   );
 
   static const _recordPrefix = 'agent-talk.v1.pending-device-key.';
+  static const _activeRecordPrefix = 'agent-talk.v1.active-device-key.';
   static const _spkiPrefix = <int>[
     0x30,
     0x2a,
@@ -83,6 +70,7 @@ class DeviceKeyVault {
   final Random _random;
   final Future<List<int>> Function()? _seedFactory;
 
+  @override
   Future<DevicePublicIdentity> createPendingKey() async {
     final seed = await _newSeed();
     SimpleKeyPair? keyPair;
@@ -95,6 +83,8 @@ class DeviceKeyVault {
         jsonEncode({
           'version': 1,
           'algorithm': 'ed25519',
+          'state': 'pending',
+          'credential_id': null,
           'seed': base64UrlEncode(seed),
           'public_key': base64UrlEncode(publicKey.bytes),
         }),
@@ -108,15 +98,22 @@ class DeviceKeyVault {
     }
   }
 
+  @override
   Future<DevicePublicIdentity> inspect(String keyReference) async {
     final record = await _readRecord(keyReference);
-    return _publicIdentity(keyReference, record.publicKeyBytes);
+    try {
+      return _publicIdentity(keyReference, record.publicKeyBytes);
+    } finally {
+      record.seed.fillRange(0, record.seed.length, 0);
+    }
   }
 
+  @override
   Future<List<int>> sign(String keyReference, List<int> payload) async {
     final record = await _readRecord(keyReference);
-    final keyPair = await _algorithm.newKeyPairFromSeed(record.seed);
+    SimpleKeyPair? keyPair;
     try {
+      keyPair = await _algorithm.newKeyPairFromSeed(record.seed);
       final publicKey = await keyPair.extractPublicKey();
       if (!_constantTimeEquals(publicKey.bytes, record.publicKeyBytes)) {
         throw const DeviceKeyVaultException(
@@ -134,13 +131,87 @@ class DeviceKeyVault {
       return List.unmodifiable(signature.bytes);
     } finally {
       record.seed.fillRange(0, record.seed.length, 0);
-      _destroy(keyPair);
+      if (keyPair != null) {
+        _destroy(keyPair);
+      }
     }
   }
 
+  @override
   Future<void> discard(String keyReference) async {
     _validateReference(keyReference);
     await _store.delete('$_recordPrefix$keyReference');
+  }
+
+  @override
+  Future<void> promotePendingKey(
+    String keyReference,
+    String credentialId,
+  ) async {
+    _validateReference(keyReference);
+    _validateOpaqueId(credentialId, 'credential ID');
+    final pendingKey = '$_recordPrefix$keyReference';
+    final activeKey = '$_activeRecordPrefix$keyReference';
+    final pendingEncoded = await _store.read(pendingKey);
+    final activeEncoded = await _store.read(activeKey);
+
+    if (pendingEncoded == null) {
+      if (activeEncoded == null) {
+        throw const DeviceKeyVaultException(
+          'key_not_found',
+          'The device key does not exist.',
+        );
+      }
+      final active = _decodeRecord(activeEncoded, expectedState: 'active');
+      try {
+        if (active.credentialId != credentialId) {
+          throw const DeviceKeyVaultException(
+            'credential_conflict',
+            'The active device key belongs to a different credential.',
+          );
+        }
+      } finally {
+        active.seed.fillRange(0, active.seed.length, 0);
+      }
+      return;
+    }
+
+    final pending = _decodeRecord(pendingEncoded, expectedState: 'pending');
+    try {
+      if (activeEncoded != null) {
+        final active = _decodeRecord(activeEncoded, expectedState: 'active');
+        try {
+          if (active.credentialId != credentialId ||
+              !_constantTimeEquals(active.seed, pending.seed) ||
+              !_constantTimeEquals(
+                active.publicKeyBytes,
+                pending.publicKeyBytes,
+              )) {
+            throw const DeviceKeyVaultException(
+              'credential_conflict',
+              'The active device key conflicts with the pending key.',
+            );
+          }
+        } finally {
+          active.seed.fillRange(0, active.seed.length, 0);
+        }
+      } else {
+        await _store.write(
+          activeKey,
+          jsonEncode({
+            'version': 1,
+            'algorithm': 'ed25519',
+            'state': 'active',
+            'credential_id': credentialId,
+            'seed': base64UrlEncode(pending.seed),
+            'public_key': base64UrlEncode(pending.publicKeyBytes),
+          }),
+        );
+      }
+      await _store.delete(pendingKey);
+    } finally {
+      pending.seed.fillRange(0, pending.seed.length, 0);
+    }
   }
 
   Future<List<int>> _newSeed() async {
@@ -149,7 +220,10 @@ class DeviceKeyVault {
     if (factory == null) {
       final generatedKeyPair = await _algorithm.newKeyPair();
       try {
-        seed = await generatedKeyPair.extractPrivateKeyBytes();
+        seed = List<int>.of(
+          await generatedKeyPair.extractPrivateKeyBytes(),
+          growable: false,
+        );
       } finally {
         _destroy(generatedKeyPair);
       }
@@ -186,13 +260,27 @@ class DeviceKeyVault {
 
   Future<_StoredDeviceKey> _readRecord(String keyReference) async {
     _validateReference(keyReference);
-    final encoded = await _store.read('$_recordPrefix$keyReference');
+    final activeEncoded = await _store.read(
+      '$_activeRecordPrefix$keyReference',
+    );
+    var encoded = activeEncoded;
+    encoded ??= await _store.read('$_recordPrefix$keyReference');
     if (encoded == null) {
       throw const DeviceKeyVaultException(
         'key_not_found',
-        'The pending device key does not exist.',
+        'The device key does not exist.',
       );
     }
+    return _decodeRecord(
+      encoded,
+      expectedState: activeEncoded == null ? 'pending' : 'active',
+    );
+  }
+
+  static _StoredDeviceKey _decodeRecord(
+    String encoded, {
+    required String expectedState,
+  }) {
     Object? decoded;
     try {
       decoded = jsonDecode(encoded);
@@ -205,6 +293,10 @@ class DeviceKeyVault {
     if (decoded is! Map<String, Object?> ||
         decoded['version'] != 1 ||
         decoded['algorithm'] != 'ed25519' ||
+        decoded['state'] != expectedState ||
+        (expectedState == 'pending'
+            ? decoded['credential_id'] != null
+            : decoded['credential_id'] is! String) ||
         decoded['seed'] is! String ||
         decoded['public_key'] is! String) {
       throw const DeviceKeyVaultException(
@@ -218,8 +310,21 @@ class DeviceKeyVault {
       if (seed.length != 32 || publicKey.length != 32) {
         throw const FormatException('invalid Ed25519 key length');
       }
-      return _StoredDeviceKey(seed: seed, publicKeyBytes: publicKey);
-    } on FormatException {
+      final credentialId = decoded['credential_id'] as String?;
+      if (credentialId != null) {
+        _validateOpaqueId(credentialId, 'credential ID');
+      }
+      return _StoredDeviceKey(
+        seed: seed,
+        publicKeyBytes: publicKey,
+        credentialId: credentialId,
+      );
+    } on FormatException catch (_) {
+      throw const DeviceKeyVaultException(
+        'corrupt_key',
+        'The pending device key record contains invalid key bytes.',
+      );
+    } on DeviceKeyVaultException catch (_) {
       throw const DeviceKeyVaultException(
         'corrupt_key',
         'The pending device key record contains invalid key bytes.',
@@ -231,7 +336,8 @@ class DeviceKeyVault {
     for (var attempt = 0; attempt < 8; attempt += 1) {
       final bytes = List<int>.generate(16, (_) => _random.nextInt(256));
       final reference = _hex(bytes);
-      if (await _store.read('$_recordPrefix$reference') == null) {
+      if (await _store.read('$_recordPrefix$reference') == null &&
+          await _store.read('$_activeRecordPrefix$reference') == null) {
         return reference;
       }
     }
@@ -246,6 +352,17 @@ class DeviceKeyVault {
       throw const DeviceKeyVaultException(
         'invalid_key_reference',
         'The device key reference is invalid.',
+      );
+    }
+  }
+
+  static void _validateOpaqueId(String value, String label) {
+    if (value.isEmpty ||
+        value.length > 256 ||
+        value.contains(RegExp(r'[\u0000-\u001f\u007f]'))) {
+      throw DeviceKeyVaultException(
+        'invalid_opaque_id',
+        'The $label is invalid.',
       );
     }
   }
@@ -272,10 +389,14 @@ class DeviceKeyVault {
 }
 
 class _StoredDeviceKey {
-  _StoredDeviceKey({required List<int> seed, required List<int> publicKeyBytes})
-    : seed = Uint8List.fromList(seed),
-      publicKeyBytes = Uint8List.fromList(publicKeyBytes);
+  _StoredDeviceKey({
+    required List<int> seed,
+    required List<int> publicKeyBytes,
+    required this.credentialId,
+  }) : seed = Uint8List.fromList(seed),
+       publicKeyBytes = Uint8List.fromList(publicKeyBytes);
 
   final Uint8List seed;
   final Uint8List publicKeyBytes;
+  final String? credentialId;
 }

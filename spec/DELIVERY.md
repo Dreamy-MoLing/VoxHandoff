@@ -54,6 +54,7 @@
 - 官方 Flutter 3.44.6 / Dart 3.12.2 SDK archive 已固定版本与 SHA-256，生成 Windows/Linux/macOS/iOS/Android 共用客户端工程；Dart protocol package 和客户端均进入 `npm run flutter:check` 的真实 analyze/test 门；
 - Flutter shell 已建立 Riverpod application/domain 分层、原创“夜航信号台”token/静态信号镜和未配对本地草稿体验；发送默认禁用，草稿须显式确认，request acceptance 必须匹配预生成 identity，`uncertain` 禁止覆盖或静默重提；桌面/390px 手机 golden、响应式 widget 和文字对比度/标签/触控目标 accessibility test 已进入质量门；
 - Dart 客户端在签署配对 proof/confirmation 前必须严格解析 Gateway 待签 bytes，并以本地已检查的 audience、fingerprint、scope 与 credential facts 逐字节重建比对；`DeviceKeyVault` 已隔离待配对 Ed25519 seed、规范 SPKI/fingerprint 与签名能力，RFC 8032 向量、重启读回、损坏拒绝和显式丢弃均有离线测试。真实 OS secure storage adapter 与五端设备测试仍是 M2 后续门；
+- 客户端配对 application coordinator 已固定 `Begin → owner approval → Complete → Confirm → credential commit` 状态机：challenge/signature/token 不进入公开 UI state，Complete 兼容 token 非空即拒绝，Confirm 成功和 credential vault 落盘前不显示 paired；网络结果不明不自动重试，只有用户显式恢复才复用同一签名，恢复冲突继续保持 `uncertain`。待配对密钥仅在凭据保存后幂等提升为 active，离线测试覆盖双签名、未批准、篡改事实、提前 token、落盘失败、重启恢复与远端可能已激活时的删除确认；
 - Dart protocol 依赖经真实 pub solver 将 `protobuf` 修正为与 `grpc 5.1.0` 相容的 6.x，不使用 dependency override；PowerSync/Drift 尚未进入运行依赖，等待 M2 同步 spike 和许可证/运维 gate；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:agent_talk_client/domain/device_pairing.dart';
 import 'package:agent_talk_client/infrastructure/security/device_key_vault.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -112,13 +113,20 @@ void main() {
       );
       final identity = await vault.createPendingKey();
       final recordKey = store.values.keys.single;
+      expect(recordKey, endsWith(identity.keyReference));
       final record =
           jsonDecode(store.values[recordKey]!) as Map<String, Object?>;
       record['public_key'] = base64UrlEncode(List.filled(32, 0));
       store.values[recordKey] = jsonEncode(record);
-
       expect(
-        () => vault.sign(identity.keyReference, const [1]),
+        await store.read(
+          'agent-talk.v1.pending-device-key.${identity.keyReference}',
+        ),
+        isNotNull,
+      );
+
+      await expectLater(
+        vault.sign(identity.keyReference, const [1]),
         throwsA(
           isA<DeviceKeyVaultException>().having(
             (error) => error.code,
@@ -129,6 +137,39 @@ void main() {
       );
       await vault.discard(identity.keyReference);
       expect(store.values, isEmpty);
+    },
+  );
+
+  test(
+    'promotes a pending key idempotently without exposing it to discard',
+    () async {
+      final store = FakeSecureValueStore();
+      final vault = DeviceKeyVault(
+        store: store,
+        random: Random(13),
+        seedFactory: () async => rfcSeed,
+      );
+      final identity = await vault.createPendingKey();
+
+      await vault.promotePendingKey(identity.keyReference, 'credential-1');
+      await vault.promotePendingKey(identity.keyReference, 'credential-1');
+      await vault.discard(identity.keyReference);
+
+      expect(store.values.keys.single, contains('active-device-key'));
+      expect(
+        await vault.inspect(identity.keyReference),
+        isA<DevicePublicIdentity>(),
+      );
+      expect(
+        () => vault.promotePendingKey(identity.keyReference, 'credential-2'),
+        throwsA(
+          isA<DeviceKeyVaultException>().having(
+            (error) => error.code,
+            'code',
+            'credential_conflict',
+          ),
+        ),
+      );
     },
   );
 }
