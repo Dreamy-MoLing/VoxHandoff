@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import {
   DeviceSignatureAlgorithm,
+  approvalDecisionPayload,
   administratorPairingPayload,
   credentialRefreshPayload,
   deviceRevocationPayload,
@@ -587,6 +588,29 @@ test(
         leaseRevision: renewed.lease.revision,
         decision: "approved" as const,
         operationSummarySha256: "c".repeat(64),
+        credentialId: administratorCredentialId,
+        gatewayAudience: "https://gateway.example",
+        deviceSignature: (() => {
+          const nonce = new Uint8Array(32).fill(10);
+          const payload = approvalDecisionPayload({
+            credentialId: administratorCredentialId,
+            deviceId,
+            hostIdentity: nodeId,
+            gatewayAudience: "https://gateway.example",
+            requestId: makeInput(1).requestId,
+            approvalId,
+            decision: "approve",
+            operationSummarySha256: "c".repeat(64),
+            nonce,
+          });
+          return {
+            $typeName: "agent_talk.v1.DeviceSignature" as const,
+            credentialId: administratorCredentialId,
+            nonce,
+            signature: new Uint8Array(sign(null, payload, administratorKeys.privateKey)),
+            algorithm: DeviceSignatureAlgorithm.ED25519,
+          };
+        })(),
       };
       assert.equal((await acceptApprovalCommand(recreatedGatewayLedger, approvalInput, dependencies)).kind, "accepted");
       assert.equal((await acceptApprovalCommand(recreatedGatewayLedger, approvalInput, dependencies)).kind, "existing");

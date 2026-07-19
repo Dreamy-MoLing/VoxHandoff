@@ -22,6 +22,7 @@ import type {
   ClarificationRecord,
   ClarificationResolutionFacts,
   ControlCommandRecord,
+  DeviceSignatureCredentialRecord,
   InteractionLedger,
   InteractionLedgerTransaction,
   InteractionRequestRecord,
@@ -301,6 +302,52 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
       state: stringAt(data, "state") as ApprovalRecord["state"],
       expiresAt: dateAt(data, "expires_at"),
     };
+  }
+
+  async lockDeviceSignatureCredential(
+    credentialId: string,
+  ): Promise<DeviceSignatureCredentialRecord | undefined> {
+    const result = await this.client.query<UnknownRow>(
+      `SELECT c.credential_id, c.device_id, c.state = 'active' AS active,
+              d.status = 'active' AS device_active, c.public_key_spki,
+              c.public_key_sha256, c.gateway_audience, c.scopes
+       FROM agent_talk.device_credentials c
+       JOIN agent_talk.devices d ON d.device_id = c.device_id
+       WHERE c.credential_id = $1 FOR UPDATE OF c`,
+      [credentialId],
+    );
+    const current = result.rows[0];
+    if (current === undefined) return undefined;
+    const data = row(current);
+    const key = data.public_key_spki;
+    const scopes = data.scopes;
+    if (!(key instanceof Uint8Array) || !Array.isArray(scopes) || !scopes.every((scope) => typeof scope === "string")) {
+      throw new Error("invalid PostgreSQL device signature credential");
+    }
+    return {
+      credentialId: stringAt(data, "credential_id"),
+      deviceId: stringAt(data, "device_id"),
+      active: booleanAt(data, "active"),
+      deviceActive: booleanAt(data, "device_active"),
+      publicKeySpki: new Uint8Array(key),
+      publicKeySha256: stringAt(data, "public_key_sha256"),
+      gatewayAudience: stringAt(data, "gateway_audience"),
+      scopes,
+    };
+  }
+
+  async recordDeviceSignatureNonce(
+    credentialId: string,
+    purpose: string,
+    nonceSha256: string,
+    usedAt: Date,
+  ): Promise<boolean> {
+    const result = await this.client.query(
+      `INSERT INTO agent_talk.device_signature_nonces (credential_id, purpose, nonce_sha256, used_at)
+       VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+      [credentialId, purpose, nonceSha256, usedAt],
+    );
+    return result.rowCount === 1;
   }
 
   async expireApproval(approvalId: string, occurredAt: Date): Promise<boolean> {

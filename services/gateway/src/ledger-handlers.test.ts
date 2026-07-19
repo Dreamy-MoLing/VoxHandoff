@@ -105,6 +105,7 @@ function setup() {
   const handlers = new LedgerBackedGatewayHandlers(store, {
     now: () => new Date("2030-01-01T00:00:00.000Z"),
     newOpaqueId: () => `generated-${++nextId}`,
+    gatewayAudience: "https://gateway.example",
   });
   return { store, handlers };
 }

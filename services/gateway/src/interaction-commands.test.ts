@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync, sign } from "node:crypto";
 import test from "node:test";
+
+import { DeviceSignatureAlgorithm, approvalDecisionPayload } from "@agent-talk/protocol";
+import { normalizeEd25519PublicKey } from "./device-crypto.js";
 
 import {
   acceptApprovalCommand,
@@ -14,6 +18,7 @@ import type {
   ClarificationRecord,
   ClarificationResolutionFacts,
   ControlCommandRecord,
+  DeviceSignatureCredentialRecord,
   InteractionLedger,
   InteractionLedgerTransaction,
   InteractionRequestRecord,
@@ -70,6 +75,8 @@ class FakeInteractionLedger implements InteractionLedger, InteractionLedgerTrans
     expiresAt: new Date("2030-01-01T00:01:00.000Z"),
   };
   clarificationFacts: ClarificationResolutionFacts | undefined;
+  signatureCredential: DeviceSignatureCredentialRecord | undefined;
+  signatureNonces = new Set<string>();
 
   async interactionTransaction<T>(work: (transaction: InteractionLedgerTransaction) => Promise<T>): Promise<T> {
     return work(this);
@@ -98,6 +105,15 @@ class FakeInteractionLedger implements InteractionLedger, InteractionLedgerTrans
     return this.approval?.approvalId === approvalId && this.approval.requestId === requestId
       ? this.approval
       : undefined;
+  }
+  async lockDeviceSignatureCredential(credentialId: string) {
+    return this.signatureCredential?.credentialId === credentialId ? this.signatureCredential : undefined;
+  }
+  async recordDeviceSignatureNonce(credentialId: string, purpose: string, nonceSha256: string) {
+    const identity = `${credentialId}\0${purpose}\0${nonceSha256}`;
+    if (this.signatureNonces.has(identity)) return false;
+    this.signatureNonces.add(identity);
+    return true;
   }
   async expireApproval(approvalId: string): Promise<boolean> {
     if (this.approval?.approvalId !== approvalId || this.approval.state !== "pending") return false;
@@ -189,37 +205,86 @@ test("rejects command and idempotency identity reuse", async () => {
   );
 });
 
-const approvalInput = {
-  commandId: "approval-command-1",
-  idempotencyKey: "approval-idempotency-1",
-  deviceId: "device-1",
-  conversationId: "conversation-1",
-  requestId: "request-1",
-  approvalId: "approval-1",
-  leaseId: "lease-1",
-  leaseRevision: 2n,
-  decision: "approved" as const,
-  operationSummarySha256: "b".repeat(64),
-};
+const approvalKeys = generateKeyPairSync("ed25519");
+const approvalSpki = new Uint8Array(approvalKeys.publicKey.export({ format: "der", type: "spki" }));
+const approvalPublicKey = normalizeEd25519PublicKey(approvalSpki);
+
+function enableApprovalCredential(ledger: FakeInteractionLedger): void {
+  ledger.signatureCredential = {
+    credentialId: "credential-1",
+    deviceId: "device-1",
+    active: true,
+    deviceActive: true,
+    publicKeySpki: approvalSpki,
+    publicKeySha256: approvalPublicKey.sha256,
+    gatewayAudience: "https://gateway.example",
+    scopes: ["approve"],
+  };
+}
+
+function approvalInput(overrides: Partial<{
+  commandId: string;
+  idempotencyKey: string;
+  decision: "approved" | "rejected";
+  operationSummarySha256: string;
+  nonceFill: number;
+}> = {}) {
+  const nonce = new Uint8Array(32).fill(overrides.nonceFill ?? 6);
+  const values = {
+    commandId: overrides.commandId ?? "approval-command-1",
+    idempotencyKey: overrides.idempotencyKey ?? "approval-idempotency-1",
+    deviceId: "device-1",
+    conversationId: "conversation-1",
+    requestId: "request-1",
+    approvalId: "approval-1",
+    leaseId: "lease-1",
+    leaseRevision: 2n,
+    decision: overrides.decision ?? "approved",
+    operationSummarySha256: overrides.operationSummarySha256 ?? "b".repeat(64),
+    credentialId: "credential-1",
+    gatewayAudience: "https://gateway.example",
+  } as const;
+  return {
+    ...values,
+    deviceSignature: {
+      $typeName: "agent_talk.v1.DeviceSignature" as const,
+      credentialId: values.credentialId,
+      nonce,
+      signature: new Uint8Array(sign(null, approvalDecisionPayload({
+        credentialId: values.credentialId,
+        deviceId: values.deviceId,
+        hostIdentity: "node-1",
+        gatewayAudience: values.gatewayAudience,
+        requestId: values.requestId,
+        approvalId: values.approvalId,
+        decision: values.decision === "approved" ? "approve" : "deny",
+        operationSummarySha256: values.operationSummarySha256,
+        nonce,
+      }), approvalKeys.privateKey)),
+      algorithm: DeviceSignatureAlgorithm.ED25519,
+    },
+  };
+}
 
 test("resolves a pending approval once and returns the original decision on exact retry", async () => {
   const ledger = new FakeInteractionLedger();
   ledger.device = { deviceId: "device-1", active: true, scopes: ["approve"] };
+  enableApprovalCredential(ledger);
   const deps = dependencies();
-  assert.equal((await acceptApprovalCommand(ledger, approvalInput, deps)).kind, "accepted");
+  assert.equal((await acceptApprovalCommand(ledger, approvalInput(), deps)).kind, "accepted");
   assert.equal(ledger.approval?.state, "approved");
   assert.equal(ledger.approvalFacts?.command.targetId, "approval-1");
-  assert.equal((await acceptApprovalCommand(ledger, approvalInput, deps)).kind, "existing");
+  assert.equal((await acceptApprovalCommand(ledger, approvalInput(), deps)).kind, "existing");
   await assert.rejects(
     acceptApprovalCommand(
       ledger,
-      { ...approvalInput, commandId: "approval-command-2", idempotencyKey: "approval-idempotency-2" },
+      approvalInput({ commandId: "approval-command-2", idempotencyKey: "approval-idempotency-2", nonceFill: 7 }),
       deps,
     ),
     (error: unknown) => error instanceof InteractionCommandError && error.code === "approval_already_resolved",
   );
   await assert.rejects(
-    acceptApprovalCommand(ledger, { ...approvalInput, decision: "rejected" }, deps),
+    acceptApprovalCommand(ledger, approvalInput({ decision: "rejected", nonceFill: 8 }), deps),
     (error: unknown) => error instanceof InteractionCommandError && error.code === "idempotency_conflict",
   );
   assert.equal(ledger.commands.length, 1);
@@ -239,13 +304,14 @@ test("never dispatches approval without exact scope, summary, pending state, and
     },
   ];
   const inputs = [
-    approvalInput,
-    { ...approvalInput, operationSummarySha256: "c".repeat(64) },
-    approvalInput,
-    approvalInput,
+    approvalInput(),
+    approvalInput({ operationSummarySha256: "c".repeat(64) }),
+    approvalInput(),
+    approvalInput(),
   ];
   for (let index = 0; index < scenarios.length; index += 1) {
     const ledger = new FakeInteractionLedger();
+    enableApprovalCredential(ledger);
     scenarios[index]!(ledger);
     await assert.rejects(
       acceptApprovalCommand(ledger, inputs[index]!, dependencies()),
@@ -253,6 +319,23 @@ test("never dispatches approval without exact scope, summary, pending state, and
     );
     assert.equal(ledger.approvalFacts, undefined);
   }
+});
+
+test("never accepts an approval with a missing or altered device signature", async () => {
+  const ledger = new FakeInteractionLedger();
+  ledger.device = { deviceId: "device-1", active: true, scopes: ["approve"] };
+  enableApprovalCredential(ledger);
+  const altered = approvalInput();
+  altered.deviceSignature.signature[0] = (altered.deviceSignature.signature[0] ?? 0) ^ 1;
+  for (const candidate of [altered, { ...approvalInput(), deviceSignature: undefined }]) {
+    await assert.rejects(
+      acceptApprovalCommand(ledger, candidate, dependencies()),
+      (error: unknown) =>
+        error instanceof InteractionCommandError &&
+        ["approval_signature_invalid", "invalid_command"].includes(error.code),
+    );
+  }
+  assert.equal(ledger.approvalFacts, undefined);
 });
 
 const clarificationInput = {

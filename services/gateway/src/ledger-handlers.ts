@@ -45,6 +45,7 @@ export interface LedgerBackedGatewayStore extends GatewayLedger, ControlLeaseLed
 export interface LedgerHandlerDependencies {
   now(): Date;
   newOpaqueId(): string;
+  gatewayAudience: string;
 }
 
 export interface NodeStreamDelegate {
@@ -137,7 +138,9 @@ function toConnectError(error: GatewayCommandError): ConnectError {
 }
 
 function interactionConnectError(error: InteractionCommandError): ConnectError {
-  const code = ["device_not_found", "device_revoked", "scope_missing", "control_lease_lost"].includes(error.code)
+  const code = error.code === "approval_signature_invalid"
+    ? Code.Unauthenticated
+    : ["device_not_found", "device_revoked", "scope_missing", "control_lease_lost"].includes(error.code)
     ? Code.PermissionDenied
     : ["invalid_command", "idempotency_conflict", "command_id_conflict"].includes(error.code)
       ? Code.InvalidArgument
@@ -376,6 +379,9 @@ export class LedgerBackedGatewayHandlers implements GatewayStreamHandlers {
               leaseRevision: command.leaseRevision,
               decision: approval.decision === ApprovalDecision.APPROVE ? "approved" : "rejected",
               operationSummarySha256: approval.operationSummarySha256,
+              credentialId: context.principal.credentialId ?? "",
+              gatewayAudience: this.dependencies.gatewayAudience,
+              deviceSignature: approval.deviceSignature,
             },
             this.dependencies,
           );

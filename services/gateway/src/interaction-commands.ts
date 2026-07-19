@@ -1,5 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import {
+  DeviceSignatureAlgorithm,
+  approvalDecisionPayload,
+  type DeviceSignature,
+} from "@agent-talk/protocol";
+
+import { normalizeEd25519PublicKey, sha256, validateNonce, verifyEd25519Signature } from "./device-crypto.js";
 import type { AcceptedRequestRecord } from "./ledger.js";
 import type {
   ApprovalResolutionFacts,
@@ -36,6 +43,9 @@ export interface ApprovalCommandInput {
   leaseRevision: bigint;
   decision: "approved" | "rejected";
   operationSummarySha256: string;
+  credentialId: string;
+  gatewayAudience: string;
+  deviceSignature: DeviceSignature | undefined;
 }
 
 export type ApprovalCommandResult =
@@ -79,6 +89,8 @@ export type InteractionCommandErrorCode =
   | "approval_summary_changed"
   | "approval_already_resolved"
   | "approval_expired"
+  | "approval_signature_invalid"
+  | "approval_nonce_replayed"
   | "clarification_not_found"
   | "clarification_already_resolved"
   | "clarification_expired"
@@ -123,12 +135,15 @@ function sameInterrupt(command: ControlCommandRecord, input: InterruptCommandInp
 }
 
 function approvalPayloadHash(input: ApprovalCommandInput): string {
-  return createHash("sha256")
+  const hash = createHash("sha256")
     .update(
-      `approval\0${input.requestId}\0${input.approvalId}\0${input.decision}\0${input.operationSummarySha256}`,
+      `approval\0${input.requestId}\0${input.approvalId}\0${input.decision}\0${input.operationSummarySha256}\0${input.credentialId}\0`,
       "utf8",
-    )
-    .digest("hex");
+    );
+  if (input.deviceSignature !== undefined) {
+    hash.update(input.deviceSignature.nonce).update(input.deviceSignature.signature);
+  }
+  return hash.digest("hex");
 }
 
 function sameApproval(command: ControlCommandRecord, input: ApprovalCommandInput, hash: string): boolean {
@@ -263,29 +278,84 @@ export async function acceptApprovalCommand(
     ["requestId", input.requestId],
     ["approvalId", input.approvalId],
     ["leaseId", input.leaseId],
+    ["credentialId", input.credentialId],
   ] as const) requireOpaqueId(value, field);
-  if (input.leaseRevision === 0n || !/^[0-9a-f]{64}$/u.test(input.operationSummarySha256)) {
+  const signature = input.deviceSignature;
+  if (
+    input.leaseRevision === 0n ||
+    !/^[0-9a-f]{64}$/u.test(input.operationSummarySha256) ||
+    signature === undefined ||
+    signature.credentialId !== input.credentialId ||
+    signature.algorithm !== DeviceSignatureAlgorithm.ED25519 ||
+    signature.signature.byteLength !== 64
+  ) {
     fail("invalid_command", "Approval lease revision or operation summary hash is invalid.");
+  }
+  try {
+    validateNonce(signature.nonce);
+  } catch {
+    fail("approval_signature_invalid", "The approval device-signature nonce is invalid.");
   }
   const hash = approvalPayloadHash(input);
   const outcome = await ledger.interactionTransaction(async (transaction) => {
     const device = await transaction.lockDevice(input.deviceId);
     if (device === undefined) fail("device_not_found", "The paired device does not exist.");
     const existing = await transaction.findControlCommandByIdempotency(input.deviceId, input.idempotencyKey);
+    if (!device.active) fail("device_revoked", "The paired device has been revoked.");
+    if (!device.scopes.includes("approve")) fail("scope_missing", "The device cannot resolve approvals.");
+    const request = await transaction.lockInteractionRequest(input.requestId, input.conversationId);
+    if (request === undefined) fail("request_not_found", "The approval request was not found in this conversation.");
+    const approval = await transaction.lockApproval(input.approvalId, input.requestId);
+    if (approval === undefined || approval.nodeId !== request.nodeId || approval.agentId !== request.agentId) {
+      fail("approval_not_found", "The approval was not found on the accepted Agent route.");
+    }
+    if (approval.operationSummarySha256 !== input.operationSummarySha256) {
+      fail("approval_summary_changed", "The approval operation summary no longer matches.");
+    }
+    const credential = await transaction.lockDeviceSignatureCredential(input.credentialId);
+    if (
+      credential === undefined ||
+      !credential.active ||
+      !credential.deviceActive ||
+      credential.deviceId !== input.deviceId ||
+      credential.gatewayAudience !== input.gatewayAudience ||
+      !credential.scopes.includes("approve")
+    ) {
+      fail("approval_signature_invalid", "The approval credential binding is invalid.");
+    }
+    let publicKey;
+    try {
+      publicKey = normalizeEd25519PublicKey(credential.publicKeySpki);
+    } catch {
+      fail("approval_signature_invalid", "The approval credential key is invalid.");
+    }
+    if (publicKey.sha256 !== credential.publicKeySha256) {
+      fail("approval_signature_invalid", "The approval credential key binding is invalid.");
+    }
+    const signedPayload = approvalDecisionPayload({
+      credentialId: input.credentialId,
+      deviceId: input.deviceId,
+      hostIdentity: request.nodeId,
+      gatewayAudience: input.gatewayAudience,
+      requestId: input.requestId,
+      approvalId: input.approvalId,
+      decision: input.decision === "approved" ? "approve" : "deny",
+      operationSummarySha256: input.operationSummarySha256,
+      nonce: signature.nonce,
+    });
+    if (!verifyEd25519Signature(publicKey, signedPayload, signature.signature)) {
+      fail("approval_signature_invalid", "The approval device signature is invalid.");
+    }
     if (existing !== undefined) {
       if (!sameApproval(existing, input, hash)) {
         fail("idempotency_conflict", "The idempotency key is already bound to another control command.");
       }
-      const request = await transaction.lockInteractionRequest(input.requestId, input.conversationId);
-      if (request === undefined) throw new Error("existing approval command lost its request binding");
       return { kind: "existing" as const, request, command: existing };
     }
     if (
       await transaction.findControlCommandById(input.commandId) !== undefined ||
       await transaction.findSendRequestByCommand(input.deviceId, input.commandId) !== undefined
     ) fail("command_id_conflict", "The command identifier is already bound to another command.");
-    if (!device.active) fail("device_revoked", "The paired device has been revoked.");
-    if (!device.scopes.includes("approve")) fail("scope_missing", "The device cannot resolve approvals.");
     if (!(await transaction.lockConversation(input.conversationId))) {
       fail("conversation_not_found", "The selected conversation does not exist.");
     }
@@ -295,17 +365,16 @@ export async function acceptApprovalCommand(
       lease === undefined || lease.deviceId !== input.deviceId || lease.leaseId !== input.leaseId ||
       lease.revision !== input.leaseRevision || lease.expiresAt.getTime() <= now.getTime()
     ) fail("control_lease_lost", "The conversation control lease is no longer current.");
-    const request = await transaction.lockInteractionRequest(input.requestId, input.conversationId);
-    if (request === undefined) fail("request_not_found", "The approval request was not found in this conversation.");
     if (["completed", "failed", "cancelled", "interrupted"].includes(request.state)) {
       fail("request_terminal", "A terminal request cannot accept an approval decision.");
     }
-    const approval = await transaction.lockApproval(input.approvalId, input.requestId);
-    if (approval === undefined || approval.nodeId !== request.nodeId || approval.agentId !== request.agentId) {
-      fail("approval_not_found", "The approval was not found on the accepted Agent route.");
-    }
-    if (approval.operationSummarySha256 !== input.operationSummarySha256) {
-      fail("approval_summary_changed", "The approval operation summary no longer matches.");
+    if (!await transaction.recordDeviceSignatureNonce(
+      input.credentialId,
+      "approval_decision",
+      sha256(signature.nonce),
+      now,
+    )) {
+      fail("approval_nonce_replayed", "The approval device-signature nonce was already used.");
     }
     if (approval.state !== "pending") {
       fail("approval_already_resolved", "The approval is already resolved or unavailable.");

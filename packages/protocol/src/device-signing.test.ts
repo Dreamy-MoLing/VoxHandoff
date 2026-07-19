@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  approvalDecisionPayload,
   DeviceSigningContractError,
   administratorPairingPayload,
   canonicalSignedPayload,
@@ -98,5 +99,27 @@ test("refresh payload rejects ambiguous hashes and non-positive generations", ()
   assert.throws(
     () => credentialRefreshPayload({ ...input, generation: 0n }),
     (error: unknown) => error instanceof DeviceSigningContractError && error.code === "invalid_field",
+  );
+});
+
+test("approval signatures bind the actual Agent host and Gateway audience", () => {
+  const input = {
+    credentialId: "credential-1",
+    deviceId: "device-1",
+    hostIdentity: "node-1",
+    gatewayAudience: "https://gateway.example",
+    requestId: "request-1",
+    approvalId: "approval-1",
+    decision: "approve" as const,
+    operationSummarySha256: "a".repeat(64),
+    nonce: new Uint8Array(32).fill(3),
+  };
+  assert.notDeepEqual(
+    approvalDecisionPayload(input),
+    approvalDecisionPayload({ ...input, hostIdentity: "node-2" }),
+  );
+  assert.notDeepEqual(
+    approvalDecisionPayload(input),
+    approvalDecisionPayload({ ...input, gatewayAudience: "https://other.example" }),
   );
 });

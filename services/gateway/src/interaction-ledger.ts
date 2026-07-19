@@ -38,6 +38,17 @@ export interface ApprovalRecord {
   expiresAt: Date;
 }
 
+export interface DeviceSignatureCredentialRecord {
+  credentialId: string;
+  deviceId: string;
+  active: boolean;
+  deviceActive: boolean;
+  publicKeySpki: Uint8Array;
+  publicKeySha256: string;
+  gatewayAudience: string;
+  scopes: readonly string[];
+}
+
 export interface ApprovalResolutionFacts {
   command: ControlCommandRecord;
   approvalId: string;
@@ -98,6 +109,13 @@ export interface InteractionLedgerTransaction {
   findInterruptByRequest(requestId: string): Promise<ControlCommandRecord | undefined>;
   lockInteractionRequest(requestId: string, conversationId: string): Promise<InteractionRequestRecord | undefined>;
   lockApproval(approvalId: string, requestId: string): Promise<ApprovalRecord | undefined>;
+  lockDeviceSignatureCredential(credentialId: string): Promise<DeviceSignatureCredentialRecord | undefined>;
+  recordDeviceSignatureNonce(
+    credentialId: string,
+    purpose: string,
+    nonceSha256: string,
+    usedAt: Date,
+  ): Promise<boolean>;
   expireApproval(approvalId: string, occurredAt: Date): Promise<boolean>;
   lockClarification(clarificationId: string, requestId: string): Promise<ClarificationRecord | undefined>;
   expireClarification(clarificationId: string, occurredAt: Date): Promise<boolean>;

@@ -48,6 +48,7 @@
 - `0006_device_pairing.sql` 只向前增加 pairing、pending/active credential、owner-bootstrap origin、签名 nonce 和持久限速窗口；pending credential 不进入 active device 权威表，Confirm 才同事务创建设备并保存 bearer hash。固定 PostgreSQL 17 已验证完整双签名配对、Gateway/ledger 重建后确认、migration 幂等/篡改门及数据库中无明文 token；
 - `0007_credential_rotation.sql` 保存已消费 refresh hash/generation；refresh 必须由绑定设备对 token hash、generation、audience 和单次 nonce 签名，成功事务废止旧 access/refresh 并递增 generation。只有旧 token 的有效设备签名重放才撤销整个设备凭据族，错误签名不能借机 DoS；远程撤销要求 `administer` active credential、目标/原因/audience/nonce 签名。离线与固定 PostgreSQL 17 均覆盖轮换、历史、hash-only、撤销和审计；
 - PairingService 已接通全部七个 RPC；Inspect/Approve/Revoke 从当前 bearer 绑定管理员 device/credential，rate-limit identity 由受信 server callback 提供而不信任客户端转发头。PostgreSQL access authority 只接受 active device+credential、匹配 audience/scope、未过期且当前 generation/token hash；Client 每帧与 live 出站复核 generation，refresh 立即关闭旧流，revoke 关闭全部流。真实 HTTP/2 TLS 测试确认未信任自签名证书失败、显式 CA 信任后 Begin 成功；
+- Client Approval 执行层强制 Ed25519 设备签名，payload 绑定 credential/device、实际 Node host、Gateway audience、request/approval、原 operation hash、approve/deny 和单次 nonce；credential active/scope/key binding、签名、nonce 消费与 approval CAS 同一事务。签名与 nonce 进入 control-command payload hash，精确重试验证原签名后返回既有决定；缺失、篡改、跨 host/audience 或重放不能产生 Node dispatch；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 

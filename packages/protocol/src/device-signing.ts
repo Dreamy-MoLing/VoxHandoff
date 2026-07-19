@@ -216,6 +216,7 @@ export interface ApprovalDecisionPayloadInput {
   credentialId: string;
   deviceId: string;
   hostIdentity: string;
+  gatewayAudience: string;
   requestId: string;
   approvalId: string;
   decision: "approve" | "deny";
@@ -228,6 +229,7 @@ export function approvalDecisionPayload(input: ApprovalDecisionPayloadInput): Ui
     { name: "credential_id", value: input.credentialId },
     { name: "device_id", value: input.deviceId },
     { name: "host_identity", value: input.hostIdentity },
+    { name: "gateway_audience", value: input.gatewayAudience },
     { name: "request_id", value: input.requestId },
     { name: "approval_id", value: input.approvalId },
     { name: "decision", value: input.decision },
