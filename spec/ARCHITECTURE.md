@@ -306,6 +306,8 @@ Gateway/Client 重启或重连时从耐久账本恢复 pending approval。Agent 
 
 重连时 Client 发送每个活跃 conversation 的 `lastAckSequence`。Gateway 在短期窗口续传；游标过旧或存在缺口时，Client 先以 PowerSync 本地快照收敛，再订阅最新事件。未知请求只按 request ID 查询，绝不自动复制提交。
 
+Flutter Client 的 protobuf 只停留在 Gateway infrastructure adapter：mapper 对 protocol、event/payload 对应关系、opaque identity、uint64 sequence、UTC timestamp、审批摘要 hash 和 1 MiB envelope 上限 fail closed，再转换为不依赖 protobuf/Flutter 的完整领域事件。Client 本地事件账本必须把完整事件与 conversation cursor 在同一事务提交，并以 `expectedPreviousSequence` 做 CAS；提交成功或提交响应丢失后读回完全相同事实，才能发送包含 conversation/event/sequence 的精确 Ack。已提交的完全相同重复事件可再次 Ack 但不得再次发布到 view；同 sequence 的 connection/device/conversation/session/request、时间、类型或 envelope hash 任一变化均为冲突。缺口事件不落库、不展示、不 Ack，只按当前耐久 cursor 发出有界 replay；相同缺口尚未收敛时不重复发送 replay command。合法 Node 重连可以使后续递增 sequence 使用新的 connection ID，因此 connection ID 参与逐事件防冲突而不被错误固定为整段 conversation 常量。mapper、账本或收敛异常必须关闭当前流且不得自动重提用户命令。
+
 Client 离线时只能保存草稿和明确列入 allowlist 的低风险元数据变更。可执行 Agent command 不进入自动排空的 Client outbox；用户点击发送但尚未建立可认证 live stream 时仍保持草稿并显示“未发送”。写出 command 后连接中断且未收到耐久 acceptance proof 时进入 `uncertain`，重连只执行 `GetRequest(requestId)` 或 replay，不重新调用 Send。
 
 ### 7.4 多设备冲突

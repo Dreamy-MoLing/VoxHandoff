@@ -228,6 +228,8 @@ class GrpcGatewayLiveTransport {
         !_metadata(handshake.capabilityRevision) ||
         !handshake.hasCapabilities() ||
         !handshake.capabilities.eventStream ||
+        !handshake.capabilities.replay ||
+        !handshake.capabilities.sequenceRecovery ||
         handshake.capabilities.attachments ||
         !_sameStrings(handshake.scopes, expectedScopes)) {
       throw const GatewayLiveTransportException(
@@ -290,7 +292,17 @@ class GrpcGatewayLiveTransport {
   }
 }
 
-class GatewayLiveConnection {
+abstract interface class GatewayLiveEventConnection {
+  Stream<GatewayLiveFrame> get frames;
+
+  void sendCommand(ClientCommand command);
+
+  void acknowledge(Ack acknowledgement);
+
+  Future<void> close();
+}
+
+class GatewayLiveConnection implements GatewayLiveEventConnection {
   GatewayLiveConnection._({
     required this.handshake,
     required this._frames,
@@ -304,8 +316,10 @@ class GatewayLiveConnection {
   final StreamSubscription<ConnectClientResponse> _subscription;
   bool _closed = false;
 
+  @override
   Stream<GatewayLiveFrame> get frames => _frames.stream;
 
+  @override
   void sendCommand(ClientCommand command) {
     if (command.whichCommand() == ClientCommand_Command.notSet) {
       throw const FormatException('The Client command body is missing.');
@@ -313,6 +327,7 @@ class GatewayLiveConnection {
     _send(ConnectClientRequest(command: command.deepCopy()));
   }
 
+  @override
   void acknowledge(Ack acknowledgement) {
     if (acknowledgement.conversationId.isEmpty ||
         acknowledgement.eventId.isEmpty ||
@@ -340,6 +355,7 @@ class GatewayLiveConnection {
     _requests.add(request);
   }
 
+  @override
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
