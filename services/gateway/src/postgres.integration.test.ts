@@ -13,6 +13,7 @@ import {
   administratorPairingPayload,
   credentialRefreshPayload,
   deviceRevocationPayload,
+  ownerBootstrapPayload,
 } from "@agent-talk/protocol";
 
 import { acceptRequest, GatewayCommandError, type AcceptRequestInput } from "./acceptance.js";
@@ -31,6 +32,7 @@ import { normalizeEd25519PublicKey, sha256 } from "./device-crypto.js";
 import { DeviceStreamIdentityVerifier, PostgresDeviceCredentialAuthority } from "./device-identity.js";
 import { PairingCoordinator } from "./pairing.js";
 import { PostgresPairingLedger } from "./postgres-pairing-ledger.js";
+import { bootstrapInitialOwner, PostgresOwnerBootstrapStore } from "./owner-bootstrap.js";
 
 const databaseUrl = process.env.AGENT_TALK_POSTGRES_URL;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -80,36 +82,49 @@ test(
         administratorKeys.publicKey.export({ format: "der", type: "spki" }),
       );
       const administratorPublicKey = normalizeEd25519PublicKey(administratorSpki);
-      await pool.query(
-        `INSERT INTO agent_talk.devices (
-           device_id, display_name, public_key_sha256, status, scopes, paired_at
-         ) VALUES ($1, 'test device', $2, 'active', ARRAY['send', 'interrupt', 'approve', 'administer'], $3)`,
-        [deviceId, administratorPublicKey.sha256, pairedAt],
-      );
       const administratorCredentialId = `administrator-credential-${suffix}`;
-      await pool.query(
-        `INSERT INTO agent_talk.device_credentials (
-           credential_id, pairing_id, origin, device_id, state, public_key_spki, public_key_sha256,
-           gateway_audience, scopes, generation, access_token_sha256, access_expires_at,
-           refresh_token_sha256, refresh_expires_at, family_expires_at, confirmation_payload,
-           confirmation_expires_at, created_at, activated_at, revoked_at
-         ) VALUES (
-           $1, NULL, 'owner_bootstrap', $2, 'active', $3, $4,
-           'https://gateway.example', ARRAY['send', 'interrupt', 'approve', 'administer'],
-           1, $5, $6, $7, $8, $8, $9, $6, $10, $10, NULL
-         )`,
-        [
-          administratorCredentialId,
-          deviceId,
-          Buffer.from(administratorSpki),
-          administratorPublicKey.sha256,
-          "d".repeat(64),
-          new Date("2030-01-01T00:15:00.000Z"),
-          "e".repeat(64),
-          new Date("2030-01-31T00:00:00.000Z"),
-          Buffer.from([1]),
-          pairedAt,
-        ],
+      const ownerNonce = new Uint8Array(32).fill(3);
+      const ownerPayload = ownerBootstrapPayload({
+        gatewayAudience: "https://gateway.example",
+        deviceFingerprint: administratorPublicKey.fingerprint,
+        scopes: ["administer", "approve", "interrupt", "observe", "send"],
+        nonce: ownerNonce,
+      });
+      const owner = await bootstrapInitialOwner(new PostgresOwnerBootstrapStore(pool), {
+        deviceDisplayName: "test device",
+        devicePublicKey: administratorSpki,
+        expectedGatewayAudience: "https://gateway.example",
+        deviceSignature: {
+          $typeName: "agent_talk.v1.DeviceSignature",
+          credentialId: "",
+          nonce: ownerNonce,
+          signature: new Uint8Array(sign(null, ownerPayload, administratorKeys.privateKey)),
+          algorithm: DeviceSignatureAlgorithm.ED25519,
+        },
+      }, {
+        gatewayAudience: "https://gateway.example",
+        now: () => pairedAt,
+        newOpaqueId: (prefix) => {
+          if (prefix === "device") return deviceId;
+          if (prefix === "credential") return administratorCredentialId;
+          return `owner-${prefix}-${suffix}`;
+        },
+        newOpaqueSecret: (bytes = 32) => `${bytes}-${"o".repeat(bytes)}`,
+      });
+      assert.equal(owner.deviceId, deviceId);
+      await assert.rejects(
+        bootstrapInitialOwner(new PostgresOwnerBootstrapStore(pool), {
+          deviceDisplayName: "duplicate owner",
+          devicePublicKey: administratorSpki,
+          expectedGatewayAudience: "https://gateway.example",
+          deviceSignature: {
+            $typeName: "agent_talk.v1.DeviceSignature",
+            credentialId: "",
+            nonce: ownerNonce,
+            signature: new Uint8Array(sign(null, ownerPayload, administratorKeys.privateKey)),
+            algorithm: DeviceSignatureAlgorithm.ED25519,
+          },
+        }, { gatewayAudience: "https://gateway.example" }),
       );
 
       const pairingDeviceKeys = generateKeyPairSync("ed25519");

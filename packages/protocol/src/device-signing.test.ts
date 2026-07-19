@@ -8,6 +8,7 @@ import {
   canonicalSignedPayload,
   credentialRefreshPayload,
   normalizeDeviceScopes,
+  ownerBootstrapPayload,
   pairingProofPayload,
 } from "./device-signing.js";
 
@@ -121,5 +122,30 @@ test("approval signatures bind the actual Agent host and Gateway audience", () =
   assert.notDeepEqual(
     approvalDecisionPayload(input),
     approvalDecisionPayload({ ...input, gatewayAudience: "https://other.example" }),
+  );
+});
+
+test("owner bootstrap proof binds audience, fingerprint, full scopes, and nonce", () => {
+  const input = {
+    gatewayAudience: "https://gateway.example",
+    deviceFingerprint: `sha256:${"a".repeat(64)}`,
+    scopes: ["send", "administer", "approve", "interrupt", "observe"],
+    nonce: new Uint8Array(32).fill(5),
+  };
+  const payload = ownerBootstrapPayload(input);
+  assert.deepEqual(
+    payload,
+    ownerBootstrapPayload({
+      ...input,
+      scopes: ["administer", "approve", "interrupt", "observe", "send"],
+    }),
+  );
+  assert.notDeepEqual(
+    payload,
+    ownerBootstrapPayload({ ...input, gatewayAudience: "https://other.example" }),
+  );
+  assert.notDeepEqual(
+    payload,
+    ownerBootstrapPayload({ ...input, nonce: new Uint8Array(32).fill(6) }),
   );
 });

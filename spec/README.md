@@ -1,6 +1,6 @@
 # Agent Talk 正式开发基线
 
-> 基线版本：1.31<br>
+> 基线版本：1.32<br>
 > 生效日期：2026-07-18<br>
 > 状态：Active
 
@@ -29,6 +29,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.32 | 2026-07-18 | 实现无公网 RPC 的初始 owner 本机引导、密钥持有证明与 PostgreSQL 单实例门 |
 | 1.31 | 2026-07-18 | 强制 Approval 绑定设备/credential/Node/audience/摘要/决定签名与事务 nonce |
 | 1.30 | 2026-07-18 | 接通 PostgreSQL access identity、逐帧 generation 复核与证书验证的 HTTPS PairingService |
 | 1.29 | 2026-07-18 | 实现 refresh 单次轮换/签名重放撤销与管理员签名设备撤销的耐久路径 |

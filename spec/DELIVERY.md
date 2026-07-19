@@ -4,7 +4,7 @@
 
 基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和远程 Dart generator 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。当前主机尚未安装 Dart/Flutter SDK，Dart 真编译从 M2 工具链开始执行。
 
-当前阶段：M1 公共协议与 Gateway。M-1 与 M0 已完成；耐久 Client/Node 控制面、交互命令与 live event 发布已建立，当前继续实现 HTTPS 配对/设备凭据和端到端重连收敛。
+当前阶段：M1 公共协议与 Gateway。M-1 与 M0 已完成；耐久 Client/Node 控制面、交互命令、live event、HTTPS 配对和设备凭据已建立，当前继续实现 owner 恢复和端到端重连收敛。
 
 已完成：
 
@@ -49,13 +49,14 @@
 - `0007_credential_rotation.sql` 保存已消费 refresh hash/generation；refresh 必须由绑定设备对 token hash、generation、audience 和单次 nonce 签名，成功事务废止旧 access/refresh 并递增 generation。只有旧 token 的有效设备签名重放才撤销整个设备凭据族，错误签名不能借机 DoS；远程撤销要求 `administer` active credential、目标/原因/audience/nonce 签名。离线与固定 PostgreSQL 17 均覆盖轮换、历史、hash-only、撤销和审计；
 - PairingService 已接通全部七个 RPC；Inspect/Approve/Revoke 从当前 bearer 绑定管理员 device/credential，rate-limit identity 由受信 server callback 提供而不信任客户端转发头。PostgreSQL access authority 只接受 active device+credential、匹配 audience/scope、未过期且当前 generation/token hash；Client 每帧与 live 出站复核 generation，refresh 立即关闭旧流，revoke 关闭全部流。真实 HTTP/2 TLS 测试确认未信任自签名证书失败、显式 CA 信任后 Begin 成功；
 - Client Approval 执行层强制 Ed25519 设备签名，payload 绑定 credential/device、实际 Node host、Gateway audience、request/approval、原 operation hash、approve/deny 和单次 nonce；credential active/scope/key binding、签名、nonce 消费与 approval CAS 同一事务。签名与 nonce 进入 control-command payload hash，精确重试验证原签名后返回既有决定；缺失、篡改、跨 host/audience 或重放不能产生 Node dispatch；
+- 初始 owner 只通过 Gateway 进程内本机/部署私有入口创建，不增加未认证网络 RPC；调用方必须提交绑定规范 Gateway audience、完整 owner scope、公钥 fingerprint 和 nonce 的 Ed25519 持钥证明。PostgreSQL advisory transaction lock 保证并发下只有一个 active `administer` owner，凭据只保存 access/refresh hash，真实 PostgreSQL 已覆盖重复引导拒绝与 Gateway 重建后的完整凭据链路；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
 未完成或未实测：
 
 - OpenClaw adapter；
-- HTTPS 配对/设备凭据的 Gateway 实现与端到端重连收敛；
+- 本机显式 owner 恢复（原 owner 凭据原子撤销）与 fake Client + fake Node 端到端重连/乱序/Gateway 重启收敛；
 - PostgreSQL/PowerSync/Drift 同步；
 - Flutter 五端客户端；
 - STT、GPT-SoVITS 和音频播放真链路；

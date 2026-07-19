@@ -116,7 +116,7 @@ export interface ApprovePairingInput {
   expectedGatewayFingerprint: string;
   expectedGatewayAudience: string;
   administratorDeviceId: string;
-  administratorSignature: DeviceSignature;
+  administratorSignature: DeviceSignature | undefined;
 }
 
 export interface CompletePairingInput {
@@ -433,7 +433,11 @@ export class PairingCoordinator {
     const pairingId = requireOpaque(input.pairingId, "Pairing ID");
     const userCode = normalizeUserCode(input.userCode);
     const approvedScopes = normalizeDeviceScopes(input.approvedScopes);
-    const signature = exactSignature(input.administratorSignature, input.administratorSignature.credentialId, true);
+    const signature = exactSignature(
+      input.administratorSignature,
+      input.administratorSignature?.credentialId ?? "",
+      true,
+    );
     const administratorProofSha256 = sha256(signature.signature);
     const result = await this.ledger.runPairingTransaction(async (transaction) => {
       const pairing = await transaction.lockPairingById(pairingId);
