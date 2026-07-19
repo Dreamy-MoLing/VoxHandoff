@@ -426,7 +426,7 @@ shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值�
 
 配对 wire contract 固定为 `Begin → Inspect/Approve → Complete → Confirm`：`Begin` 只产生短期 challenge 和待核对事实，不产生可用 token；`Inspect/Approve` 仅允许已验证的 `administer` 设备或等价本机私有入口；`Complete` 校验新设备对 Gateway 给出的 domain-separated payload 的 Ed25519 签名并生成待确认凭据；`Confirm` 再校验绑定 audience、device、credential、scope 的独立签名 payload，成功后才原子激活凭据并返回 token。早期 schema 中的 `CompletePairing.device_proof`、`CompletePairingResponse.access_token/refresh_token` 只为 wire 兼容保留，服务端不得把它们作为 proof 或提前签发通道。
 
-公钥只接受规范 Ed25519 SPKI DER，fingerprint 为规范公钥或 TLS 证书的 SHA-256；challenge、nonce、access token 和 refresh token 使用 CSPRNG。数据库只保存 bearer token 的 SHA-256 标识，不保存明文；日志、审计和错误不得包含 challenge、nonce、签名、公钥原文或 token。刷新事务必须锁定当前 credential generation，成功时同时废止旧 refresh、轮换 access/refresh 并递增 generation；已轮换 refresh 的再次出现视为重放并撤销该 credential family，而不是普通重试。可重复网络响应只能通过明确的短时加密/内存结果缓存实现，不能重新激活旧 token。
+公钥只接受规范 Ed25519 SPKI DER，fingerprint 为规范公钥或 TLS 证书的 SHA-256；challenge、nonce、access token 和 refresh token 使用 CSPRNG。数据库只保存 bearer token 的 SHA-256 标识，不保存明文；日志、审计和错误不得包含 challenge、nonce、签名、公钥原文或 token。刷新事务必须锁定当前 credential generation，成功时同时废止旧 refresh、轮换 access/refresh 并递增 generation；已轮换 refresh 的再次出现视为重放并撤销该 credential family，而不是普通重试。可重复网络响应只能通过明确的短时加密/内存结果缓存实现，不能重新激活旧 token。Confirm 的进程内缓存按 pairing、credential 与精确签名 hash 合并并发请求，最长保留两分钟；每次返回前必须以耐久账本复核 active generation、token hash、scope 和有效期，refresh/revoke/过期后不得返回旧 token，进程重启后无缓存则保持 `uncertain`。
 
 设备签名统一使用协议中标明的 domain、固定字段次序和长度前缀字节编码；签名 payload 由 Gateway 返回或由共享 helper 构造，禁止签署含糊 JSON、显示名或客户端自报地址。`ResolveApproval`、远程配对授权、scope 变更和撤销必须同时满足 bearer scope、实时撤销检查、单次 nonce 与设备签名；签名不能替代 control lease，也不能使 pending/expired/resolved 状态回退。
 

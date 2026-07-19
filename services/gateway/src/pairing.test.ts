@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 
 import {
   DeviceSignatureAlgorithm,
@@ -224,7 +225,11 @@ interface TestContext {
   devicePublicKey: Uint8Array;
 }
 
-function context(options: { maximumBeginsPerWindow?: number; pairingLifetimeMs?: number } = {}): TestContext {
+function context(options: {
+  maximumBeginsPerWindow?: number;
+  pairingLifetimeMs?: number;
+  confirmationResultCacheMs?: number;
+} = {}): TestContext {
   const ledger = new MemoryPairingLedger();
   const now = { value: new Date("2030-01-01T00:00:00.000Z") };
   let nextId = 0;
@@ -259,6 +264,9 @@ function context(options: { maximumBeginsPerWindow?: number; pairingLifetimeMs?:
     verificationUri: "https://gateway.example/pair",
     ...(options.maximumBeginsPerWindow === undefined ? {} : { maximumBeginsPerWindow: options.maximumBeginsPerWindow }),
     ...(options.pairingLifetimeMs === undefined ? {} : { pairingLifetimeMs: options.pairingLifetimeMs }),
+    ...(options.confirmationResultCacheMs === undefined
+      ? {}
+      : { confirmationResultCacheMs: options.confirmationResultCacheMs }),
     dependencies: {
       now: () => new Date(now.value),
       newOpaqueId: (prefix) => `${prefix}-${++nextId}`,
@@ -350,16 +358,23 @@ async function confirmDevice(testContext: TestContext) {
     legacyDeviceProof: "",
     deviceKeyProof: signature("", begun.deviceProofPayload, testContext.devicePrivateKey),
   });
-  const confirmed = await testContext.coordinator.confirm({
+  const confirmationProof = signature(
+    completed.credentialId,
+    completed.confirmationPayload,
+    testContext.devicePrivateKey,
+  );
+  const confirmationInput = {
     pairingId: begun.pairingId,
     credentialId: completed.credentialId,
-    deviceSignature: signature(
-      completed.credentialId,
-      completed.confirmationPayload,
-      testContext.devicePrivateKey,
-    ),
-  });
-  return { begun, completed, confirmed };
+    deviceSignature: confirmationProof,
+  };
+  const confirmations = await Promise.all([
+    testContext.coordinator.confirm(confirmationInput),
+    testContext.coordinator.confirm(confirmationInput),
+  ]);
+  const confirmed = confirmations[0];
+  assert.deepEqual(confirmations[1], confirmed);
+  return { begun, completed, confirmationProof, confirmed };
 }
 
 test("requires owner verification and two device signatures before issuing tokens", async () => {
@@ -396,14 +411,15 @@ test("requires owner verification and two device signatures before issuing token
     completed,
   );
 
+  const confirmationProof = signature(
+    completed.credentialId,
+    completed.confirmationPayload,
+    testContext.devicePrivateKey,
+  );
   const confirmed = await testContext.coordinator.confirm({
     pairingId: begun.pairingId,
     credentialId: completed.credentialId,
-    deviceSignature: signature(
-      completed.credentialId,
-      completed.confirmationPayload,
-      testContext.devicePrivateKey,
-    ),
+    deviceSignature: confirmationProof,
   });
   assert.equal(confirmed.deviceId, completed.deviceId);
   assert.notEqual(confirmed.accessToken, "");
@@ -414,15 +430,39 @@ test("requires owner verification and two device signatures before issuing token
   assert.equal(persisted.refreshTokenSha256, sha256(confirmed.refreshToken));
   assert.equal(JSON.stringify(testContext.ledger.auditFacts()).includes(confirmed.accessToken), false);
   assert.equal(JSON.stringify(testContext.ledger.auditFacts()).includes(confirmed.refreshToken), false);
+  assert.deepEqual(
+    await testContext.coordinator.confirm({
+      pairingId: begun.pairingId,
+      credentialId: completed.credentialId,
+      deviceSignature: confirmationProof,
+    }),
+    confirmed,
+  );
+  const changedProof = {
+    ...confirmationProof,
+    signature: Uint8Array.from(confirmationProof.signature),
+  };
+  changedProof.signature[0] = (changedProof.signature[0] ?? 0) ^ 1;
   await assert.rejects(
     testContext.coordinator.confirm({
       pairingId: begun.pairingId,
       credentialId: completed.credentialId,
-      deviceSignature: signature(
-        completed.credentialId,
-        completed.confirmationPayload,
-        testContext.devicePrivateKey,
-      ),
+      deviceSignature: changedProof,
+    }),
+    (error: unknown) => error instanceof PairingError && error.code === "pairing_conflict",
+  );
+});
+
+test("does not return a confirmation result after its short recovery window", async () => {
+  const testContext = context({ confirmationResultCacheMs: 20 });
+  const { begun, completed, confirmationProof } = await confirmDevice(testContext);
+  await delay(40);
+
+  await assert.rejects(
+    testContext.coordinator.confirm({
+      pairingId: begun.pairingId,
+      credentialId: completed.credentialId,
+      deviceSignature: confirmationProof,
     }),
     (error: unknown) => error instanceof PairingError && error.code === "pairing_conflict",
   );
@@ -494,7 +534,7 @@ test("concurrent exact approval serializes to one durable owner decision", async
 
 test("rotates refresh credentials once and revokes the device on valid old-token replay", async () => {
   const testContext = context();
-  const { confirmed } = await confirmDevice(testContext);
+  const { begun, completed, confirmationProof, confirmed } = await confirmDevice(testContext);
   const nonce = new Uint8Array(32).fill(11);
   const payload = credentialRefreshPayload({
     credentialId: confirmed.credentialId,
@@ -518,6 +558,14 @@ test("rotates refresh credentials once and revokes the device on valid old-token
   assert.notEqual(refreshed.accessToken, confirmed.accessToken);
   assert.notEqual(refreshed.refreshToken, confirmed.refreshToken);
   assert.equal(testContext.ledger.credential(confirmed.credentialId)?.generation, 2n);
+  await assert.rejects(
+    testContext.coordinator.confirm({
+      pairingId: begun.pairingId,
+      credentialId: completed.credentialId,
+      deviceSignature: confirmationProof,
+    }),
+    (error: unknown) => error instanceof PairingError && error.code === "pairing_conflict",
+  );
 
   await assert.rejects(
     testContext.coordinator.refresh({

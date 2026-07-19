@@ -72,6 +72,7 @@ export interface PairingServiceOptions {
   allowInsecureLoopbackForTests?: boolean;
   pairingLifetimeMs?: number;
   confirmationLifetimeMs?: number;
+  confirmationResultCacheMs?: number;
   accessLifetimeMs?: number;
   credentialLifetimeMs?: number;
   rateLimitWindowMs?: number;
@@ -149,6 +150,12 @@ export interface ConfirmedPairing {
   accessExpiresAt: Date;
   refreshExpiresAt: Date;
   gatewayAudience: string;
+}
+
+interface CachedConfirmation {
+  result: ConfirmedPairing;
+  expiresAt: Date;
+  expiryTimer: NodeJS.Timeout;
 }
 
 export interface RefreshCredentialInput {
@@ -286,11 +293,14 @@ export class PairingCoordinator {
   private readonly verificationUri: string;
   private readonly pairingLifetimeMs: number;
   private readonly confirmationLifetimeMs: number;
+  private readonly confirmationResultCacheMs: number;
   private readonly accessLifetimeMs: number;
   private readonly credentialLifetimeMs: number;
   private readonly rateLimitWindowMs: number;
   private readonly maximumBeginsPerWindow: number;
   private readonly dependencies: PairingServiceDependencies;
+  private readonly confirmationResults = new Map<string, CachedConfirmation>();
+  private readonly inFlightConfirmations = new Map<string, Promise<ConfirmedPairing>>();
 
   constructor(
     private readonly ledger: PairingLedger,
@@ -309,6 +319,12 @@ export class PairingCoordinator {
       2 * 60_000,
       10 * 60_000,
       "confirmationLifetimeMs",
+    );
+    this.confirmationResultCacheMs = duration(
+      options.confirmationResultCacheMs,
+      2 * 60_000,
+      2 * 60_000,
+      "confirmationResultCacheMs",
     );
     this.accessLifetimeMs = duration(options.accessLifetimeMs, 15 * 60_000, 15 * 60_000, "accessLifetimeMs");
     this.credentialLifetimeMs = duration(
@@ -613,6 +629,43 @@ export class PairingCoordinator {
     const pairingId = requireOpaque(input.pairingId, "Pairing ID");
     const credentialId = requireOpaque(input.credentialId, "Credential ID");
     const signature = exactSignature(input.deviceSignature, credentialId, false);
+    const cacheKey = sha256(`${pairingId}\0${credentialId}\0${sha256(signature.signature)}`);
+    const cached = this.confirmationResults.get(cacheKey);
+    if (cached !== undefined) {
+      if (
+        cached.expiresAt.getTime() > now.getTime() &&
+        await this.cachedConfirmationIsCurrent(cached.result, now)
+      ) {
+        return this.copyConfirmation(cached.result);
+      }
+      this.deleteCachedConfirmation(cacheKey, cached);
+    }
+    const inFlight = this.inFlightConfirmations.get(cacheKey);
+    if (inFlight !== undefined) {
+      return this.copyConfirmation(await inFlight);
+    }
+    const operation = this.confirmOnce(pairingId, credentialId, signature, now);
+    this.inFlightConfirmations.set(cacheKey, operation);
+    try {
+      const result = await operation;
+      const expiresAt = new Date(Math.min(
+        now.getTime() + this.confirmationResultCacheMs,
+        result.accessExpiresAt.getTime(),
+        result.refreshExpiresAt.getTime(),
+      ));
+      this.cacheConfirmation(cacheKey, result, expiresAt, now);
+      return this.copyConfirmation(result);
+    } finally {
+      this.inFlightConfirmations.delete(cacheKey);
+    }
+  }
+
+  private async confirmOnce(
+    pairingId: string,
+    credentialId: string,
+    signature: DeviceSignature,
+    now: Date,
+  ): Promise<ConfirmedPairing> {
     const result = await this.ledger.runPairingTransaction(async (transaction) => {
       const pairing = await transaction.lockPairingById(pairingId);
       if (
@@ -686,6 +739,66 @@ export class PairingCoordinator {
       throw new PairingError("pairing_expired", "The pairing confirmation has expired.");
     }
     return result;
+  }
+
+  private async cachedConfirmationIsCurrent(result: ConfirmedPairing, now: Date): Promise<boolean> {
+    return this.ledger.runPairingTransaction(async (transaction) => {
+      const credential = await transaction.lockCredential(result.credentialId);
+      return credential !== undefined &&
+        credential.state === "active" &&
+        credential.deviceActive &&
+        credential.deviceId === result.deviceId &&
+        credential.gatewayAudience === result.gatewayAudience &&
+        credential.generation === 1n &&
+        credential.accessTokenSha256 === sha256(result.accessToken) &&
+        credential.refreshTokenSha256 === sha256(result.refreshToken) &&
+        credential.accessExpiresAt !== null &&
+        credential.accessExpiresAt.getTime() > now.getTime() &&
+        credential.refreshExpiresAt.getTime() > now.getTime() &&
+        credential.scopes.length === result.scopes.length &&
+        credential.scopes.every((scope, index) => scope === result.scopes[index]);
+    });
+  }
+
+  private cacheConfirmation(
+    cacheKey: string,
+    result: ConfirmedPairing,
+    expiresAt: Date,
+    now: Date,
+  ): void {
+    let entry: CachedConfirmation;
+    const expiryTimer = setTimeout(() => {
+      if (this.confirmationResults.get(cacheKey) === entry) {
+        this.confirmationResults.delete(cacheKey);
+      }
+    }, Math.max(1, expiresAt.getTime() - now.getTime()));
+    expiryTimer.unref();
+    entry = {
+      result: this.copyConfirmation(result),
+      expiresAt,
+      expiryTimer,
+    };
+    this.confirmationResults.set(cacheKey, entry);
+  }
+
+  private deleteCachedConfirmation(cacheKey: string, entry: CachedConfirmation): void {
+    clearTimeout(entry.expiryTimer);
+    if (this.confirmationResults.get(cacheKey) === entry) {
+      this.confirmationResults.delete(cacheKey);
+    }
+  }
+
+  private copyConfirmation(result: ConfirmedPairing): ConfirmedPairing {
+    return {
+      deviceId: result.deviceId,
+      credentialId: result.credentialId,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      scopes: [...result.scopes],
+      accessExpiresAt: new Date(result.accessExpiresAt),
+      refreshExpiresAt: new Date(result.refreshExpiresAt),
+      gatewayAudience: result.gatewayAudience,
+    };
   }
 
   async refresh(input: RefreshCredentialInput): Promise<RefreshedCredential> {
