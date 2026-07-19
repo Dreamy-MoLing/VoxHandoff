@@ -1,6 +1,7 @@
 export * from "./acceptance.js";
 export * from "./control-lease.js";
 export * from "./control-service.js";
+export * from "./device-crypto.js";
 export * from "./event-publication.js";
 export * from "./client-ledger.js";
 export * from "./ledger-handlers.js";
