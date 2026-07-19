@@ -396,5 +396,7 @@ class DeviceCredentialBundle {
 abstract interface class DeviceCredentialStore {
   Future<DeviceCredentialBundle?> load(String credentialId);
 
+  Future<DeviceCredentialBundle?> loadActive();
+
   Future<void> save(DeviceCredentialBundle credential);
 }

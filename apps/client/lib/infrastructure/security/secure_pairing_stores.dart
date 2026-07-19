@@ -40,6 +40,7 @@ class SecureDeviceCredentialStore implements DeviceCredentialStore {
     : _sha256 = sha256 ?? Sha256();
 
   static const _prefix = 'agent-talk.v1.device-credential.';
+  static const _activeCredentialKey = 'agent-talk.v1.active-device-credential';
   final SecureValueStore _store;
   final Sha256 _sha256;
 
@@ -59,7 +60,30 @@ class SecureDeviceCredentialStore implements DeviceCredentialStore {
   }
 
   @override
+  Future<DeviceCredentialBundle?> loadActive() async {
+    final credentialId = await _store.read(_activeCredentialKey);
+    if (credentialId == null) return null;
+    _requireOpaque(credentialId, 'active credential ID');
+    final credential = await load(credentialId);
+    if (credential == null) {
+      throw const SecurePairingStoreException(
+        'active_credential_missing',
+        'The active credential reference has no credential record.',
+      );
+    }
+    return credential;
+  }
+
+  @override
   Future<void> save(DeviceCredentialBundle credential) async {
+    final activeCredentialId = await _store.read(_activeCredentialKey);
+    if (activeCredentialId != null &&
+        activeCredentialId != credential.credentialId) {
+      throw const SecurePairingStoreException(
+        'active_credential_conflict',
+        'A different active device credential is already selected.',
+      );
+    }
     final key = await _key(credential.credentialId);
     final encoded = _encodeCredential(credential);
     final existing = await _store.read(key);
@@ -71,6 +95,9 @@ class SecureDeviceCredentialStore implements DeviceCredentialStore {
     }
     if (existing == null) {
       await _store.write(key, encoded);
+    }
+    if (activeCredentialId == null) {
+      await _store.write(_activeCredentialKey, credential.credentialId);
     }
   }
 

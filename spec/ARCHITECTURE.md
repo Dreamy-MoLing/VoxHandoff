@@ -414,6 +414,7 @@ shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值�
 - 审批响应包含 approval/request/device/host identity 和签名；
 - control lease 不能替代高风险审批 scope；
 - 令牌只存 OS 安全存储，数据库保存引用或不可逆标识。
+- Client 在同一 OS 安全存储中保留一个不透明 active credential ID 索引；完整凭据记录仍按 credential ID hash 寻址。保存顺序必须先写凭据、再写 active 引用，引用悬空或试图静默切换到另一凭据时 fail closed；
 
 当前一个 Gateway 只有一个 owner。首次 owner bootstrap 只能在 Gateway 本机交互控制台、Embedded 私有 stdio 或部署时显式提供的一次性恢复流程完成，不能通过未认证公网请求创建。后续配对流程为：
 

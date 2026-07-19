@@ -58,6 +58,9 @@ class FakeDeviceCredentialStore implements DeviceCredentialStore {
   }
 
   @override
+  Future<DeviceCredentialBundle?> loadActive() async => value;
+
+  @override
   Future<void> save(DeviceCredentialBundle credential) async {
     saveCalls += 1;
     if (failNextSave) {

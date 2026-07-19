@@ -116,10 +116,19 @@ void main() {
       await store.save(credential);
       await store.save(credential);
       final restored = await store.load('credential_1');
+      final active = await store.loadActive();
 
       expect(restored?.accessToken, credential.accessToken);
       expect(restored?.refreshToken, credential.refreshToken);
-      expect(values.values.keys.single, isNot(contains('credential_1')));
+      expect(active?.credentialId, credential.credentialId);
+      final credentialRecordKey = values.values.keys.singleWhere(
+        (key) => key.startsWith('agent-talk.v1.device-credential.'),
+      );
+      expect(credentialRecordKey, isNot(contains('credential_1')));
+      expect(
+        values.values['agent-talk.v1.active-device-credential'],
+        credential.credentialId,
+      );
       expect(restored.toString(), isNot(contains(credential.refreshToken)));
 
       await expectLater(
@@ -141,6 +150,29 @@ void main() {
             (error) => error.code,
             'code',
             'credential_conflict',
+          ),
+        ),
+      );
+
+      await expectLater(
+        store.save(
+          DeviceCredentialBundle(
+            keyReference: 'fedcba9876543210fedcba9876543210',
+            deviceId: 'device_2',
+            credentialId: 'credential_2',
+            gatewayAudience: credential.gatewayAudience,
+            scopes: credential.scopes,
+            accessToken: credential.accessToken,
+            refreshToken: credential.refreshToken,
+            accessExpiresAt: credential.accessExpiresAt,
+            refreshExpiresAt: credential.refreshExpiresAt,
+          ),
+        ),
+        throwsA(
+          isA<SecurePairingStoreException>().having(
+            (error) => error.code,
+            'code',
+            'active_credential_conflict',
           ),
         ),
       );
