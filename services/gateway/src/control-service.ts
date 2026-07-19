@@ -21,6 +21,7 @@ import {
   negotiateHandshake,
   currentHandshakePolicy,
 } from "@agent-talk/protocol";
+import type { ClientLiveEventSource } from "./live-events.js";
 
 type ClientResponseInit = MessageInitShape<typeof ConnectClientResponseSchema>;
 type NodeResponseInit = MessageInitShape<typeof ConnectNodeResponseSchema>;
@@ -69,6 +70,7 @@ export interface GatewayControlServiceOptions {
   handlers: GatewayStreamHandlers;
   handshake: GatewayHandshakeIdentity;
   newConnectionId(): string;
+  liveEvents?: ClientLiveEventSource;
 }
 
 function invalid(message: string): never {
@@ -128,10 +130,11 @@ function assertRemoteRole(offer: HandshakeOffer, expected: ComponentRole): void 
   }
 }
 
-async function* connectClient(
+async function* connectClientRequests(
   requests: AsyncIterable<ConnectClientRequest>,
   context: HandlerContext,
   options: GatewayControlServiceOptions,
+  onHandshake?: (principal: AuthenticatedPrincipal) => void,
 ): AsyncIterable<ClientResponseInit> {
   const principal = await options.identityVerifier.authenticate(context.requestHeader, "client");
   assertPrincipal(principal, "client");
@@ -160,6 +163,7 @@ async function* connectClient(
         },
       };
       handshaken = true;
+      onHandshake?.(principal);
       continue;
     }
 
@@ -185,6 +189,105 @@ async function* connectClient(
       default:
         invalid("Client stream message body is missing or unsupported.");
     }
+  }
+}
+
+class ClientResponseQueue implements AsyncIterable<ClientResponseInit> {
+  private readonly values: ClientResponseInit[] = [];
+  private waiting: (() => void) | undefined;
+  private ended = false;
+  private error: unknown;
+
+  constructor(private readonly maximumQueuedResponses = 500) {}
+
+  push(value: ClientResponseInit): boolean {
+    if (this.ended) return false;
+    if (this.values.length >= this.maximumQueuedResponses) {
+      this.fail(new ConnectError(
+        "Client response buffer exceeded; reconnect and replay from the durable cursor.",
+        Code.ResourceExhausted,
+      ));
+      return false;
+    }
+    this.values.push(value);
+    this.waiting?.();
+    return true;
+  }
+
+  finish(): void {
+    this.ended = true;
+    this.waiting?.();
+  }
+
+  fail(error: unknown): void {
+    this.error = error;
+    this.ended = true;
+    this.waiting?.();
+  }
+
+  async *[Symbol.asyncIterator](): AsyncIterator<ClientResponseInit> {
+    while (true) {
+      while (this.values.length > 0) yield this.values.shift()!;
+      if (this.ended) {
+        if (this.error !== undefined) throw this.error;
+        return;
+      }
+      await new Promise<void>((resolve) => { this.waiting = resolve; });
+      this.waiting = undefined;
+    }
+  }
+}
+
+async function* connectClient(
+  requests: AsyncIterable<ConnectClientRequest>,
+  context: HandlerContext,
+  options: GatewayControlServiceOptions,
+): AsyncIterable<ClientResponseInit> {
+  if (options.liveEvents === undefined) {
+    yield* connectClientRequests(requests, context, options);
+    return;
+  }
+
+  const queue = new ClientResponseQueue();
+  let liveIterator: AsyncIterator<ClientResponseInit> | undefined;
+  let liveTask: Promise<void> | undefined;
+  const startLive = (principal: AuthenticatedPrincipal) => {
+    if (liveTask !== undefined) return;
+    if (!principal.scopes.some((scope) => ["observe", "send", "interrupt", "approve"].includes(scope))) return;
+    liveIterator = options.liveEvents!.subscribe(principal.principalId)[Symbol.asyncIterator]();
+    liveTask = (async () => {
+      try {
+        while (true) {
+          const next = await liveIterator!.next();
+          if (next.done) return;
+          await options.identityVerifier.revalidate(principal);
+          if (!queue.push(next.value)) return;
+        }
+      } catch (error) {
+        queue.fail(error);
+      }
+    })();
+  };
+
+  const requestTask = (async () => {
+    try {
+      for await (const response of connectClientRequests(requests, context, options, startLive)) {
+        if (!queue.push(response)) return;
+      }
+      if (liveIterator?.return !== undefined) await liveIterator.return();
+      queue.finish();
+    } catch (error) {
+      if (liveIterator?.return !== undefined) await liveIterator.return();
+      queue.fail(error);
+    }
+  })();
+
+  try {
+    yield* queue;
+  } finally {
+    if (liveIterator?.return !== undefined) await liveIterator.return();
+    await requestTask;
+    await liveTask;
   }
 }
 

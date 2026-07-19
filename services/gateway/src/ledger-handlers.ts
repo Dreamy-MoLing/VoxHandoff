@@ -272,7 +272,7 @@ function safePayload(record: PersistedEventRecord): AgentPayloadInit | undefined
   return undefined;
 }
 
-function replayResponse(record: PersistedEventRecord): ClientResponseInit {
+export function persistedEventResponse(record: PersistedEventRecord): ClientResponseInit {
   const eventType = eventTypes[record.eventType];
   const payload = safePayload(record);
   const supported = eventType !== undefined && payload !== undefined;
@@ -470,7 +470,7 @@ export class LedgerBackedGatewayHandlers implements GatewayStreamHandlers {
             command.command.value.afterSequence,
             maximum,
           );
-          return events.map(replayResponse);
+          return events.map(persistedEventResponse);
         }
         default:
           throw new ConnectError("This Client command is not implemented yet.", Code.Unimplemented);

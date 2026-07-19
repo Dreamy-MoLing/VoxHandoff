@@ -9,6 +9,7 @@ import { Pool } from "pg";
 
 import { acceptRequest, GatewayCommandError, type AcceptRequestInput } from "./acceptance.js";
 import { acquireControlLease, renewControlLease } from "./control-lease.js";
+import { EventOutboxPump } from "./event-publication.js";
 import {
   acceptApprovalCommand,
   acceptClarificationCommand,
@@ -17,6 +18,7 @@ import {
 import { MigrationError, runMigrations } from "./migrations.js";
 import { PostgresGatewayLedger } from "./postgres-ledger.js";
 import { NodeLedgerError } from "./node-ledger.js";
+import { BoundedLiveEventHub } from "./live-events.js";
 
 const databaseUrl = process.env.AGENT_TALK_POSTGRES_URL;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -536,6 +538,18 @@ test(
           [10n, "request.failed"],
         ],
       );
+      const liveHub = new BoundedLiveEventHub(20);
+      const liveIterator = liveHub.subscribe(deviceId)[Symbol.asyncIterator]();
+      const eventPump = new EventOutboxPump(recreatedGatewayLedger, liveHub, `event-worker-${suffix}`, 20);
+      assert.equal(await eventPump.runOnce(new Date("2030-01-01T00:00:20.000Z")), 10);
+      const liveSequences: bigint[] = [];
+      for (let index = 0; index < 10; index += 1) {
+        const liveBody = (await liveIterator.next()).value?.body;
+        if (liveBody?.case === "event") liveSequences.push(liveBody.value.sequence ?? 0n);
+      }
+      assert.deepEqual(liveSequences, [1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n, 10n]);
+      assert.equal(await eventPump.runOnce(new Date("2030-01-01T00:00:21.000Z")), 0);
+      await liveIterator.return?.();
       assert.equal(
         await recreatedGatewayLedger.acknowledgeEvent(
           deviceId,

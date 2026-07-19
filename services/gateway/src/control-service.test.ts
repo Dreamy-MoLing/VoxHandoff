@@ -22,6 +22,7 @@ import {
   type StreamIdentityVerifier,
 } from "./control-service.js";
 import { startGatewayServer } from "./server.js";
+import { BoundedLiveEventHub } from "./live-events.js";
 
 class FakeVerifier implements StreamIdentityVerifier {
   authenticateCount = 0;
@@ -60,7 +61,7 @@ function offer(role: ComponentRole, attachments = false): HandshakeOffer {
   });
 }
 
-function setup() {
+function setup(liveEvents?: BoundedLiveEventHub) {
   const verifier = new FakeVerifier({
     client: { principalId: "device-1", role: "client", scopes: ["observe", "send"] },
     node: { principalId: "node-1", role: "node", scopes: ["node:connect"] },
@@ -121,11 +122,43 @@ function setup() {
       capabilities: create(AgentCapabilitiesSchema, { attachments: false, eventStream: true }),
     },
     newConnectionId: () => `connection-${++nextConnection}`,
+    ...(liveEvents === undefined ? {} : { liveEvents }),
   };
   const service = createGatewayControlService(options);
   const transport = createRouterTransport((router) => router.service(GatewayControlService, service));
   return { verifier, calls, service, client: createClient(GatewayControlService, transport) };
 }
+
+test("streams committed live events after handshake and revalidates outbound delivery", async () => {
+  const hub = new BoundedLiveEventHub();
+  const { client, verifier } = setup(hub);
+  let closeRequests!: () => void;
+  const keepOpen = new Promise<void>((resolve) => { closeRequests = resolve; });
+  async function* requests() {
+    yield create(ConnectClientRequestSchema, {
+      body: { case: "handshake", value: offer(ComponentRole.CLIENT) },
+    });
+    await keepOpen;
+  }
+
+  const responses = client.connectClient(requests(), {
+    headers: new Headers({ authorization: "Bearer client-token" }),
+  })[Symbol.asyncIterator]();
+  assert.equal((await responses.next()).value?.body.case, "handshake");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  hub.publish({
+    body: {
+      case: "event",
+      value: { eventId: "live-event-1", conversationId: "conversation-1", sequence: 1n },
+    },
+  });
+  const live = await responses.next();
+  assert.equal(live.value?.body.case, "event");
+  assert.equal(live.value?.body.case === "event" ? live.value.body.value.eventId : undefined, "live-event-1");
+  assert.equal(verifier.revalidateCount, 2);
+  closeRequests();
+  assert.equal((await responses.next()).done, true);
+});
 
 test("gates Client business messages behind handshake and revalidates every frame", async () => {
   const { client, verifier, calls } = setup();

@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 
 import type { ClientLedger, GatewayRequestStatusRecord, PersistedEventRecord } from "./client-ledger.js";
+import type { ClaimedEventPublication, EventPublicationLedger } from "./event-publication.js";
 import type {
   ControlLeaseChange,
   ControlLeaseLedger,
@@ -692,7 +693,14 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
   }
 }
 
-export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger, ClientLedger, NodeLedger, InteractionLedger {
+export class PostgresGatewayLedger implements
+  GatewayLedger,
+  ControlLeaseLedger,
+  ClientLedger,
+  NodeLedger,
+  InteractionLedger,
+  EventPublicationLedger
+{
   constructor(private readonly pool: Pool) {}
 
   async transaction<T>(work: (transaction: GatewayLedgerTransaction) => Promise<T>): Promise<T> {
@@ -788,6 +796,92 @@ export class PostgresGatewayLedger implements GatewayLedger, ControlLeaseLedger,
            updated_at = EXCLUDED.updated_at
        RETURNING sequence`,
       [deviceId, conversationId, sequence.toString(), eventId, now],
+    );
+    return result.rowCount === 1;
+  }
+
+  async claimEventPublications(
+    workerId: string,
+    now: Date,
+    maximum: number,
+  ): Promise<readonly ClaimedEventPublication[]> {
+    if (!Number.isInteger(maximum) || maximum < 1 || maximum > 500) {
+      throw new Error("event publication maximum must be between 1 and 500");
+    }
+    return this.runTransaction(async (transaction) => {
+      const result = await transaction.client.query<UnknownRow>(
+        `WITH candidates AS (
+           SELECT o.outbox_id
+           FROM agent_talk.gateway_event_outbox o
+           WHERE o.available_at <= $1
+             AND (o.state = 'pending' OR (o.state = 'in_flight' AND o.locked_by IS DISTINCT FROM $2))
+           ORDER BY o.created_at, o.outbox_id
+           FOR UPDATE SKIP LOCKED
+           LIMIT $3
+         ), claimed AS (
+           UPDATE agent_talk.gateway_event_outbox o
+           SET state = 'in_flight', locked_by = $2, locked_at = $1,
+               attempt_count = o.attempt_count + 1
+           FROM candidates c
+           WHERE o.outbox_id = c.outbox_id
+           RETURNING o.outbox_id, o.event_id
+         )
+         SELECT c.outbox_id, e.event_id, e.connection_id, e.device_id, e.conversation_id,
+                e.session_id, e.request_id, e.sequence, e.event_type, e.safe_payload, e.occurred_at
+         FROM claimed c
+         JOIN agent_talk.events e ON e.event_id = c.event_id
+         ORDER BY e.conversation_id, e.sequence`,
+        [now, workerId, maximum],
+      );
+      return result.rows.map((value) => {
+        const data = row(value);
+        return {
+          outboxId: stringAt(data, "outbox_id"),
+          event: {
+            eventId: stringAt(data, "event_id"),
+            connectionId: stringAt(data, "connection_id"),
+            deviceId: stringAt(data, "device_id"),
+            conversationId: stringAt(data, "conversation_id"),
+            sessionId: nullableStringAt(data, "session_id"),
+            requestId: nullableStringAt(data, "request_id"),
+            sequence: bigintAt(data, "sequence"),
+            eventType: stringAt(data, "event_type"),
+            safePayload: data.safe_payload,
+            occurredAt: dateAt(data, "occurred_at"),
+          },
+        };
+      });
+    });
+  }
+
+  async markEventPublicationDelivered(
+    outboxId: string,
+    eventId: string,
+    workerId: string,
+    now: Date,
+  ): Promise<boolean> {
+    const result = await this.pool.query(
+      `UPDATE agent_talk.gateway_event_outbox
+       SET state = 'delivered', delivered_at = $4, locked_by = NULL, locked_at = NULL
+       WHERE outbox_id = $1 AND event_id = $2 AND state = 'in_flight' AND locked_by = $3`,
+      [outboxId, eventId, workerId, now],
+    );
+    return result.rowCount === 1;
+  }
+
+  async releaseEventPublication(
+    outboxId: string,
+    eventId: string,
+    workerId: string,
+    now: Date,
+    safeCode: string,
+  ): Promise<boolean> {
+    const result = await this.pool.query(
+      `UPDATE agent_talk.gateway_event_outbox
+       SET state = 'pending', available_at = $4 + interval '1 second',
+           locked_by = NULL, locked_at = NULL, last_failure_code = $5
+       WHERE outbox_id = $1 AND event_id = $2 AND state = 'in_flight' AND locked_by = $3`,
+      [outboxId, eventId, workerId, now, safeCode],
     );
     return result.rowCount === 1;
   }

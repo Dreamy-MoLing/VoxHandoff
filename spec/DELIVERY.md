@@ -40,6 +40,8 @@
 - Client approval 决策必须同时通过 active device、`approve` scope、当前 lease、非终态 request、pending/未过期状态和原摘要 hash；CAS 同事务写 approved/rejected、device/idempotency/command、无正文安全审计与固定 Node outbox，精确重试返回原决定，其他并发或迟到决定不投递；
 - Clarification required/expired/cancelled/resolved 与 Node event 同事务维护；Client 只接受用户确认的非空文字，要求当前 lease、`send` scope、clarification capability、pending/未过期状态和 Agent 字节上限，明确不借用 `approve` scope；
 - Clarification CAS 同事务保存 confirmed text 到权威交互表并创建固定 Node outbox；安全审计只含 opaque target hash，不含正文。重连使用原 command/request/clarification/idempotency identity，精确重试不重复提交；
+- PostgreSQL event outbox pump 以 worker identity、`SKIP LOCKED` 和精确 outbox/event CAS 发布已提交事件；交给 live hub 后标记 delivered，发布失败回到有界重试，Gateway 重建仍从 pending/in-flight 事实恢复；
+- 认证 Client 握手后才可接收 live event，每个出站事件前复核撤销；仅 observe/控制 scope 订阅。有界慢消费者溢出时明确断流并要求从耐久 cursor replay，live 内存队列不是权威副本；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
