@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/client_session_controller.dart';
+import '../application/device_pairing_controller.dart';
 import '../domain/client_session.dart';
+import '../domain/device_pairing.dart';
 import 'design/agent_talk_theme.dart';
+import 'pairing_dialog.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -38,10 +41,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  Future<void> _openPairing() => showDevicePairingDialog(context);
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(clientSessionProvider);
     final controller = ref.read(clientSessionProvider.notifier);
+    final pairing = ref.watch(devicePairingProvider);
     final compactAppBar = MediaQuery.sizeOf(context).width < 480;
     return Scaffold(
       appBar: AppBar(
@@ -71,7 +77,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Expanded(
                 child: Column(
                   children: [
-                    const _LocalOnlyBanner(),
+                    _LocalOnlyBanner(
+                      pairing: pairing,
+                      onOpenPairing: _openPairing,
+                    ),
                     const Expanded(child: _EmptyConversation()),
                     _Composer(
                       textController: _composer,
@@ -193,11 +202,15 @@ class _NavigationPane extends StatelessWidget {
 }
 
 class _LocalOnlyBanner extends StatelessWidget {
-  const _LocalOnlyBanner();
+  const _LocalOnlyBanner({required this.pairing, required this.onOpenPairing});
+
+  final PairingState pairing;
+  final VoidCallback onOpenPairing;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.visualTokens;
+    final paired = pairing.phase == PairingPhase.paired;
     return ColoredBox(
       color: Color.alphaBlend(
         tokens.attention.withValues(alpha: 0.08),
@@ -210,18 +223,23 @@ class _LocalOnlyBanner extends StatelessWidget {
             final message = Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.lock_outline, color: tokens.attention),
+                Icon(
+                  paired ? Icons.verified_user_outlined : Icons.lock_outline,
+                  color: paired ? tokens.signal : tokens.attention,
+                ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Not paired. Draft text stays on this device and cannot be sent.',
+                    paired
+                        ? 'Device credential verified. Live Gateway connection is not started yet.'
+                        : 'Not paired. Draft text stays on this device and cannot be sent.',
                   ),
                 ),
               ],
             );
-            const pairButton = FilledButton(
-              onPressed: null,
-              child: Text('Pair Gateway'),
+            final pairButton = FilledButton(
+              onPressed: onOpenPairing,
+              child: Text(paired ? 'View pairing' : 'Pair Gateway'),
             );
             if (constraints.maxWidth < 560) {
               return Column(
@@ -229,10 +247,7 @@ class _LocalOnlyBanner extends StatelessWidget {
                 children: [
                   message,
                   const SizedBox(height: 8),
-                  const Align(
-                    alignment: Alignment.centerRight,
-                    child: pairButton,
-                  ),
+                  Align(alignment: Alignment.centerRight, child: pairButton),
                 ],
               );
             }
@@ -240,10 +255,7 @@ class _LocalOnlyBanner extends StatelessWidget {
               children: [
                 Expanded(child: message),
                 const SizedBox(width: 16),
-                const FilledButton(
-                  onPressed: null,
-                  child: Text('Pair Gateway'),
-                ),
+                pairButton,
               ],
             );
           },

@@ -395,6 +395,7 @@ GPT-SoVITS adapter 生成规范音频块，`media_kit` adapter 播放。TTS 队�
 - GLSL fragment shader：核心能量场、扫描线、噪声、色差和音频波纹；
 - Rive：按钮、连接图标等非核心矢量微动效；
 - Platform plugins：麦克风会话、安全存储、全局快捷键、通知和窗口行为。
+- 配对 presentation 只观察 Riverpod application state 并发出显式用户动作；production workflow factory 独占安全存储、TLS channel、生成 RPC client 和 coordinator 的组合与关闭，widget test 以离线 factory 替换。公开 UI state 不含 challenge、签名、nonce 或 token；
 
 设计系统组件以独立 catalog/use case 覆盖真实状态，再进入业务页面；catalog 工具、第三方组件库和 styling package 都只能是开发或表现层依赖，不得成为领域状态权威。优先使用 Flutter 内建语义、focus、Theme 和自有小组件；只有组件隔离测试或跨端一致性收益足以抵消依赖/迁移成本时才引入社区包。
 

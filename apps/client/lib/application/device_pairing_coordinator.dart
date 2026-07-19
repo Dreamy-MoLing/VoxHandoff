@@ -3,8 +3,9 @@ import 'dart:convert';
 import 'package:agent_talk_protocol/agent_talk_protocol.dart';
 
 import '../domain/device_pairing.dart';
+import 'device_pairing_workflow.dart';
 
-class DevicePairingCoordinator {
+class DevicePairingCoordinator implements DevicePairingWorkflow {
   factory DevicePairingCoordinator({
     required DeviceKeyVaultPort keyVault,
     required PairingCheckpointStore checkpointStore,
@@ -42,8 +43,10 @@ class DevicePairingCoordinator {
   DeviceCredentialBundle? _uncommittedCredential;
   PairingOperation? _explicitRecovery;
 
+  @override
   PairingState get state => _state;
 
+  @override
   Future<void> restore() async {
     if (_state.phase != PairingPhase.idle) {
       throw StateError('Pairing state can only be restored from idle.');
@@ -93,6 +96,7 @@ class DevicePairingCoordinator {
     );
   }
 
+  @override
   Future<void> begin({
     required String deviceDisplayName,
     required String expectedGatewayAudience,
@@ -195,6 +199,7 @@ class DevicePairingCoordinator {
     }
   }
 
+  @override
   Future<void> completeAfterOwnerApproval() async {
     if (!_state.canComplete) {
       throw StateError('Pairing is not awaiting owner approval.');
@@ -300,6 +305,7 @@ class DevicePairingCoordinator {
     }
   }
 
+  @override
   Future<void> confirm() async {
     if (!_state.canConfirm) {
       throw StateError('Pairing is not awaiting device confirmation.');
@@ -393,6 +399,7 @@ class DevicePairingCoordinator {
     }
   }
 
+  @override
   Future<void> retryUncertain() async {
     if (!_state.requiresExplicitRecovery || _state.operation == null) {
       throw StateError('There is no uncertain pairing operation to recover.');
@@ -444,6 +451,7 @@ class DevicePairingCoordinator {
     }
   }
 
+  @override
   Future<void> abandon({
     bool acknowledgeRemoteCredentialMayExist = false,
   }) async {

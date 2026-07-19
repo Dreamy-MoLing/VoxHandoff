@@ -54,6 +54,7 @@
 - fake Client 与 fake Node 已经同一 Gateway 双向流和真实 PostgreSQL 完成组合退出验收：首次 acceptance 响应丢失后重建 Gateway，精确 Client 重试仍只保留一个 request；Node 连续换连接收到同一 dispatch identity，旧 source sequence 以稳定错误拒绝，精确事件重试不增写；最终 request、dispatch、四条连续 Gateway event 与 Client cursor 收敛；
 - 官方 Flutter 3.44.6 / Dart 3.12.2 SDK archive 已固定版本与 SHA-256，生成 Windows/Linux/macOS/iOS/Android 共用客户端工程；Dart protocol package 和客户端均进入 `npm run flutter:check` 的真实 analyze/test 门；
 - Flutter shell 已建立 Riverpod application/domain 分层、原创“夜航信号台”token/静态信号镜和未配对本地草稿体验；发送默认禁用，草稿须显式确认，request acceptance 必须匹配预生成 identity，`uncertain` 禁止覆盖或静默重提；桌面/390px 手机 golden、响应式 widget 和文字对比度/标签/触控目标 accessibility test 已进入质量门；
+- Riverpod `DevicePairingController` 已通过可替换 workflow factory 组合 OS 安全存储、TLS channel、生成的 Pairing client 和 application coordinator；恢复、完成、显式重试、放弃和 channel 关闭均不泄漏到 Widget，基础设施创建失败只发布固定安全文案。用户入口采用原创硬边“手动链路”面板，展示 Establish/Verify/Prove/Sealed 阶段、完整 code/fingerprint/audience/scope 事实、可选私有 CA PEM 与不确定 Confirm 的远端凭据确认；任何 owner approval 仍须在独立已授权设备完成。完整阶段、390px 无溢出、触控语义及桌面/手机 golden 已进入门禁；
 - Dart 客户端在签署配对 proof/confirmation 前必须严格解析 Gateway 待签 bytes，并以本地已检查的 audience、fingerprint、scope 与 credential facts 逐字节重建比对；`DeviceKeyVault` 已隔离待配对 Ed25519 seed、规范 SPKI/fingerprint 与签名能力，RFC 8032 向量、重启读回、损坏拒绝和显式丢弃均有离线测试。真实 OS secure storage adapter 与五端设备测试仍是 M2 后续门；
 - 客户端配对 application coordinator 已固定 `Begin → owner approval → Complete → Confirm → credential commit` 状态机：challenge/signature/token 不进入公开 UI state，Complete 兼容 token 非空即拒绝，Confirm 成功和 credential vault 落盘前不显示 paired；网络结果不明不自动重试，只有用户显式恢复才复用同一签名，恢复冲突继续保持 `uncertain`。待配对密钥仅在凭据保存后幂等提升为 active，离线测试覆盖双签名、未批准、篡改事实、提前 token、落盘失败、重启恢复与远端可能已激活时的删除确认；
 - `FlutterSecureValueStore` 已把 key、checkpoint 与 access/refresh credential 接到五平台 OS-backed 安全存储；Android 使用独立 namespace、关闭损坏自动清空与应用备份，iOS/macOS 声明 Keychain Sharing，credential 存储键只含 credential ID 的 SHA-256。严格版本化 codec 对 malformed bytes、未知 enum、重复 scope、identity 冲突 fail closed，测试覆盖完整秘密读回、幂等保存和日志字符串不含 token；Linux 真构建/读回仍等待 `libsecret-devel` 与原生工具链门；
@@ -67,7 +68,7 @@
 
 - OpenClaw adapter；
 - PostgreSQL/PowerSync/Drift 同步决策与实现；
-- Flutter 客户端的配对 UI、Gateway channel 组合/live stream、会话/事件/审批和真实平台安全存储构建；
+- Flutter 客户端的 Gateway live stream、会话/事件/审批和真实平台安全存储构建；
 - STT、GPT-SoVITS 和音频播放真链路；
 - 跨设备、远程网络、打包和发布测试。
 
