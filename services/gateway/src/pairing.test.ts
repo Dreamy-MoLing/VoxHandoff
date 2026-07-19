@@ -5,6 +5,8 @@ import test from "node:test";
 import {
   DeviceSignatureAlgorithm,
   administratorPairingPayload,
+  credentialRefreshPayload,
+  deviceRevocationPayload,
   type DeviceScope,
   type DeviceSignature,
 } from "@agent-talk/protocol";
@@ -20,6 +22,7 @@ import type {
   PairingLedgerTransaction,
   PairingProofFacts,
   PairingRecord,
+  UsedRefreshRecord,
 } from "./pairing-ledger.js";
 import { PairingCoordinator, PairingError } from "./pairing.js";
 
@@ -29,6 +32,7 @@ interface MemoryState {
   credentials: Map<string, DeviceCredentialRecord>;
   rateAttempts: Map<string, Date[]>;
   nonces: Set<string>;
+  usedRefresh: Map<string, UsedRefreshRecord>;
   audits: PairingAuditFact[];
 }
 
@@ -39,6 +43,7 @@ class MemoryPairingLedger implements PairingLedger {
     credentials: new Map(),
     rateAttempts: new Map(),
     nonces: new Set(),
+    usedRefresh: new Map(),
     audits: [],
   };
   private tail: Promise<void> = Promise.resolve();
@@ -98,6 +103,8 @@ class MemoryPairingLedger implements PairingLedger {
         [...state.pairings.values()].find((pairing) => pairing.userCodeSha256 === code),
       lockDeviceAuthorization: async (deviceId) => state.devices.get(deviceId),
       lockCredential: async (credentialId) => state.credentials.get(credentialId),
+      findUsedRefresh: async (credentialId, refreshTokenSha256) =>
+        state.usedRefresh.get(`${credentialId}\0${refreshTokenSha256}`),
       recordNonce: async (credentialId, purpose, nonceSha256) => {
         const identity = `${credentialId}\0${purpose}\0${nonceSha256}`;
         if (state.nonces.has(identity)) return false;
@@ -154,6 +161,38 @@ class MemoryPairingLedger implements PairingLedger {
         credential.accessExpiresAt = facts.accessExpiresAt;
         credential.refreshTokenSha256 = facts.refreshTokenSha256;
         credential.refreshExpiresAt = facts.refreshExpiresAt;
+      },
+      rotateCredential: async (facts) => {
+        const credential = required(state.credentials.get(facts.credentialId));
+        if (
+          credential.deviceId !== facts.deviceId ||
+          credential.generation !== facts.expectedGeneration ||
+          credential.refreshTokenSha256 !== facts.previousRefreshTokenSha256
+        ) {
+          throw new Error("credential rotation state changed concurrently");
+        }
+        state.usedRefresh.set(`${facts.credentialId}\0${facts.previousRefreshTokenSha256}`, {
+          credentialId: facts.credentialId,
+          refreshTokenSha256: facts.previousRefreshTokenSha256,
+          generation: facts.expectedGeneration,
+        });
+        credential.generation += 1n;
+        credential.accessTokenSha256 = facts.accessTokenSha256;
+        credential.accessExpiresAt = facts.accessExpiresAt;
+        credential.refreshTokenSha256 = facts.refreshTokenSha256;
+        credential.refreshExpiresAt = facts.refreshExpiresAt;
+      },
+      revokeDeviceCredentials: async (facts) => {
+        const device = state.devices.get(facts.deviceId);
+        if (device !== undefined) device.active = false;
+        for (const credential of state.credentials.values()) {
+          if (credential.deviceId !== facts.deviceId) continue;
+          credential.state = "revoked";
+          credential.deviceActive = false;
+          credential.accessTokenSha256 = null;
+          credential.accessExpiresAt = null;
+          credential.refreshTokenSha256 = null;
+        }
       },
       expirePairing: async (pairingId, expiredAt) => {
         const pairing = required(state.pairings.get(pairingId));
@@ -303,6 +342,26 @@ async function approve(
   });
 }
 
+async function confirmDevice(testContext: TestContext) {
+  const begun = await begin(testContext);
+  await approve(testContext, begun, ["observe"]);
+  const completed = await testContext.coordinator.complete({
+    pairingId: begun.pairingId,
+    legacyDeviceProof: "",
+    deviceKeyProof: signature("", begun.deviceProofPayload, testContext.devicePrivateKey),
+  });
+  const confirmed = await testContext.coordinator.confirm({
+    pairingId: begun.pairingId,
+    credentialId: completed.credentialId,
+    deviceSignature: signature(
+      completed.credentialId,
+      completed.confirmationPayload,
+      testContext.devicePrivateKey,
+    ),
+  });
+  return { begun, completed, confirmed };
+}
+
 test("requires owner verification and two device signatures before issuing tokens", async () => {
   const testContext = context();
   const begun = await begin(testContext);
@@ -431,4 +490,89 @@ test("concurrent exact approval serializes to one durable owner decision", async
   assert.deepEqual(results.map((result) => result.approved), [true, true]);
   assert.equal(testContext.ledger.auditFacts().filter((fact) => fact.action === "pairing.approve").length, 1);
   assert.equal(testContext.ledger.pairing(begun.pairingId)?.state, "approved");
+});
+
+test("rotates refresh credentials once and revokes the device on valid old-token replay", async () => {
+  const testContext = context();
+  const { confirmed } = await confirmDevice(testContext);
+  const nonce = new Uint8Array(32).fill(11);
+  const payload = credentialRefreshPayload({
+    credentialId: confirmed.credentialId,
+    deviceId: confirmed.deviceId,
+    gatewayAudience: confirmed.gatewayAudience,
+    refreshTokenSha256: sha256(confirmed.refreshToken),
+    generation: 1n,
+    nonce,
+  });
+  const refreshSignature = signature(
+    confirmed.credentialId,
+    payload,
+    testContext.devicePrivateKey,
+    nonce,
+  );
+  const refreshed = await testContext.coordinator.refresh({
+    credentialId: confirmed.credentialId,
+    refreshToken: confirmed.refreshToken,
+    deviceSignature: refreshSignature,
+  });
+  assert.notEqual(refreshed.accessToken, confirmed.accessToken);
+  assert.notEqual(refreshed.refreshToken, confirmed.refreshToken);
+  assert.equal(testContext.ledger.credential(confirmed.credentialId)?.generation, 2n);
+
+  await assert.rejects(
+    testContext.coordinator.refresh({
+      credentialId: confirmed.credentialId,
+      refreshToken: confirmed.refreshToken,
+      deviceSignature: refreshSignature,
+    }),
+    (error: unknown) => error instanceof PairingError && error.code === "refresh_replayed",
+  );
+  assert.equal(testContext.ledger.credential(confirmed.credentialId)?.state, "revoked");
+  assert.equal(testContext.ledger.auditFacts().at(-1)?.safeCode, "refresh_replayed");
+});
+
+test("does not revoke for an old token without a valid device signature", async () => {
+  const testContext = context();
+  const { confirmed } = await confirmDevice(testContext);
+  const nonce = new Uint8Array(32).fill(12);
+  await assert.rejects(
+    testContext.coordinator.refresh({
+      credentialId: confirmed.credentialId,
+      refreshToken: confirmed.refreshToken,
+      deviceSignature: signature(
+        confirmed.credentialId,
+        new Uint8Array([1, 2, 3]),
+        testContext.devicePrivateKey,
+        nonce,
+      ),
+    }),
+    (error: unknown) => error instanceof PairingError && error.code === "proof_invalid",
+  );
+  assert.equal(testContext.ledger.credential(confirmed.credentialId)?.state, "active");
+});
+
+test("requires an administrator device signature to revoke an active device", async () => {
+  const testContext = context();
+  const { confirmed } = await confirmDevice(testContext);
+  const nonce = new Uint8Array(32).fill(13);
+  const payload = deviceRevocationPayload({
+    administratorDeviceId: "administrator-device",
+    targetDeviceId: confirmed.deviceId,
+    reasonCode: "owner_revoked",
+    gatewayAudience: confirmed.gatewayAudience,
+    nonce,
+  });
+  assert.equal(await testContext.coordinator.revokeDevice({
+    targetDeviceId: confirmed.deviceId,
+    reasonCode: "owner_revoked",
+    administratorDeviceId: "administrator-device",
+    administratorSignature: signature(
+      "administrator-credential",
+      payload,
+      testContext.administratorPrivateKey,
+      nonce,
+    ),
+  }), true);
+  assert.equal(testContext.ledger.credential(confirmed.credentialId)?.state, "revoked");
+  assert.equal(testContext.ledger.auditFacts().at(-1)?.action, "device.revoke");
 });

@@ -1,6 +1,8 @@
 import {
   DeviceSignatureAlgorithm,
   administratorPairingPayload,
+  credentialRefreshPayload,
+  deviceRevocationPayload,
   normalizeDeviceScopes,
   pairingConfirmationPayload,
   pairingProofPayload,
@@ -40,7 +42,9 @@ export type PairingErrorCode =
   | "proof_invalid"
   | "nonce_replayed"
   | "credential_not_found"
-  | "credential_revoked";
+  | "credential_revoked"
+  | "credential_expired"
+  | "refresh_replayed";
 
 export class PairingError extends Error {
   constructor(
@@ -145,6 +149,21 @@ export interface ConfirmedPairing {
   accessExpiresAt: Date;
   refreshExpiresAt: Date;
   gatewayAudience: string;
+}
+
+export interface RefreshCredentialInput {
+  credentialId: string;
+  refreshToken: string;
+  deviceSignature: DeviceSignature | undefined;
+}
+
+export interface RefreshedCredential extends ConfirmedPairing {}
+
+export interface RevokeDeviceInput {
+  targetDeviceId: string;
+  reasonCode: string;
+  administratorDeviceId: string;
+  administratorSignature: DeviceSignature | undefined;
 }
 
 const defaultDependencies: PairingServiceDependencies = {
@@ -252,6 +271,13 @@ function assertAdministratorCredential(
     throw new PairingError("authorization_denied", "The device is not authorized to administer pairing.");
   }
   return credential;
+}
+
+function requireReasonCode(value: string): string {
+  if (!/^[a-z][a-z0-9_.-]{0,63}$/u.test(value)) {
+    throw new PairingError("invalid_request", "The device revocation reason code is invalid.");
+  }
+  return value;
 }
 
 export class PairingCoordinator {
@@ -658,6 +684,162 @@ export class PairingCoordinator {
     return result;
   }
 
+  async refresh(input: RefreshCredentialInput): Promise<RefreshedCredential> {
+    const now = this.dependencies.now();
+    const credentialId = requireOpaque(input.credentialId, "Credential ID");
+    const refreshToken = requireOpaque(input.refreshToken, "Refresh token");
+    const refreshTokenSha256 = sha256(refreshToken);
+    const signature = exactSignature(input.deviceSignature, credentialId, true);
+    const result = await this.ledger.runPairingTransaction(async (transaction) => {
+      const credential = await transaction.lockCredential(credentialId);
+      if (credential === undefined) {
+        throw new PairingError("authentication_failed", "The device credential is invalid.");
+      }
+      const usedRefresh = credential.refreshTokenSha256 === refreshTokenSha256
+        ? undefined
+        : await transaction.findUsedRefresh(credentialId, refreshTokenSha256);
+      const generation = credential.refreshTokenSha256 === refreshTokenSha256
+        ? credential.generation
+        : usedRefresh?.generation;
+      if (generation === undefined) {
+        throw new PairingError("authentication_failed", "The refresh credential is invalid.");
+      }
+      if (
+        credential.state !== "active" ||
+        !credential.deviceActive ||
+        credential.gatewayAudience !== this.gatewayAudience
+      ) {
+        throw new PairingError("credential_revoked", "The device credential is no longer active.");
+      }
+      if (
+        credential.refreshExpiresAt.getTime() <= now.getTime() ||
+        credential.familyExpiresAt.getTime() <= now.getTime()
+      ) {
+        throw new PairingError("credential_expired", "The device credential has expired.");
+      }
+      const publicKey = normalizeEd25519PublicKey(credential.publicKeySpki);
+      if (publicKey.sha256 !== credential.publicKeySha256) {
+        throw new PairingError("authentication_failed", "The device credential key binding is invalid.");
+      }
+      const payload = credentialRefreshPayload({
+        credentialId,
+        deviceId: credential.deviceId,
+        gatewayAudience: credential.gatewayAudience,
+        refreshTokenSha256,
+        generation,
+        nonce: signature.nonce,
+      });
+      if (!verifyEd25519Signature(publicKey, payload, signature.signature)) {
+        throw new PairingError("proof_invalid", "The refresh device signature is invalid.");
+      }
+      if (usedRefresh !== undefined) {
+        await transaction.revokeDeviceCredentials({ deviceId: credential.deviceId, revokedAt: now });
+        await this.audit(
+          transaction,
+          credential.deviceId,
+          "credential.refresh",
+          "revoked",
+          credentialId,
+          "refresh_replayed",
+          now,
+          "credential",
+        );
+        return { kind: "replayed" as const };
+      }
+      if (!await transaction.recordNonce(credentialId, "credential_refresh", sha256(signature.nonce), now)) {
+        throw new PairingError("nonce_replayed", "The device-signature nonce was already used.");
+      }
+      const accessToken = this.dependencies.newOpaqueSecret(32);
+      const nextRefreshToken = this.dependencies.newOpaqueSecret(48);
+      const accessExpiresAt = future(now, this.accessLifetimeMs);
+      await transaction.rotateCredential({
+        credentialId,
+        deviceId: credential.deviceId,
+        expectedGeneration: credential.generation,
+        previousRefreshTokenSha256: refreshTokenSha256,
+        accessTokenSha256: sha256(accessToken),
+        accessExpiresAt,
+        refreshTokenSha256: sha256(nextRefreshToken),
+        refreshExpiresAt: credential.familyExpiresAt,
+        rotatedAt: now,
+      });
+      await this.audit(
+        transaction,
+        credential.deviceId,
+        "credential.refresh",
+        "allowed",
+        credentialId,
+        "credential_rotated",
+        now,
+        "credential",
+      );
+      return {
+        kind: "refreshed" as const,
+        value: {
+          deviceId: credential.deviceId,
+          credentialId,
+          accessToken,
+          refreshToken: nextRefreshToken,
+          scopes: credential.scopes,
+          accessExpiresAt,
+          refreshExpiresAt: credential.familyExpiresAt,
+          gatewayAudience: credential.gatewayAudience,
+        } satisfies RefreshedCredential,
+      };
+    });
+    if (result.kind === "replayed") {
+      throw new PairingError("refresh_replayed", "Refresh credential reuse revoked this device.");
+    }
+    return result.value;
+  }
+
+  async revokeDevice(input: RevokeDeviceInput): Promise<boolean> {
+    const now = this.dependencies.now();
+    const targetDeviceId = requireOpaque(input.targetDeviceId, "Target device ID");
+    const administratorDeviceId = requireOpaque(input.administratorDeviceId, "Administrator device ID");
+    const reasonCode = requireReasonCode(input.reasonCode);
+    const credentialId = input.administratorSignature?.credentialId ?? "";
+    const signature = exactSignature(input.administratorSignature, credentialId, true);
+    return this.ledger.runPairingTransaction(async (transaction) => {
+      const credential = assertAdministratorCredential(
+        await transaction.lockCredential(credentialId),
+        administratorDeviceId,
+        this.gatewayAudience,
+      );
+      const publicKey = normalizeEd25519PublicKey(credential.publicKeySpki);
+      if (publicKey.sha256 !== credential.publicKeySha256) {
+        throw new PairingError("authentication_failed", "The administrator credential key binding is invalid.");
+      }
+      const payload = deviceRevocationPayload({
+        administratorDeviceId,
+        targetDeviceId,
+        reasonCode,
+        gatewayAudience: this.gatewayAudience,
+        nonce: signature.nonce,
+      });
+      if (!verifyEd25519Signature(publicKey, payload, signature.signature)) {
+        throw new PairingError("proof_invalid", "The device revocation signature is invalid.");
+      }
+      if (!await transaction.recordNonce(credentialId, "device_revocation", sha256(signature.nonce), now)) {
+        throw new PairingError("nonce_replayed", "The device-signature nonce was already used.");
+      }
+      const target = await transaction.lockDeviceAuthorization(targetDeviceId);
+      if (target === undefined || !target.active) return false;
+      await transaction.revokeDeviceCredentials({ deviceId: targetDeviceId, revokedAt: now });
+      await this.audit(
+        transaction,
+        administratorDeviceId,
+        "device.revoke",
+        "revoked",
+        targetDeviceId,
+        reasonCode,
+        now,
+        "device",
+      );
+      return true;
+    });
+  }
+
   private async expireIfNeeded(
     transaction: PairingLedgerTransaction,
     pairing: PairingRecord,
@@ -680,13 +862,14 @@ export class PairingCoordinator {
     targetId: string,
     safeCode: string,
     occurredAt: Date,
+    targetType = "pairing",
   ): Promise<void> {
     await transaction.insertSecurityAudit({
       auditId: this.dependencies.newOpaqueId("audit"),
       deviceId,
       action,
       outcome,
-      targetType: "pairing",
+      targetType,
       targetIdSha256: sha256(targetId),
       safeCode,
       occurredAt,

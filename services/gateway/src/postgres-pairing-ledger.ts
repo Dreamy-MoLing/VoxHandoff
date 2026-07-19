@@ -5,6 +5,8 @@ import { normalizeDeviceScopes, type DeviceScope } from "@agent-talk/protocol";
 import type {
   DeviceAuthorizationRecord,
   DeviceCredentialRecord,
+  CredentialRotationFacts,
+  DeviceRevocationFacts,
   PairingActivationFacts,
   PairingApprovalFacts,
   PairingAuditFact,
@@ -12,6 +14,7 @@ import type {
   PairingLedgerTransaction,
   PairingProofFacts,
   PairingRecord,
+  UsedRefreshRecord,
 } from "./pairing-ledger.js";
 
 type UnknownRow = Record<string, unknown>;
@@ -252,6 +255,26 @@ class PostgresPairingTransaction implements PairingLedgerTransaction {
     return result.rows[0] === undefined ? undefined : parseCredential(result.rows[0]);
   }
 
+  async findUsedRefresh(
+    credentialId: string,
+    refreshTokenSha256: string,
+  ): Promise<UsedRefreshRecord | undefined> {
+    const result = await this.client.query<UnknownRow>(
+      `SELECT credential_id, refresh_token_sha256, generation
+       FROM agent_talk.device_refresh_history
+       WHERE credential_id = $1 AND refresh_token_sha256 = $2`,
+      [credentialId, refreshTokenSha256],
+    );
+    const current = result.rows[0];
+    if (current === undefined) return undefined;
+    const data = row(current);
+    return {
+      credentialId: stringAt(data, "credential_id"),
+      refreshTokenSha256: stringAt(data, "refresh_token_sha256"),
+      generation: bigintAt(data, "generation"),
+    };
+  }
+
   async recordNonce(credentialId: string, purpose: string, nonceSha256: string, usedAt: Date): Promise<boolean> {
     const result = await this.client.query(
       `INSERT INTO agent_talk.device_signature_nonces (credential_id, purpose, nonce_sha256, used_at)
@@ -352,6 +375,55 @@ class PostgresPairingTransaction implements PairingLedgerTransaction {
       [facts.pairingId, facts.credentialId, facts.deviceId, facts.activatedAt],
     );
     if (pairing.rowCount !== 1) throw new Error("pairing confirmation state changed concurrently");
+  }
+
+  async rotateCredential(facts: CredentialRotationFacts): Promise<void> {
+    await this.client.query(
+      `INSERT INTO agent_talk.device_refresh_history (
+         credential_id, refresh_token_sha256, generation, used_at
+       ) VALUES ($1, $2, $3, $4)`,
+      [
+        facts.credentialId,
+        facts.previousRefreshTokenSha256,
+        facts.expectedGeneration.toString(),
+        facts.rotatedAt,
+      ],
+    );
+    const result = await this.client.query(
+      `UPDATE agent_talk.device_credentials
+       SET generation = generation + 1, access_token_sha256 = $5, access_expires_at = $6,
+           refresh_token_sha256 = $7, refresh_expires_at = $8
+       WHERE credential_id = $1 AND device_id = $2 AND state = 'active'
+         AND generation = $3 AND refresh_token_sha256 = $4 AND family_expires_at >= $8`,
+      [
+        facts.credentialId,
+        facts.deviceId,
+        facts.expectedGeneration.toString(),
+        facts.previousRefreshTokenSha256,
+        facts.accessTokenSha256,
+        facts.accessExpiresAt,
+        facts.refreshTokenSha256,
+        facts.refreshExpiresAt,
+      ],
+    );
+    if (result.rowCount !== 1) throw new Error("credential rotation state changed concurrently");
+  }
+
+  async revokeDeviceCredentials(facts: DeviceRevocationFacts): Promise<void> {
+    const device = await this.client.query(
+      `UPDATE agent_talk.devices
+       SET status = 'revoked', token_generation = token_generation + 1, revoked_at = $2
+       WHERE device_id = $1 AND status = 'active'`,
+      [facts.deviceId, facts.revokedAt],
+    );
+    if (device.rowCount !== 1) throw new Error("active device state changed concurrently");
+    await this.client.query(
+      `UPDATE agent_talk.device_credentials
+       SET state = 'revoked', access_token_sha256 = NULL, access_expires_at = NULL,
+           refresh_token_sha256 = NULL, revoked_at = $2
+       WHERE device_id = $1 AND state <> 'revoked'`,
+      [facts.deviceId, facts.revokedAt],
+    );
   }
 
   async expirePairing(pairingId: string, expiredAt: Date): Promise<void> {

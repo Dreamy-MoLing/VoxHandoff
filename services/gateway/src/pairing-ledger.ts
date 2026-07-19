@@ -95,6 +95,29 @@ export interface PairingActivationFacts {
   activatedAt: Date;
 }
 
+export interface UsedRefreshRecord {
+  credentialId: string;
+  refreshTokenSha256: string;
+  generation: bigint;
+}
+
+export interface CredentialRotationFacts {
+  credentialId: string;
+  deviceId: string;
+  expectedGeneration: bigint;
+  previousRefreshTokenSha256: string;
+  accessTokenSha256: string;
+  accessExpiresAt: Date;
+  refreshTokenSha256: string;
+  refreshExpiresAt: Date;
+  rotatedAt: Date;
+}
+
+export interface DeviceRevocationFacts {
+  deviceId: string;
+  revokedAt: Date;
+}
+
 export interface PairingAuditFact {
   auditId: string;
   deviceId: string | null;
@@ -118,10 +141,13 @@ export interface PairingLedgerTransaction {
   lockPairingByUserCodeSha256(userCodeSha256: string): Promise<PairingRecord | undefined>;
   lockDeviceAuthorization(deviceId: string): Promise<DeviceAuthorizationRecord | undefined>;
   lockCredential(credentialId: string): Promise<DeviceCredentialRecord | undefined>;
+  findUsedRefresh(credentialId: string, refreshTokenSha256: string): Promise<UsedRefreshRecord | undefined>;
   recordNonce(credentialId: string, purpose: string, nonceSha256: string, usedAt: Date): Promise<boolean>;
   approvePairing(facts: PairingApprovalFacts): Promise<void>;
   verifyPairingProof(facts: PairingProofFacts): Promise<void>;
   activatePairing(facts: PairingActivationFacts): Promise<void>;
+  rotateCredential(facts: CredentialRotationFacts): Promise<void>;
+  revokeDeviceCredentials(facts: DeviceRevocationFacts): Promise<void>;
   expirePairing(pairingId: string, expiredAt: Date): Promise<void>;
   insertSecurityAudit(fact: PairingAuditFact): Promise<void>;
 }

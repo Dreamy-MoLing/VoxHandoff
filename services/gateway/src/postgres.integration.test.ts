@@ -7,7 +7,12 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { Pool } from "pg";
-import { DeviceSignatureAlgorithm, administratorPairingPayload } from "@agent-talk/protocol";
+import {
+  DeviceSignatureAlgorithm,
+  administratorPairingPayload,
+  credentialRefreshPayload,
+  deviceRevocationPayload,
+} from "@agent-talk/protocol";
 
 import { acceptRequest, GatewayCommandError, type AcceptRequestInput } from "./acceptance.js";
 import { acquireControlLease, renewControlLease } from "./control-lease.js";
@@ -51,6 +56,7 @@ test(
         "0004_dispatch_ack_facts.sql",
         "0005_interaction_commands.sql",
         "0006_device_pairing.sql",
+        "0007_credential_rotation.sql",
       ]);
       assert.deepEqual(await runMigrations(pool, migrationDirectory), []);
 
@@ -211,6 +217,82 @@ test(
         device_status: "active",
         access_token_sha256: sha256(confirmedPairing.accessToken),
         refresh_token_sha256: sha256(confirmedPairing.refreshToken),
+      });
+      const refreshNonce = new Uint8Array(32).fill(8);
+      const refreshPayload = credentialRefreshPayload({
+        credentialId: confirmedPairing.credentialId,
+        deviceId: confirmedPairing.deviceId,
+        gatewayAudience: confirmedPairing.gatewayAudience,
+        refreshTokenSha256: sha256(confirmedPairing.refreshToken),
+        generation: 1n,
+        nonce: refreshNonce,
+      });
+      const refreshedPairing = await recreatedPairingCoordinator.refresh({
+        credentialId: confirmedPairing.credentialId,
+        refreshToken: confirmedPairing.refreshToken,
+        deviceSignature: {
+          $typeName: "agent_talk.v1.DeviceSignature",
+          credentialId: confirmedPairing.credentialId,
+          nonce: refreshNonce,
+          signature: new Uint8Array(sign(null, refreshPayload, pairingDeviceKeys.privateKey)),
+          algorithm: DeviceSignatureAlgorithm.ED25519,
+        },
+      });
+      const rotationFacts = await pool.query<{
+        generation: string;
+        access_token_sha256: string;
+        refresh_token_sha256: string;
+        history_count: string;
+      }>(
+        `SELECT c.generation::text, c.access_token_sha256, c.refresh_token_sha256,
+                (SELECT count(*)::text FROM agent_talk.device_refresh_history h
+                 WHERE h.credential_id = c.credential_id) AS history_count
+         FROM agent_talk.device_credentials c WHERE c.credential_id = $1`,
+        [confirmedPairing.credentialId],
+      );
+      assert.deepEqual(rotationFacts.rows[0], {
+        generation: "2",
+        access_token_sha256: sha256(refreshedPairing.accessToken),
+        refresh_token_sha256: sha256(refreshedPairing.refreshToken),
+        history_count: "1",
+      });
+      const revocationNonce = new Uint8Array(32).fill(9);
+      const revocationPayload = deviceRevocationPayload({
+        administratorDeviceId: deviceId,
+        targetDeviceId: confirmedPairing.deviceId,
+        reasonCode: "integration_revoked",
+        gatewayAudience: confirmedPairing.gatewayAudience,
+        nonce: revocationNonce,
+      });
+      assert.equal(await recreatedPairingCoordinator.revokeDevice({
+        targetDeviceId: confirmedPairing.deviceId,
+        reasonCode: "integration_revoked",
+        administratorDeviceId: deviceId,
+        administratorSignature: {
+          $typeName: "agent_talk.v1.DeviceSignature",
+          credentialId: administratorCredentialId,
+          nonce: revocationNonce,
+          signature: new Uint8Array(sign(null, revocationPayload, administratorKeys.privateKey)),
+          algorithm: DeviceSignatureAlgorithm.ED25519,
+        },
+      }), true);
+      const revokedFacts = await pool.query<{
+        device_status: string;
+        credential_state: string;
+        access_token_sha256: string | null;
+        refresh_token_sha256: string | null;
+      }>(
+        `SELECT d.status AS device_status, c.state AS credential_state,
+                c.access_token_sha256, c.refresh_token_sha256
+         FROM agent_talk.devices d JOIN agent_talk.device_credentials c USING (device_id)
+         WHERE d.device_id = $1`,
+        [confirmedPairing.deviceId],
+      );
+      assert.deepEqual(revokedFacts.rows[0], {
+        device_status: "revoked",
+        credential_state: "revoked",
+        access_token_sha256: null,
+        refresh_token_sha256: null,
       });
       await pool.query(
         `INSERT INTO agent_talk.nodes (node_id, display_name, platform, version, status, last_seen_at)
