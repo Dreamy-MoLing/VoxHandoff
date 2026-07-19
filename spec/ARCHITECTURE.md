@@ -435,6 +435,7 @@ shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值�
 - 公网 TLS 证书必须验证；
 - 自签名证书要求显式导入或指纹固定；
 - 禁止普通设置永久忽略证书错误；
+- Flutter channel factory 只接受规范 HTTPS origin，使用系统 trust store 或调用前可解析的显式 CA，并固定有限连接 timeout；不得传入 `onBadCertificate`。唯一明文构造器必须以测试用途命名，且只接受字面量 `127.0.0.1`/`::1`；
 - 日志在结构化写入前递归脱敏；
 - 诊断导出默认不含正文，可由用户预览并选择加入脱敏样本。
 
