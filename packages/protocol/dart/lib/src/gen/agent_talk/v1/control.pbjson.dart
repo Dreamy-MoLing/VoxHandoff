@@ -296,6 +296,14 @@ const ResolveApproval$json = {
       '5': 9,
       '10': 'operationSummarySha256'
     },
+    {
+      '1': 'device_signature',
+      '3': 5,
+      '4': 1,
+      '5': 11,
+      '6': '.agent_talk.v1.DeviceSignature',
+      '10': 'deviceSignature'
+    },
   ],
 };
 
@@ -304,7 +312,8 @@ final $typed_data.Uint8List resolveApprovalDescriptor = $convert.base64Decode(
     'Cg9SZXNvbHZlQXBwcm92YWwSHQoKcmVxdWVzdF9pZBgBIAEoCVIJcmVxdWVzdElkEh8KC2FwcH'
     'JvdmFsX2lkGAIgASgJUgphcHByb3ZhbElkEjsKCGRlY2lzaW9uGAMgASgOMh8uYWdlbnRfdGFs'
     'ay52MS5BcHByb3ZhbERlY2lzaW9uUghkZWNpc2lvbhI4ChhvcGVyYXRpb25fc3VtbWFyeV9zaG'
-    'EyNTYYBCABKAlSFm9wZXJhdGlvblN1bW1hcnlTaGEyNTY=');
+    'EyNTYYBCABKAlSFm9wZXJhdGlvblN1bW1hcnlTaGEyNTYSSQoQZGV2aWNlX3NpZ25hdHVyZRgF'
+    'IAEoCzIeLmFnZW50X3RhbGsudjEuRGV2aWNlU2lnbmF0dXJlUg9kZXZpY2VTaWduYXR1cmU=');
 
 @$core.Deprecated('Use resolveClarificationDescriptor instead')
 const ResolveClarification$json = {

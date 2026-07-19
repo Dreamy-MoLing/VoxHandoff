@@ -27,7 +27,7 @@ function enumValues(source, name, prefix) {
 function messageFields(source, name) {
   const match = source.match(new RegExp(`message ${name} \\{([\\s\\S]*?)\\n\\}`, "u"));
   assert(match, `could not find message ${name}`);
-  return [...match[1].matchAll(/^\s*(?:optional\s+)?[.A-Za-z0-9_]+\s+([a-z][a-z0-9_]*)\s*=\s*\d+;/gmu)].map(
+  return [...match[1].matchAll(/^\s*(?:(?:optional|repeated)\s+)?[.A-Za-z0-9_]+\s+([a-z][a-z0-9_]*)\s*=\s*\d+;/gmu)].map(
     (entry) => entry[1],
   );
 }
@@ -36,11 +36,12 @@ function camelCase(value) {
   return value.replace(/_([a-z])/gu, (_, letter) => letter.toUpperCase());
 }
 
-const [model, commonProto, controlProto, eventProto] = await Promise.all([
+const [model, commonProto, controlProto, eventProto, gatewayProto] = await Promise.all([
   read("packages/core/src/model.ts"),
   read("packages/protocol/proto/agent_talk/v1/common.proto"),
   read("packages/protocol/proto/agent_talk/v1/control.proto"),
   read("packages/protocol/proto/agent_talk/v1/event.proto"),
+  read("packages/protocol/proto/agent_talk/v1/gateway.proto"),
 ]);
 
 const coreEvents = arrayValues(model, "agentEventTypes");
@@ -84,6 +85,39 @@ assert.deepEqual(protocolCapabilities, expectedCapabilities, "protocol capabilit
 const clientCommandFields = messageFields(controlProto, "ClientCommand");
 for (const identityField of ["command_id", "idempotency_key", "conversation_id", "request_id"]) {
   assert(clientCommandFields.includes(identityField), `ClientCommand must carry ${identityField}`);
+}
+
+const resolveApprovalFields = messageFields(controlProto, "ResolveApproval");
+assert(
+  resolveApprovalFields.includes("device_signature"),
+  "approval responses must carry a device signature",
+);
+
+for (const [message, fields] of Object.entries({
+  BeginPairingRequest: ["device_public_key", "requested_scopes", "expected_gateway_audience"],
+  BeginPairingResponse: ["device_proof_payload", "device_fingerprint", "gateway_fingerprint", "gateway_audience"],
+  ApprovePairingRequest: ["approved_scopes", "expected_device_fingerprint", "administrator_signature"],
+  CompletePairingRequest: ["device_key_proof"],
+  CompletePairingResponse: ["credential_id", "confirmation_payload"],
+  ConfirmPairingRequest: ["credential_id", "device_signature"],
+  ConfirmPairingResponse: ["access_token", "refresh_token", "access_expires_at_unix_ms"],
+  RefreshDeviceCredentialRequest: ["refresh_token", "device_signature"],
+  RevokeDeviceRequest: ["reason_code", "administrator_signature"],
+})) {
+  const actual = messageFields(gatewayProto, message);
+  for (const field of fields) {
+    assert(actual.includes(field), `${message} must carry ${field}`);
+  }
+}
+
+for (const method of [
+  "InspectPairing",
+  "ApprovePairing",
+  "ConfirmPairing",
+  "RefreshDeviceCredential",
+  "RevokeDevice",
+]) {
+  assert(gatewayProto.includes(`rpc ${method}(`), `PairingService must expose ${method}`);
 }
 
 process.stdout.write("protocol contract matches core taxonomy and capabilities\n");

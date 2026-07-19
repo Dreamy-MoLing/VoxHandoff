@@ -547,6 +547,101 @@ class Empty extends $pb.GeneratedMessage {
   static Empty? _defaultInstance;
 }
 
+/// The signature is calculated over a domain-separated payload defined by the
+/// owning RPC. Nonces are opaque, single-use values and must never be logged.
+class DeviceSignature extends $pb.GeneratedMessage {
+  factory DeviceSignature({
+    $core.String? credentialId,
+    $core.List<$core.int>? nonce,
+    $core.List<$core.int>? signature,
+    DeviceSignatureAlgorithm? algorithm,
+  }) {
+    final result = create();
+    if (credentialId != null) result.credentialId = credentialId;
+    if (nonce != null) result.nonce = nonce;
+    if (signature != null) result.signature = signature;
+    if (algorithm != null) result.algorithm = algorithm;
+    return result;
+  }
+
+  DeviceSignature._();
+
+  factory DeviceSignature.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory DeviceSignature.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'DeviceSignature',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'credentialId')
+    ..a<$core.List<$core.int>>(
+        2, _omitFieldNames ? '' : 'nonce', $pb.PbFieldType.OY)
+    ..a<$core.List<$core.int>>(
+        3, _omitFieldNames ? '' : 'signature', $pb.PbFieldType.OY)
+    ..aE<DeviceSignatureAlgorithm>(4, _omitFieldNames ? '' : 'algorithm',
+        enumValues: DeviceSignatureAlgorithm.values)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  DeviceSignature clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  DeviceSignature copyWith(void Function(DeviceSignature) updates) =>
+      super.copyWith((message) => updates(message as DeviceSignature))
+          as DeviceSignature;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static DeviceSignature create() => DeviceSignature._();
+  @$core.override
+  DeviceSignature createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static DeviceSignature getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<DeviceSignature>(create);
+  static DeviceSignature? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get credentialId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set credentialId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasCredentialId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearCredentialId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.List<$core.int> get nonce => $_getN(1);
+  @$pb.TagNumber(2)
+  set nonce($core.List<$core.int> value) => $_setBytes(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasNonce() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearNonce() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.List<$core.int> get signature => $_getN(2);
+  @$pb.TagNumber(3)
+  set signature($core.List<$core.int> value) => $_setBytes(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasSignature() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearSignature() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  DeviceSignatureAlgorithm get algorithm => $_getN(3);
+  @$pb.TagNumber(4)
+  set algorithm(DeviceSignatureAlgorithm value) => $_setField(4, value);
+  @$pb.TagNumber(4)
+  $core.bool hasAlgorithm() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearAlgorithm() => $_clearField(4);
+}
+
 const $core.bool _omitFieldNames =
     $core.bool.fromEnvironment('protobuf.omit_field_names');
 const $core.bool _omitMessageNames =

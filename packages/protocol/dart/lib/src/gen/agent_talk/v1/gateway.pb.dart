@@ -12,6 +12,7 @@
 
 import 'dart:core' as $core;
 
+import 'package:fixnum/fixnum.dart' as $fixnum;
 import 'package:protobuf/protobuf.dart' as $pb;
 
 import 'common.pb.dart' as $3;
@@ -1516,10 +1517,15 @@ class BeginPairingRequest extends $pb.GeneratedMessage {
   factory BeginPairingRequest({
     $core.String? deviceDisplayName,
     $core.List<$core.int>? devicePublicKey,
+    $core.Iterable<$core.String>? requestedScopes,
+    $core.String? expectedGatewayAudience,
   }) {
     final result = create();
     if (deviceDisplayName != null) result.deviceDisplayName = deviceDisplayName;
     if (devicePublicKey != null) result.devicePublicKey = devicePublicKey;
+    if (requestedScopes != null) result.requestedScopes.addAll(requestedScopes);
+    if (expectedGatewayAudience != null)
+      result.expectedGatewayAudience = expectedGatewayAudience;
     return result;
   }
 
@@ -1539,6 +1545,8 @@ class BeginPairingRequest extends $pb.GeneratedMessage {
     ..aOS(1, _omitFieldNames ? '' : 'deviceDisplayName')
     ..a<$core.List<$core.int>>(
         2, _omitFieldNames ? '' : 'devicePublicKey', $pb.PbFieldType.OY)
+    ..pPS(3, _omitFieldNames ? '' : 'requestedScopes')
+    ..aOS(4, _omitFieldNames ? '' : 'expectedGatewayAudience')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1577,6 +1585,18 @@ class BeginPairingRequest extends $pb.GeneratedMessage {
   $core.bool hasDevicePublicKey() => $_has(1);
   @$pb.TagNumber(2)
   void clearDevicePublicKey() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $pb.PbList<$core.String> get requestedScopes => $_getList(2);
+
+  @$pb.TagNumber(4)
+  $core.String get expectedGatewayAudience => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set expectedGatewayAudience($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasExpectedGatewayAudience() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearExpectedGatewayAudience() => $_clearField(4);
 }
 
 class BeginPairingResponse extends $pb.GeneratedMessage {
@@ -1585,12 +1605,22 @@ class BeginPairingResponse extends $pb.GeneratedMessage {
     $core.String? userCode,
     $core.String? verificationUri,
     $core.int? expiresInSeconds,
+    $core.List<$core.int>? deviceProofPayload,
+    $core.String? deviceFingerprint,
+    $core.String? gatewayFingerprint,
+    $core.String? gatewayAudience,
   }) {
     final result = create();
     if (pairingId != null) result.pairingId = pairingId;
     if (userCode != null) result.userCode = userCode;
     if (verificationUri != null) result.verificationUri = verificationUri;
     if (expiresInSeconds != null) result.expiresInSeconds = expiresInSeconds;
+    if (deviceProofPayload != null)
+      result.deviceProofPayload = deviceProofPayload;
+    if (deviceFingerprint != null) result.deviceFingerprint = deviceFingerprint;
+    if (gatewayFingerprint != null)
+      result.gatewayFingerprint = gatewayFingerprint;
+    if (gatewayAudience != null) result.gatewayAudience = gatewayAudience;
     return result;
   }
 
@@ -1612,6 +1642,11 @@ class BeginPairingResponse extends $pb.GeneratedMessage {
     ..aOS(3, _omitFieldNames ? '' : 'verificationUri')
     ..aI(4, _omitFieldNames ? '' : 'expiresInSeconds',
         fieldType: $pb.PbFieldType.OU3)
+    ..a<$core.List<$core.int>>(
+        5, _omitFieldNames ? '' : 'deviceProofPayload', $pb.PbFieldType.OY)
+    ..aOS(6, _omitFieldNames ? '' : 'deviceFingerprint')
+    ..aOS(7, _omitFieldNames ? '' : 'gatewayFingerprint')
+    ..aOS(8, _omitFieldNames ? '' : 'gatewayAudience')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1668,16 +1703,54 @@ class BeginPairingResponse extends $pb.GeneratedMessage {
   $core.bool hasExpiresInSeconds() => $_has(3);
   @$pb.TagNumber(4)
   void clearExpiresInSeconds() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.List<$core.int> get deviceProofPayload => $_getN(4);
+  @$pb.TagNumber(5)
+  set deviceProofPayload($core.List<$core.int> value) => $_setBytes(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasDeviceProofPayload() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearDeviceProofPayload() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $core.String get deviceFingerprint => $_getSZ(5);
+  @$pb.TagNumber(6)
+  set deviceFingerprint($core.String value) => $_setString(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasDeviceFingerprint() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearDeviceFingerprint() => $_clearField(6);
+
+  @$pb.TagNumber(7)
+  $core.String get gatewayFingerprint => $_getSZ(6);
+  @$pb.TagNumber(7)
+  set gatewayFingerprint($core.String value) => $_setString(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasGatewayFingerprint() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearGatewayFingerprint() => $_clearField(7);
+
+  @$pb.TagNumber(8)
+  $core.String get gatewayAudience => $_getSZ(7);
+  @$pb.TagNumber(8)
+  set gatewayAudience($core.String value) => $_setString(7, value);
+  @$pb.TagNumber(8)
+  $core.bool hasGatewayAudience() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearGatewayAudience() => $_clearField(8);
 }
 
 class CompletePairingRequest extends $pb.GeneratedMessage {
   factory CompletePairingRequest({
     $core.String? pairingId,
     $core.String? deviceProof,
+    $3.DeviceSignature? deviceKeyProof,
   }) {
     final result = create();
     if (pairingId != null) result.pairingId = pairingId;
     if (deviceProof != null) result.deviceProof = deviceProof;
+    if (deviceKeyProof != null) result.deviceKeyProof = deviceKeyProof;
     return result;
   }
 
@@ -1696,6 +1769,8 @@ class CompletePairingRequest extends $pb.GeneratedMessage {
       createEmptyInstance: create)
     ..aOS(1, _omitFieldNames ? '' : 'pairingId')
     ..aOS(2, _omitFieldNames ? '' : 'deviceProof')
+    ..aOM<$3.DeviceSignature>(3, _omitFieldNames ? '' : 'deviceKeyProof',
+        subBuilder: $3.DeviceSignature.create)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1727,6 +1802,8 @@ class CompletePairingRequest extends $pb.GeneratedMessage {
   @$pb.TagNumber(1)
   void clearPairingId() => $_clearField(1);
 
+  /// Deprecated pre-implementation placeholder. Gateways must not accept this
+  /// field as proof and clients must use device_key_proof instead.
   @$pb.TagNumber(2)
   $core.String get deviceProof => $_getSZ(1);
   @$pb.TagNumber(2)
@@ -1735,6 +1812,17 @@ class CompletePairingRequest extends $pb.GeneratedMessage {
   $core.bool hasDeviceProof() => $_has(1);
   @$pb.TagNumber(2)
   void clearDeviceProof() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $3.DeviceSignature get deviceKeyProof => $_getN(2);
+  @$pb.TagNumber(3)
+  set deviceKeyProof($3.DeviceSignature value) => $_setField(3, value);
+  @$pb.TagNumber(3)
+  $core.bool hasDeviceKeyProof() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearDeviceKeyProof() => $_clearField(3);
+  @$pb.TagNumber(3)
+  $3.DeviceSignature ensureDeviceKeyProof() => $_ensure(2);
 }
 
 class CompletePairingResponse extends $pb.GeneratedMessage {
@@ -1743,12 +1831,22 @@ class CompletePairingResponse extends $pb.GeneratedMessage {
     $core.String? accessToken,
     $core.String? refreshToken,
     $core.Iterable<$core.String>? scopes,
+    $core.String? credentialId,
+    $core.List<$core.int>? confirmationPayload,
+    $core.String? gatewayAudience,
+    $core.int? confirmationExpiresInSeconds,
   }) {
     final result = create();
     if (deviceId != null) result.deviceId = deviceId;
     if (accessToken != null) result.accessToken = accessToken;
     if (refreshToken != null) result.refreshToken = refreshToken;
     if (scopes != null) result.scopes.addAll(scopes);
+    if (credentialId != null) result.credentialId = credentialId;
+    if (confirmationPayload != null)
+      result.confirmationPayload = confirmationPayload;
+    if (gatewayAudience != null) result.gatewayAudience = gatewayAudience;
+    if (confirmationExpiresInSeconds != null)
+      result.confirmationExpiresInSeconds = confirmationExpiresInSeconds;
     return result;
   }
 
@@ -1769,6 +1867,12 @@ class CompletePairingResponse extends $pb.GeneratedMessage {
     ..aOS(2, _omitFieldNames ? '' : 'accessToken')
     ..aOS(3, _omitFieldNames ? '' : 'refreshToken')
     ..pPS(4, _omitFieldNames ? '' : 'scopes')
+    ..aOS(5, _omitFieldNames ? '' : 'credentialId')
+    ..a<$core.List<$core.int>>(
+        6, _omitFieldNames ? '' : 'confirmationPayload', $pb.PbFieldType.OY)
+    ..aOS(7, _omitFieldNames ? '' : 'gatewayAudience')
+    ..aI(8, _omitFieldNames ? '' : 'confirmationExpiresInSeconds',
+        fieldType: $pb.PbFieldType.OU3)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1800,6 +1904,8 @@ class CompletePairingResponse extends $pb.GeneratedMessage {
   @$pb.TagNumber(1)
   void clearDeviceId() => $_clearField(1);
 
+  /// Reserved for wire compatibility with the pre-implementation draft. Valid
+  /// credentials are returned only by ConfirmPairing.
   @$pb.TagNumber(2)
   $core.String get accessToken => $_getSZ(1);
   @$pb.TagNumber(2)
@@ -1820,14 +1926,890 @@ class CompletePairingResponse extends $pb.GeneratedMessage {
 
   @$pb.TagNumber(4)
   $pb.PbList<$core.String> get scopes => $_getList(3);
+
+  @$pb.TagNumber(5)
+  $core.String get credentialId => $_getSZ(4);
+  @$pb.TagNumber(5)
+  set credentialId($core.String value) => $_setString(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasCredentialId() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearCredentialId() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $core.List<$core.int> get confirmationPayload => $_getN(5);
+  @$pb.TagNumber(6)
+  set confirmationPayload($core.List<$core.int> value) => $_setBytes(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasConfirmationPayload() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearConfirmationPayload() => $_clearField(6);
+
+  @$pb.TagNumber(7)
+  $core.String get gatewayAudience => $_getSZ(6);
+  @$pb.TagNumber(7)
+  set gatewayAudience($core.String value) => $_setString(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasGatewayAudience() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearGatewayAudience() => $_clearField(7);
+
+  @$pb.TagNumber(8)
+  $core.int get confirmationExpiresInSeconds => $_getIZ(7);
+  @$pb.TagNumber(8)
+  set confirmationExpiresInSeconds($core.int value) =>
+      $_setUnsignedInt32(7, value);
+  @$pb.TagNumber(8)
+  $core.bool hasConfirmationExpiresInSeconds() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearConfirmationExpiresInSeconds() => $_clearField(8);
+}
+
+class InspectPairingRequest extends $pb.GeneratedMessage {
+  factory InspectPairingRequest({
+    $core.String? userCode,
+  }) {
+    final result = create();
+    if (userCode != null) result.userCode = userCode;
+    return result;
+  }
+
+  InspectPairingRequest._();
+
+  factory InspectPairingRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory InspectPairingRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'InspectPairingRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'userCode')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  InspectPairingRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  InspectPairingRequest copyWith(
+          void Function(InspectPairingRequest) updates) =>
+      super.copyWith((message) => updates(message as InspectPairingRequest))
+          as InspectPairingRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static InspectPairingRequest create() => InspectPairingRequest._();
+  @$core.override
+  InspectPairingRequest createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static InspectPairingRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<InspectPairingRequest>(create);
+  static InspectPairingRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get userCode => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set userCode($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasUserCode() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearUserCode() => $_clearField(1);
+}
+
+class InspectPairingResponse extends $pb.GeneratedMessage {
+  factory InspectPairingResponse({
+    $core.String? pairingId,
+    $core.String? deviceDisplayName,
+    $core.String? deviceFingerprint,
+    $core.String? gatewayFingerprint,
+    $core.String? gatewayAudience,
+    $core.Iterable<$core.String>? requestedScopes,
+    $core.int? expiresInSeconds,
+  }) {
+    final result = create();
+    if (pairingId != null) result.pairingId = pairingId;
+    if (deviceDisplayName != null) result.deviceDisplayName = deviceDisplayName;
+    if (deviceFingerprint != null) result.deviceFingerprint = deviceFingerprint;
+    if (gatewayFingerprint != null)
+      result.gatewayFingerprint = gatewayFingerprint;
+    if (gatewayAudience != null) result.gatewayAudience = gatewayAudience;
+    if (requestedScopes != null) result.requestedScopes.addAll(requestedScopes);
+    if (expiresInSeconds != null) result.expiresInSeconds = expiresInSeconds;
+    return result;
+  }
+
+  InspectPairingResponse._();
+
+  factory InspectPairingResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory InspectPairingResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'InspectPairingResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'pairingId')
+    ..aOS(2, _omitFieldNames ? '' : 'deviceDisplayName')
+    ..aOS(3, _omitFieldNames ? '' : 'deviceFingerprint')
+    ..aOS(4, _omitFieldNames ? '' : 'gatewayFingerprint')
+    ..aOS(5, _omitFieldNames ? '' : 'gatewayAudience')
+    ..pPS(6, _omitFieldNames ? '' : 'requestedScopes')
+    ..aI(7, _omitFieldNames ? '' : 'expiresInSeconds',
+        fieldType: $pb.PbFieldType.OU3)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  InspectPairingResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  InspectPairingResponse copyWith(
+          void Function(InspectPairingResponse) updates) =>
+      super.copyWith((message) => updates(message as InspectPairingResponse))
+          as InspectPairingResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static InspectPairingResponse create() => InspectPairingResponse._();
+  @$core.override
+  InspectPairingResponse createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static InspectPairingResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<InspectPairingResponse>(create);
+  static InspectPairingResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get pairingId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set pairingId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasPairingId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPairingId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get deviceDisplayName => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set deviceDisplayName($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasDeviceDisplayName() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearDeviceDisplayName() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get deviceFingerprint => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set deviceFingerprint($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasDeviceFingerprint() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearDeviceFingerprint() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get gatewayFingerprint => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set gatewayFingerprint($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasGatewayFingerprint() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearGatewayFingerprint() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.String get gatewayAudience => $_getSZ(4);
+  @$pb.TagNumber(5)
+  set gatewayAudience($core.String value) => $_setString(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasGatewayAudience() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearGatewayAudience() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $pb.PbList<$core.String> get requestedScopes => $_getList(5);
+
+  @$pb.TagNumber(7)
+  $core.int get expiresInSeconds => $_getIZ(6);
+  @$pb.TagNumber(7)
+  set expiresInSeconds($core.int value) => $_setUnsignedInt32(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasExpiresInSeconds() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearExpiresInSeconds() => $_clearField(7);
+}
+
+class ApprovePairingRequest extends $pb.GeneratedMessage {
+  factory ApprovePairingRequest({
+    $core.String? pairingId,
+    $core.String? userCode,
+    $core.Iterable<$core.String>? approvedScopes,
+    $core.String? expectedDeviceFingerprint,
+    $core.String? expectedGatewayFingerprint,
+    $core.String? expectedGatewayAudience,
+    $3.DeviceSignature? administratorSignature,
+  }) {
+    final result = create();
+    if (pairingId != null) result.pairingId = pairingId;
+    if (userCode != null) result.userCode = userCode;
+    if (approvedScopes != null) result.approvedScopes.addAll(approvedScopes);
+    if (expectedDeviceFingerprint != null)
+      result.expectedDeviceFingerprint = expectedDeviceFingerprint;
+    if (expectedGatewayFingerprint != null)
+      result.expectedGatewayFingerprint = expectedGatewayFingerprint;
+    if (expectedGatewayAudience != null)
+      result.expectedGatewayAudience = expectedGatewayAudience;
+    if (administratorSignature != null)
+      result.administratorSignature = administratorSignature;
+    return result;
+  }
+
+  ApprovePairingRequest._();
+
+  factory ApprovePairingRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ApprovePairingRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ApprovePairingRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'pairingId')
+    ..aOS(2, _omitFieldNames ? '' : 'userCode')
+    ..pPS(3, _omitFieldNames ? '' : 'approvedScopes')
+    ..aOS(4, _omitFieldNames ? '' : 'expectedDeviceFingerprint')
+    ..aOS(5, _omitFieldNames ? '' : 'expectedGatewayFingerprint')
+    ..aOS(6, _omitFieldNames ? '' : 'expectedGatewayAudience')
+    ..aOM<$3.DeviceSignature>(
+        7, _omitFieldNames ? '' : 'administratorSignature',
+        subBuilder: $3.DeviceSignature.create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ApprovePairingRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ApprovePairingRequest copyWith(
+          void Function(ApprovePairingRequest) updates) =>
+      super.copyWith((message) => updates(message as ApprovePairingRequest))
+          as ApprovePairingRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ApprovePairingRequest create() => ApprovePairingRequest._();
+  @$core.override
+  ApprovePairingRequest createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ApprovePairingRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ApprovePairingRequest>(create);
+  static ApprovePairingRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get pairingId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set pairingId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasPairingId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPairingId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get userCode => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set userCode($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasUserCode() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearUserCode() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $pb.PbList<$core.String> get approvedScopes => $_getList(2);
+
+  @$pb.TagNumber(4)
+  $core.String get expectedDeviceFingerprint => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set expectedDeviceFingerprint($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasExpectedDeviceFingerprint() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearExpectedDeviceFingerprint() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.String get expectedGatewayFingerprint => $_getSZ(4);
+  @$pb.TagNumber(5)
+  set expectedGatewayFingerprint($core.String value) => $_setString(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasExpectedGatewayFingerprint() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearExpectedGatewayFingerprint() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $core.String get expectedGatewayAudience => $_getSZ(5);
+  @$pb.TagNumber(6)
+  set expectedGatewayAudience($core.String value) => $_setString(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasExpectedGatewayAudience() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearExpectedGatewayAudience() => $_clearField(6);
+
+  @$pb.TagNumber(7)
+  $3.DeviceSignature get administratorSignature => $_getN(6);
+  @$pb.TagNumber(7)
+  set administratorSignature($3.DeviceSignature value) => $_setField(7, value);
+  @$pb.TagNumber(7)
+  $core.bool hasAdministratorSignature() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearAdministratorSignature() => $_clearField(7);
+  @$pb.TagNumber(7)
+  $3.DeviceSignature ensureAdministratorSignature() => $_ensure(6);
+}
+
+class ApprovePairingResponse extends $pb.GeneratedMessage {
+  factory ApprovePairingResponse({
+    $core.bool? approved,
+    $core.int? expiresInSeconds,
+  }) {
+    final result = create();
+    if (approved != null) result.approved = approved;
+    if (expiresInSeconds != null) result.expiresInSeconds = expiresInSeconds;
+    return result;
+  }
+
+  ApprovePairingResponse._();
+
+  factory ApprovePairingResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ApprovePairingResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ApprovePairingResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOB(1, _omitFieldNames ? '' : 'approved')
+    ..aI(2, _omitFieldNames ? '' : 'expiresInSeconds',
+        fieldType: $pb.PbFieldType.OU3)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ApprovePairingResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ApprovePairingResponse copyWith(
+          void Function(ApprovePairingResponse) updates) =>
+      super.copyWith((message) => updates(message as ApprovePairingResponse))
+          as ApprovePairingResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ApprovePairingResponse create() => ApprovePairingResponse._();
+  @$core.override
+  ApprovePairingResponse createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ApprovePairingResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ApprovePairingResponse>(create);
+  static ApprovePairingResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get approved => $_getBF(0);
+  @$pb.TagNumber(1)
+  set approved($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasApproved() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearApproved() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.int get expiresInSeconds => $_getIZ(1);
+  @$pb.TagNumber(2)
+  set expiresInSeconds($core.int value) => $_setUnsignedInt32(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasExpiresInSeconds() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearExpiresInSeconds() => $_clearField(2);
+}
+
+class ConfirmPairingRequest extends $pb.GeneratedMessage {
+  factory ConfirmPairingRequest({
+    $core.String? pairingId,
+    $core.String? credentialId,
+    $3.DeviceSignature? deviceSignature,
+  }) {
+    final result = create();
+    if (pairingId != null) result.pairingId = pairingId;
+    if (credentialId != null) result.credentialId = credentialId;
+    if (deviceSignature != null) result.deviceSignature = deviceSignature;
+    return result;
+  }
+
+  ConfirmPairingRequest._();
+
+  factory ConfirmPairingRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ConfirmPairingRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ConfirmPairingRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'pairingId')
+    ..aOS(2, _omitFieldNames ? '' : 'credentialId')
+    ..aOM<$3.DeviceSignature>(3, _omitFieldNames ? '' : 'deviceSignature',
+        subBuilder: $3.DeviceSignature.create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ConfirmPairingRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ConfirmPairingRequest copyWith(
+          void Function(ConfirmPairingRequest) updates) =>
+      super.copyWith((message) => updates(message as ConfirmPairingRequest))
+          as ConfirmPairingRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ConfirmPairingRequest create() => ConfirmPairingRequest._();
+  @$core.override
+  ConfirmPairingRequest createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ConfirmPairingRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ConfirmPairingRequest>(create);
+  static ConfirmPairingRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get pairingId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set pairingId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasPairingId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPairingId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get credentialId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set credentialId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasCredentialId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearCredentialId() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $3.DeviceSignature get deviceSignature => $_getN(2);
+  @$pb.TagNumber(3)
+  set deviceSignature($3.DeviceSignature value) => $_setField(3, value);
+  @$pb.TagNumber(3)
+  $core.bool hasDeviceSignature() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearDeviceSignature() => $_clearField(3);
+  @$pb.TagNumber(3)
+  $3.DeviceSignature ensureDeviceSignature() => $_ensure(2);
+}
+
+class ConfirmPairingResponse extends $pb.GeneratedMessage {
+  factory ConfirmPairingResponse({
+    $core.bool? paired,
+    $core.String? deviceId,
+    $core.String? credentialId,
+    $core.String? accessToken,
+    $core.String? refreshToken,
+    $core.Iterable<$core.String>? scopes,
+    $fixnum.Int64? accessExpiresAtUnixMs,
+    $fixnum.Int64? refreshExpiresAtUnixMs,
+    $core.String? gatewayAudience,
+  }) {
+    final result = create();
+    if (paired != null) result.paired = paired;
+    if (deviceId != null) result.deviceId = deviceId;
+    if (credentialId != null) result.credentialId = credentialId;
+    if (accessToken != null) result.accessToken = accessToken;
+    if (refreshToken != null) result.refreshToken = refreshToken;
+    if (scopes != null) result.scopes.addAll(scopes);
+    if (accessExpiresAtUnixMs != null)
+      result.accessExpiresAtUnixMs = accessExpiresAtUnixMs;
+    if (refreshExpiresAtUnixMs != null)
+      result.refreshExpiresAtUnixMs = refreshExpiresAtUnixMs;
+    if (gatewayAudience != null) result.gatewayAudience = gatewayAudience;
+    return result;
+  }
+
+  ConfirmPairingResponse._();
+
+  factory ConfirmPairingResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ConfirmPairingResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ConfirmPairingResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOB(1, _omitFieldNames ? '' : 'paired')
+    ..aOS(2, _omitFieldNames ? '' : 'deviceId')
+    ..aOS(3, _omitFieldNames ? '' : 'credentialId')
+    ..aOS(4, _omitFieldNames ? '' : 'accessToken')
+    ..aOS(5, _omitFieldNames ? '' : 'refreshToken')
+    ..pPS(6, _omitFieldNames ? '' : 'scopes')
+    ..a<$fixnum.Int64>(
+        7, _omitFieldNames ? '' : 'accessExpiresAtUnixMs', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(
+        8, _omitFieldNames ? '' : 'refreshExpiresAtUnixMs', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..aOS(9, _omitFieldNames ? '' : 'gatewayAudience')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ConfirmPairingResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ConfirmPairingResponse copyWith(
+          void Function(ConfirmPairingResponse) updates) =>
+      super.copyWith((message) => updates(message as ConfirmPairingResponse))
+          as ConfirmPairingResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ConfirmPairingResponse create() => ConfirmPairingResponse._();
+  @$core.override
+  ConfirmPairingResponse createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ConfirmPairingResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ConfirmPairingResponse>(create);
+  static ConfirmPairingResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get paired => $_getBF(0);
+  @$pb.TagNumber(1)
+  set paired($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasPaired() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPaired() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get deviceId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set deviceId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasDeviceId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearDeviceId() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get credentialId => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set credentialId($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasCredentialId() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearCredentialId() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get accessToken => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set accessToken($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasAccessToken() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearAccessToken() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.String get refreshToken => $_getSZ(4);
+  @$pb.TagNumber(5)
+  set refreshToken($core.String value) => $_setString(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasRefreshToken() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearRefreshToken() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $pb.PbList<$core.String> get scopes => $_getList(5);
+
+  @$pb.TagNumber(7)
+  $fixnum.Int64 get accessExpiresAtUnixMs => $_getI64(6);
+  @$pb.TagNumber(7)
+  set accessExpiresAtUnixMs($fixnum.Int64 value) => $_setInt64(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasAccessExpiresAtUnixMs() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearAccessExpiresAtUnixMs() => $_clearField(7);
+
+  @$pb.TagNumber(8)
+  $fixnum.Int64 get refreshExpiresAtUnixMs => $_getI64(7);
+  @$pb.TagNumber(8)
+  set refreshExpiresAtUnixMs($fixnum.Int64 value) => $_setInt64(7, value);
+  @$pb.TagNumber(8)
+  $core.bool hasRefreshExpiresAtUnixMs() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearRefreshExpiresAtUnixMs() => $_clearField(8);
+
+  @$pb.TagNumber(9)
+  $core.String get gatewayAudience => $_getSZ(8);
+  @$pb.TagNumber(9)
+  set gatewayAudience($core.String value) => $_setString(8, value);
+  @$pb.TagNumber(9)
+  $core.bool hasGatewayAudience() => $_has(8);
+  @$pb.TagNumber(9)
+  void clearGatewayAudience() => $_clearField(9);
+}
+
+class RefreshDeviceCredentialRequest extends $pb.GeneratedMessage {
+  factory RefreshDeviceCredentialRequest({
+    $core.String? credentialId,
+    $core.String? refreshToken,
+    $3.DeviceSignature? deviceSignature,
+  }) {
+    final result = create();
+    if (credentialId != null) result.credentialId = credentialId;
+    if (refreshToken != null) result.refreshToken = refreshToken;
+    if (deviceSignature != null) result.deviceSignature = deviceSignature;
+    return result;
+  }
+
+  RefreshDeviceCredentialRequest._();
+
+  factory RefreshDeviceCredentialRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory RefreshDeviceCredentialRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'RefreshDeviceCredentialRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'credentialId')
+    ..aOS(2, _omitFieldNames ? '' : 'refreshToken')
+    ..aOM<$3.DeviceSignature>(3, _omitFieldNames ? '' : 'deviceSignature',
+        subBuilder: $3.DeviceSignature.create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  RefreshDeviceCredentialRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  RefreshDeviceCredentialRequest copyWith(
+          void Function(RefreshDeviceCredentialRequest) updates) =>
+      super.copyWith(
+              (message) => updates(message as RefreshDeviceCredentialRequest))
+          as RefreshDeviceCredentialRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static RefreshDeviceCredentialRequest create() =>
+      RefreshDeviceCredentialRequest._();
+  @$core.override
+  RefreshDeviceCredentialRequest createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static RefreshDeviceCredentialRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<RefreshDeviceCredentialRequest>(create);
+  static RefreshDeviceCredentialRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get credentialId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set credentialId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasCredentialId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearCredentialId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get refreshToken => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set refreshToken($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasRefreshToken() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearRefreshToken() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $3.DeviceSignature get deviceSignature => $_getN(2);
+  @$pb.TagNumber(3)
+  set deviceSignature($3.DeviceSignature value) => $_setField(3, value);
+  @$pb.TagNumber(3)
+  $core.bool hasDeviceSignature() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearDeviceSignature() => $_clearField(3);
+  @$pb.TagNumber(3)
+  $3.DeviceSignature ensureDeviceSignature() => $_ensure(2);
+}
+
+class RefreshDeviceCredentialResponse extends $pb.GeneratedMessage {
+  factory RefreshDeviceCredentialResponse({
+    $core.String? deviceId,
+    $core.String? credentialId,
+    $core.String? accessToken,
+    $core.String? refreshToken,
+    $core.Iterable<$core.String>? scopes,
+    $fixnum.Int64? accessExpiresAtUnixMs,
+    $fixnum.Int64? refreshExpiresAtUnixMs,
+    $core.String? gatewayAudience,
+  }) {
+    final result = create();
+    if (deviceId != null) result.deviceId = deviceId;
+    if (credentialId != null) result.credentialId = credentialId;
+    if (accessToken != null) result.accessToken = accessToken;
+    if (refreshToken != null) result.refreshToken = refreshToken;
+    if (scopes != null) result.scopes.addAll(scopes);
+    if (accessExpiresAtUnixMs != null)
+      result.accessExpiresAtUnixMs = accessExpiresAtUnixMs;
+    if (refreshExpiresAtUnixMs != null)
+      result.refreshExpiresAtUnixMs = refreshExpiresAtUnixMs;
+    if (gatewayAudience != null) result.gatewayAudience = gatewayAudience;
+    return result;
+  }
+
+  RefreshDeviceCredentialResponse._();
+
+  factory RefreshDeviceCredentialResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory RefreshDeviceCredentialResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'RefreshDeviceCredentialResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'deviceId')
+    ..aOS(2, _omitFieldNames ? '' : 'credentialId')
+    ..aOS(3, _omitFieldNames ? '' : 'accessToken')
+    ..aOS(4, _omitFieldNames ? '' : 'refreshToken')
+    ..pPS(5, _omitFieldNames ? '' : 'scopes')
+    ..a<$fixnum.Int64>(
+        6, _omitFieldNames ? '' : 'accessExpiresAtUnixMs', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(
+        7, _omitFieldNames ? '' : 'refreshExpiresAtUnixMs', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..aOS(8, _omitFieldNames ? '' : 'gatewayAudience')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  RefreshDeviceCredentialResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  RefreshDeviceCredentialResponse copyWith(
+          void Function(RefreshDeviceCredentialResponse) updates) =>
+      super.copyWith(
+              (message) => updates(message as RefreshDeviceCredentialResponse))
+          as RefreshDeviceCredentialResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static RefreshDeviceCredentialResponse create() =>
+      RefreshDeviceCredentialResponse._();
+  @$core.override
+  RefreshDeviceCredentialResponse createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static RefreshDeviceCredentialResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<RefreshDeviceCredentialResponse>(
+          create);
+  static RefreshDeviceCredentialResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get deviceId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set deviceId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasDeviceId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearDeviceId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get credentialId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set credentialId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasCredentialId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearCredentialId() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get accessToken => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set accessToken($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasAccessToken() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearAccessToken() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get refreshToken => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set refreshToken($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasRefreshToken() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearRefreshToken() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $pb.PbList<$core.String> get scopes => $_getList(4);
+
+  @$pb.TagNumber(6)
+  $fixnum.Int64 get accessExpiresAtUnixMs => $_getI64(5);
+  @$pb.TagNumber(6)
+  set accessExpiresAtUnixMs($fixnum.Int64 value) => $_setInt64(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasAccessExpiresAtUnixMs() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearAccessExpiresAtUnixMs() => $_clearField(6);
+
+  @$pb.TagNumber(7)
+  $fixnum.Int64 get refreshExpiresAtUnixMs => $_getI64(6);
+  @$pb.TagNumber(7)
+  set refreshExpiresAtUnixMs($fixnum.Int64 value) => $_setInt64(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasRefreshExpiresAtUnixMs() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearRefreshExpiresAtUnixMs() => $_clearField(7);
+
+  @$pb.TagNumber(8)
+  $core.String get gatewayAudience => $_getSZ(7);
+  @$pb.TagNumber(8)
+  set gatewayAudience($core.String value) => $_setString(7, value);
+  @$pb.TagNumber(8)
+  $core.bool hasGatewayAudience() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearGatewayAudience() => $_clearField(8);
 }
 
 class RevokeDeviceRequest extends $pb.GeneratedMessage {
   factory RevokeDeviceRequest({
     $core.String? deviceId,
+    $core.String? reasonCode,
+    $3.DeviceSignature? administratorSignature,
   }) {
     final result = create();
     if (deviceId != null) result.deviceId = deviceId;
+    if (reasonCode != null) result.reasonCode = reasonCode;
+    if (administratorSignature != null)
+      result.administratorSignature = administratorSignature;
     return result;
   }
 
@@ -1845,6 +2827,10 @@ class RevokeDeviceRequest extends $pb.GeneratedMessage {
       package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
       createEmptyInstance: create)
     ..aOS(1, _omitFieldNames ? '' : 'deviceId')
+    ..aOS(2, _omitFieldNames ? '' : 'reasonCode')
+    ..aOM<$3.DeviceSignature>(
+        3, _omitFieldNames ? '' : 'administratorSignature',
+        subBuilder: $3.DeviceSignature.create)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1874,6 +2860,26 @@ class RevokeDeviceRequest extends $pb.GeneratedMessage {
   $core.bool hasDeviceId() => $_has(0);
   @$pb.TagNumber(1)
   void clearDeviceId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get reasonCode => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set reasonCode($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasReasonCode() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearReasonCode() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $3.DeviceSignature get administratorSignature => $_getN(2);
+  @$pb.TagNumber(3)
+  set administratorSignature($3.DeviceSignature value) => $_setField(3, value);
+  @$pb.TagNumber(3)
+  $core.bool hasAdministratorSignature() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearAdministratorSignature() => $_clearField(3);
+  @$pb.TagNumber(3)
+  $3.DeviceSignature ensureAdministratorSignature() => $_ensure(2);
 }
 
 class RevokeDeviceResponse extends $pb.GeneratedMessage {

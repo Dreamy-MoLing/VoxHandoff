@@ -114,6 +114,20 @@ final $typed_data.Uint8List failureCategoryDescriptor = $convert.base64Decode(
     'T1JZX1NUT1JBR0UQCRIcChhGQUlMVVJFX0NBVEVHT1JZX1BSSVZBQ1kQChIcChhGQUlMVVJFX0'
     'NBVEVHT1JZX1VOS05PV04QCw==');
 
+@$core.Deprecated('Use deviceSignatureAlgorithmDescriptor instead')
+const DeviceSignatureAlgorithm$json = {
+  '1': 'DeviceSignatureAlgorithm',
+  '2': [
+    {'1': 'DEVICE_SIGNATURE_ALGORITHM_UNSPECIFIED', '2': 0},
+    {'1': 'DEVICE_SIGNATURE_ALGORITHM_ED25519', '2': 1},
+  ],
+};
+
+/// Descriptor for `DeviceSignatureAlgorithm`. Decode as a `google.protobuf.EnumDescriptorProto`.
+final $typed_data.Uint8List deviceSignatureAlgorithmDescriptor = $convert.base64Decode(
+    'ChhEZXZpY2VTaWduYXR1cmVBbGdvcml0aG0SKgomREVWSUNFX1NJR05BVFVSRV9BTEdPUklUSE'
+    '1fVU5TUEVDSUZJRUQQABImCiJERVZJQ0VfU0lHTkFUVVJFX0FMR09SSVRITV9FRDI1NTE5EAE=');
+
 @$core.Deprecated('Use protocolVersionDescriptor instead')
 const ProtocolVersion$json = {
   '1': 'ProtocolVersion',
@@ -256,3 +270,28 @@ const Empty$json = {
 /// Descriptor for `Empty`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List emptyDescriptor =
     $convert.base64Decode('CgVFbXB0eQ==');
+
+@$core.Deprecated('Use deviceSignatureDescriptor instead')
+const DeviceSignature$json = {
+  '1': 'DeviceSignature',
+  '2': [
+    {'1': 'credential_id', '3': 1, '4': 1, '5': 9, '10': 'credentialId'},
+    {'1': 'nonce', '3': 2, '4': 1, '5': 12, '10': 'nonce'},
+    {'1': 'signature', '3': 3, '4': 1, '5': 12, '10': 'signature'},
+    {
+      '1': 'algorithm',
+      '3': 4,
+      '4': 1,
+      '5': 14,
+      '6': '.agent_talk.v1.DeviceSignatureAlgorithm',
+      '10': 'algorithm'
+    },
+  ],
+};
+
+/// Descriptor for `DeviceSignature`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List deviceSignatureDescriptor = $convert.base64Decode(
+    'Cg9EZXZpY2VTaWduYXR1cmUSIwoNY3JlZGVudGlhbF9pZBgBIAEoCVIMY3JlZGVudGlhbElkEh'
+    'QKBW5vbmNlGAIgASgMUgVub25jZRIcCglzaWduYXR1cmUYAyABKAxSCXNpZ25hdHVyZRJFCglh'
+    'bGdvcml0aG0YBCABKA4yJy5hZ2VudF90YWxrLnYxLkRldmljZVNpZ25hdHVyZUFsZ29yaXRobV'
+    'IJYWxnb3JpdGht');

@@ -112,11 +112,41 @@ class PairingServiceClient extends $grpc.Client {
     return $createUnaryCall(_$beginPairing, request, options: options);
   }
 
+  $grpc.ResponseFuture<$0.InspectPairingResponse> inspectPairing(
+    $0.InspectPairingRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$inspectPairing, request, options: options);
+  }
+
+  $grpc.ResponseFuture<$0.ApprovePairingResponse> approvePairing(
+    $0.ApprovePairingRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$approvePairing, request, options: options);
+  }
+
   $grpc.ResponseFuture<$0.CompletePairingResponse> completePairing(
     $0.CompletePairingRequest request, {
     $grpc.CallOptions? options,
   }) {
     return $createUnaryCall(_$completePairing, request, options: options);
+  }
+
+  $grpc.ResponseFuture<$0.ConfirmPairingResponse> confirmPairing(
+    $0.ConfirmPairingRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$confirmPairing, request, options: options);
+  }
+
+  $grpc.ResponseFuture<$0.RefreshDeviceCredentialResponse>
+      refreshDeviceCredential(
+    $0.RefreshDeviceCredentialRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$refreshDeviceCredential, request,
+        options: options);
   }
 
   $grpc.ResponseFuture<$0.RevokeDeviceResponse> revokeDevice(
@@ -133,11 +163,32 @@ class PairingServiceClient extends $grpc.Client {
           '/agent_talk.v1.PairingService/BeginPairing',
           ($0.BeginPairingRequest value) => value.writeToBuffer(),
           $0.BeginPairingResponse.fromBuffer);
+  static final _$inspectPairing =
+      $grpc.ClientMethod<$0.InspectPairingRequest, $0.InspectPairingResponse>(
+          '/agent_talk.v1.PairingService/InspectPairing',
+          ($0.InspectPairingRequest value) => value.writeToBuffer(),
+          $0.InspectPairingResponse.fromBuffer);
+  static final _$approvePairing =
+      $grpc.ClientMethod<$0.ApprovePairingRequest, $0.ApprovePairingResponse>(
+          '/agent_talk.v1.PairingService/ApprovePairing',
+          ($0.ApprovePairingRequest value) => value.writeToBuffer(),
+          $0.ApprovePairingResponse.fromBuffer);
   static final _$completePairing =
       $grpc.ClientMethod<$0.CompletePairingRequest, $0.CompletePairingResponse>(
           '/agent_talk.v1.PairingService/CompletePairing',
           ($0.CompletePairingRequest value) => value.writeToBuffer(),
           $0.CompletePairingResponse.fromBuffer);
+  static final _$confirmPairing =
+      $grpc.ClientMethod<$0.ConfirmPairingRequest, $0.ConfirmPairingResponse>(
+          '/agent_talk.v1.PairingService/ConfirmPairing',
+          ($0.ConfirmPairingRequest value) => value.writeToBuffer(),
+          $0.ConfirmPairingResponse.fromBuffer);
+  static final _$refreshDeviceCredential = $grpc.ClientMethod<
+          $0.RefreshDeviceCredentialRequest,
+          $0.RefreshDeviceCredentialResponse>(
+      '/agent_talk.v1.PairingService/RefreshDeviceCredential',
+      ($0.RefreshDeviceCredentialRequest value) => value.writeToBuffer(),
+      $0.RefreshDeviceCredentialResponse.fromBuffer);
   static final _$revokeDevice =
       $grpc.ClientMethod<$0.RevokeDeviceRequest, $0.RevokeDeviceResponse>(
           '/agent_talk.v1.PairingService/RevokeDevice',
@@ -159,6 +210,24 @@ abstract class PairingServiceBase extends $grpc.Service {
             ($core.List<$core.int> value) =>
                 $0.BeginPairingRequest.fromBuffer(value),
             ($0.BeginPairingResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.InspectPairingRequest,
+            $0.InspectPairingResponse>(
+        'InspectPairing',
+        inspectPairing_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.InspectPairingRequest.fromBuffer(value),
+        ($0.InspectPairingResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.ApprovePairingRequest,
+            $0.ApprovePairingResponse>(
+        'ApprovePairing',
+        approvePairing_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.ApprovePairingRequest.fromBuffer(value),
+        ($0.ApprovePairingResponse value) => value.writeToBuffer()));
     $addMethod($grpc.ServiceMethod<$0.CompletePairingRequest,
             $0.CompletePairingResponse>(
         'CompletePairing',
@@ -168,6 +237,24 @@ abstract class PairingServiceBase extends $grpc.Service {
         ($core.List<$core.int> value) =>
             $0.CompletePairingRequest.fromBuffer(value),
         ($0.CompletePairingResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.ConfirmPairingRequest,
+            $0.ConfirmPairingResponse>(
+        'ConfirmPairing',
+        confirmPairing_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.ConfirmPairingRequest.fromBuffer(value),
+        ($0.ConfirmPairingResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.RefreshDeviceCredentialRequest,
+            $0.RefreshDeviceCredentialResponse>(
+        'RefreshDeviceCredential',
+        refreshDeviceCredential_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.RefreshDeviceCredentialRequest.fromBuffer(value),
+        ($0.RefreshDeviceCredentialResponse value) => value.writeToBuffer()));
     $addMethod(
         $grpc.ServiceMethod<$0.RevokeDeviceRequest, $0.RevokeDeviceResponse>(
             'RevokeDevice',
@@ -188,6 +275,24 @@ abstract class PairingServiceBase extends $grpc.Service {
   $async.Future<$0.BeginPairingResponse> beginPairing(
       $grpc.ServiceCall call, $0.BeginPairingRequest request);
 
+  $async.Future<$0.InspectPairingResponse> inspectPairing_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.InspectPairingRequest> $request) async {
+    return inspectPairing($call, await $request);
+  }
+
+  $async.Future<$0.InspectPairingResponse> inspectPairing(
+      $grpc.ServiceCall call, $0.InspectPairingRequest request);
+
+  $async.Future<$0.ApprovePairingResponse> approvePairing_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.ApprovePairingRequest> $request) async {
+    return approvePairing($call, await $request);
+  }
+
+  $async.Future<$0.ApprovePairingResponse> approvePairing(
+      $grpc.ServiceCall call, $0.ApprovePairingRequest request);
+
   $async.Future<$0.CompletePairingResponse> completePairing_Pre(
       $grpc.ServiceCall $call,
       $async.Future<$0.CompletePairingRequest> $request) async {
@@ -196,6 +301,24 @@ abstract class PairingServiceBase extends $grpc.Service {
 
   $async.Future<$0.CompletePairingResponse> completePairing(
       $grpc.ServiceCall call, $0.CompletePairingRequest request);
+
+  $async.Future<$0.ConfirmPairingResponse> confirmPairing_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.ConfirmPairingRequest> $request) async {
+    return confirmPairing($call, await $request);
+  }
+
+  $async.Future<$0.ConfirmPairingResponse> confirmPairing(
+      $grpc.ServiceCall call, $0.ConfirmPairingRequest request);
+
+  $async.Future<$0.RefreshDeviceCredentialResponse> refreshDeviceCredential_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.RefreshDeviceCredentialRequest> $request) async {
+    return refreshDeviceCredential($call, await $request);
+  }
+
+  $async.Future<$0.RefreshDeviceCredentialResponse> refreshDeviceCredential(
+      $grpc.ServiceCall call, $0.RefreshDeviceCredentialRequest request);
 
   $async.Future<$0.RevokeDeviceResponse> revokeDevice_Pre(
       $grpc.ServiceCall $call,

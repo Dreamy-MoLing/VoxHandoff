@@ -121,6 +121,8 @@ service GatewayControlService {
 message BeginPairingRequest {
   string device_display_name = 1;
   bytes device_public_key = 2;
+  repeated string requested_scopes = 3;
+  string expected_gateway_audience = 4;
 }
 
 message BeginPairingResponse {
@@ -128,22 +130,101 @@ message BeginPairingResponse {
   string user_code = 2;
   string verification_uri = 3;
   uint32 expires_in_seconds = 4;
+  bytes device_proof_payload = 5;
+  string device_fingerprint = 6;
+  string gateway_fingerprint = 7;
+  string gateway_audience = 8;
 }
 
 message CompletePairingRequest {
   string pairing_id = 1;
+  // Deprecated pre-implementation placeholder. Gateways must not accept this
+  // field as proof and clients must use device_key_proof instead.
   string device_proof = 2;
+  DeviceSignature device_key_proof = 3;
 }
 
 message CompletePairingResponse {
   string device_id = 1;
+  // Reserved for wire compatibility with the pre-implementation draft. Valid
+  // credentials are returned only by ConfirmPairing.
   string access_token = 2;
   string refresh_token = 3;
   repeated string scopes = 4;
+  string credential_id = 5;
+  bytes confirmation_payload = 6;
+  string gateway_audience = 7;
+  uint32 confirmation_expires_in_seconds = 8;
+}
+
+message InspectPairingRequest {
+  string user_code = 1;
+}
+
+message InspectPairingResponse {
+  string pairing_id = 1;
+  string device_display_name = 2;
+  string device_fingerprint = 3;
+  string gateway_fingerprint = 4;
+  string gateway_audience = 5;
+  repeated string requested_scopes = 6;
+  uint32 expires_in_seconds = 7;
+}
+
+message ApprovePairingRequest {
+  string pairing_id = 1;
+  string user_code = 2;
+  repeated string approved_scopes = 3;
+  string expected_device_fingerprint = 4;
+  string expected_gateway_fingerprint = 5;
+  string expected_gateway_audience = 6;
+  DeviceSignature administrator_signature = 7;
+}
+
+message ApprovePairingResponse {
+  bool approved = 1;
+  uint32 expires_in_seconds = 2;
+}
+
+message ConfirmPairingRequest {
+  string pairing_id = 1;
+  string credential_id = 2;
+  DeviceSignature device_signature = 3;
+}
+
+message ConfirmPairingResponse {
+  bool paired = 1;
+  string device_id = 2;
+  string credential_id = 3;
+  string access_token = 4;
+  string refresh_token = 5;
+  repeated string scopes = 6;
+  uint64 access_expires_at_unix_ms = 7;
+  uint64 refresh_expires_at_unix_ms = 8;
+  string gateway_audience = 9;
+}
+
+message RefreshDeviceCredentialRequest {
+  string credential_id = 1;
+  string refresh_token = 2;
+  DeviceSignature device_signature = 3;
+}
+
+message RefreshDeviceCredentialResponse {
+  string device_id = 1;
+  string credential_id = 2;
+  string access_token = 3;
+  string refresh_token = 4;
+  repeated string scopes = 5;
+  uint64 access_expires_at_unix_ms = 6;
+  uint64 refresh_expires_at_unix_ms = 7;
+  string gateway_audience = 8;
 }
 
 message RevokeDeviceRequest {
   string device_id = 1;
+  string reason_code = 2;
+  DeviceSignature administrator_signature = 3;
 }
 
 message RevokeDeviceResponse {
@@ -152,6 +233,10 @@ message RevokeDeviceResponse {
 
 service PairingService {
   rpc BeginPairing(BeginPairingRequest) returns (BeginPairingResponse);
+  rpc InspectPairing(InspectPairingRequest) returns (InspectPairingResponse);
+  rpc ApprovePairing(ApprovePairingRequest) returns (ApprovePairingResponse);
   rpc CompletePairing(CompletePairingRequest) returns (CompletePairingResponse);
+  rpc ConfirmPairing(ConfirmPairingRequest) returns (ConfirmPairingResponse);
+  rpc RefreshDeviceCredential(RefreshDeviceCredentialRequest) returns (RefreshDeviceCredentialResponse);
   rpc RevokeDevice(RevokeDeviceRequest) returns (RevokeDeviceResponse);
 }

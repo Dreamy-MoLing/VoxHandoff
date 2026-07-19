@@ -176,5 +176,27 @@ class FailureCategory extends $pb.ProtobufEnum {
   const FailureCategory._(super.value, super.name);
 }
 
+class DeviceSignatureAlgorithm extends $pb.ProtobufEnum {
+  static const DeviceSignatureAlgorithm DEVICE_SIGNATURE_ALGORITHM_UNSPECIFIED =
+      DeviceSignatureAlgorithm._(
+          0, _omitEnumNames ? '' : 'DEVICE_SIGNATURE_ALGORITHM_UNSPECIFIED');
+  static const DeviceSignatureAlgorithm DEVICE_SIGNATURE_ALGORITHM_ED25519 =
+      DeviceSignatureAlgorithm._(
+          1, _omitEnumNames ? '' : 'DEVICE_SIGNATURE_ALGORITHM_ED25519');
+
+  static const $core.List<DeviceSignatureAlgorithm> values =
+      <DeviceSignatureAlgorithm>[
+    DEVICE_SIGNATURE_ALGORITHM_UNSPECIFIED,
+    DEVICE_SIGNATURE_ALGORITHM_ED25519,
+  ];
+
+  static final $core.List<DeviceSignatureAlgorithm?> _byValue =
+      $pb.ProtobufEnum.$_initByValueList(values, 1);
+  static DeviceSignatureAlgorithm? valueOf($core.int value) =>
+      value < 0 || value >= _byValue.length ? null : _byValue[value];
+
+  const DeviceSignatureAlgorithm._(super.value, super.name);
+}
+
 const $core.bool _omitEnumNames =
     $core.bool.fromEnvironment('protobuf.omit_enum_names');

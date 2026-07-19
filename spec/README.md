@@ -1,6 +1,6 @@
 # Agent Talk 正式开发基线
 
-> 基线版本：1.24<br>
+> 基线版本：1.25<br>
 > 生效日期：2026-07-18<br>
 > 状态：Active
 
@@ -29,6 +29,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.25 | 2026-07-18 | 固定配对 owner 核验、双阶段密钥证明、token 轮换/重放和高风险设备签名 wire contract |
 | 1.24 | 2026-07-18 | 接通 PostgreSQL event outbox pump 与有界 live Client 流，慢消费者以耐久 replay 恢复 |
 | 1.23 | 2026-07-18 | 接通 clarification pending/expiry/confirmed-text/outbox，使用 send scope 且与 approve 权限隔离 |
 | 1.22 | 2026-07-18 | 接通耐久 approval pending/CAS/expiry/audit/dispatch，禁止摘要替换、迟到或并发重复决定 |

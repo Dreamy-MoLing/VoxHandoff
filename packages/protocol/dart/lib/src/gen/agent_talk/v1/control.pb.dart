@@ -753,6 +753,7 @@ class ResolveApproval extends $pb.GeneratedMessage {
     $core.String? approvalId,
     ApprovalDecision? decision,
     $core.String? operationSummarySha256,
+    $0.DeviceSignature? deviceSignature,
   }) {
     final result = create();
     if (requestId != null) result.requestId = requestId;
@@ -760,6 +761,7 @@ class ResolveApproval extends $pb.GeneratedMessage {
     if (decision != null) result.decision = decision;
     if (operationSummarySha256 != null)
       result.operationSummarySha256 = operationSummarySha256;
+    if (deviceSignature != null) result.deviceSignature = deviceSignature;
     return result;
   }
 
@@ -781,6 +783,8 @@ class ResolveApproval extends $pb.GeneratedMessage {
     ..aE<ApprovalDecision>(3, _omitFieldNames ? '' : 'decision',
         enumValues: ApprovalDecision.values)
     ..aOS(4, _omitFieldNames ? '' : 'operationSummarySha256')
+    ..aOM<$0.DeviceSignature>(5, _omitFieldNames ? '' : 'deviceSignature',
+        subBuilder: $0.DeviceSignature.create)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -837,6 +841,17 @@ class ResolveApproval extends $pb.GeneratedMessage {
   $core.bool hasOperationSummarySha256() => $_has(3);
   @$pb.TagNumber(4)
   void clearOperationSummarySha256() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $0.DeviceSignature get deviceSignature => $_getN(4);
+  @$pb.TagNumber(5)
+  set deviceSignature($0.DeviceSignature value) => $_setField(5, value);
+  @$pb.TagNumber(5)
+  $core.bool hasDeviceSignature() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearDeviceSignature() => $_clearField(5);
+  @$pb.TagNumber(5)
+  $0.DeviceSignature ensureDeviceSignature() => $_ensure(4);
 }
 
 class ResolveClarification extends $pb.GeneratedMessage {

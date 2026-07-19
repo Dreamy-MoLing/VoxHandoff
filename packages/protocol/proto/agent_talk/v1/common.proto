@@ -89,3 +89,17 @@ message StageFailure {
 }
 
 message Empty {}
+
+enum DeviceSignatureAlgorithm {
+  DEVICE_SIGNATURE_ALGORITHM_UNSPECIFIED = 0;
+  DEVICE_SIGNATURE_ALGORITHM_ED25519 = 1;
+}
+
+// The signature is calculated over a domain-separated payload defined by the
+// owning RPC. Nonces are opaque, single-use values and must never be logged.
+message DeviceSignature {
+  string credential_id = 1;
+  bytes nonce = 2;
+  bytes signature = 3;
+  DeviceSignatureAlgorithm algorithm = 4;
+}

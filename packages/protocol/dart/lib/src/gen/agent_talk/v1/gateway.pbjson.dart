@@ -545,6 +545,14 @@ const BeginPairingRequest$json = {
       '5': 12,
       '10': 'devicePublicKey'
     },
+    {'1': 'requested_scopes', '3': 3, '4': 3, '5': 9, '10': 'requestedScopes'},
+    {
+      '1': 'expected_gateway_audience',
+      '3': 4,
+      '4': 1,
+      '5': 9,
+      '10': 'expectedGatewayAudience'
+    },
   ],
 };
 
@@ -552,7 +560,8 @@ const BeginPairingRequest$json = {
 final $typed_data.Uint8List beginPairingRequestDescriptor = $convert.base64Decode(
     'ChNCZWdpblBhaXJpbmdSZXF1ZXN0Ei4KE2RldmljZV9kaXNwbGF5X25hbWUYASABKAlSEWRldm'
     'ljZURpc3BsYXlOYW1lEioKEWRldmljZV9wdWJsaWNfa2V5GAIgASgMUg9kZXZpY2VQdWJsaWNL'
-    'ZXk=');
+    'ZXkSKQoQcmVxdWVzdGVkX3Njb3BlcxgDIAMoCVIPcmVxdWVzdGVkU2NvcGVzEjoKGWV4cGVjdG'
+    'VkX2dhdGV3YXlfYXVkaWVuY2UYBCABKAlSF2V4cGVjdGVkR2F0ZXdheUF1ZGllbmNl');
 
 @$core.Deprecated('Use beginPairingResponseDescriptor instead')
 const BeginPairingResponse$json = {
@@ -568,6 +577,28 @@ const BeginPairingResponse$json = {
       '5': 13,
       '10': 'expiresInSeconds'
     },
+    {
+      '1': 'device_proof_payload',
+      '3': 5,
+      '4': 1,
+      '5': 12,
+      '10': 'deviceProofPayload'
+    },
+    {
+      '1': 'device_fingerprint',
+      '3': 6,
+      '4': 1,
+      '5': 9,
+      '10': 'deviceFingerprint'
+    },
+    {
+      '1': 'gateway_fingerprint',
+      '3': 7,
+      '4': 1,
+      '5': 9,
+      '10': 'gatewayFingerprint'
+    },
+    {'1': 'gateway_audience', '3': 8, '4': 1, '5': 9, '10': 'gatewayAudience'},
   ],
 };
 
@@ -576,7 +607,10 @@ final $typed_data.Uint8List beginPairingResponseDescriptor = $convert.base64Deco
     'ChRCZWdpblBhaXJpbmdSZXNwb25zZRIdCgpwYWlyaW5nX2lkGAEgASgJUglwYWlyaW5nSWQSGw'
     'oJdXNlcl9jb2RlGAIgASgJUgh1c2VyQ29kZRIpChB2ZXJpZmljYXRpb25fdXJpGAMgASgJUg92'
     'ZXJpZmljYXRpb25VcmkSLAoSZXhwaXJlc19pbl9zZWNvbmRzGAQgASgNUhBleHBpcmVzSW5TZW'
-    'NvbmRz');
+    'NvbmRzEjAKFGRldmljZV9wcm9vZl9wYXlsb2FkGAUgASgMUhJkZXZpY2VQcm9vZlBheWxvYWQS'
+    'LQoSZGV2aWNlX2ZpbmdlcnByaW50GAYgASgJUhFkZXZpY2VGaW5nZXJwcmludBIvChNnYXRld2'
+    'F5X2ZpbmdlcnByaW50GAcgASgJUhJnYXRld2F5RmluZ2VycHJpbnQSKQoQZ2F0ZXdheV9hdWRp'
+    'ZW5jZRgIIAEoCVIPZ2F0ZXdheUF1ZGllbmNl');
 
 @$core.Deprecated('Use completePairingRequestDescriptor instead')
 const CompletePairingRequest$json = {
@@ -584,14 +618,22 @@ const CompletePairingRequest$json = {
   '2': [
     {'1': 'pairing_id', '3': 1, '4': 1, '5': 9, '10': 'pairingId'},
     {'1': 'device_proof', '3': 2, '4': 1, '5': 9, '10': 'deviceProof'},
+    {
+      '1': 'device_key_proof',
+      '3': 3,
+      '4': 1,
+      '5': 11,
+      '6': '.agent_talk.v1.DeviceSignature',
+      '10': 'deviceKeyProof'
+    },
   ],
 };
 
 /// Descriptor for `CompletePairingRequest`. Decode as a `google.protobuf.DescriptorProto`.
-final $typed_data.Uint8List completePairingRequestDescriptor =
-    $convert.base64Decode(
-        'ChZDb21wbGV0ZVBhaXJpbmdSZXF1ZXN0Eh0KCnBhaXJpbmdfaWQYASABKAlSCXBhaXJpbmdJZB'
-        'IhCgxkZXZpY2VfcHJvb2YYAiABKAlSC2RldmljZVByb29m');
+final $typed_data.Uint8List completePairingRequestDescriptor = $convert.base64Decode(
+    'ChZDb21wbGV0ZVBhaXJpbmdSZXF1ZXN0Eh0KCnBhaXJpbmdfaWQYASABKAlSCXBhaXJpbmdJZB'
+    'IhCgxkZXZpY2VfcHJvb2YYAiABKAlSC2RldmljZVByb29mEkgKEGRldmljZV9rZXlfcHJvb2YY'
+    'AyABKAsyHi5hZ2VudF90YWxrLnYxLkRldmljZVNpZ25hdHVyZVIOZGV2aWNlS2V5UHJvb2Y=');
 
 @$core.Deprecated('Use completePairingResponseDescriptor instead')
 const CompletePairingResponse$json = {
@@ -601,6 +643,22 @@ const CompletePairingResponse$json = {
     {'1': 'access_token', '3': 2, '4': 1, '5': 9, '10': 'accessToken'},
     {'1': 'refresh_token', '3': 3, '4': 1, '5': 9, '10': 'refreshToken'},
     {'1': 'scopes', '3': 4, '4': 3, '5': 9, '10': 'scopes'},
+    {'1': 'credential_id', '3': 5, '4': 1, '5': 9, '10': 'credentialId'},
+    {
+      '1': 'confirmation_payload',
+      '3': 6,
+      '4': 1,
+      '5': 12,
+      '10': 'confirmationPayload'
+    },
+    {'1': 'gateway_audience', '3': 7, '4': 1, '5': 9, '10': 'gatewayAudience'},
+    {
+      '1': 'confirmation_expires_in_seconds',
+      '3': 8,
+      '4': 1,
+      '5': 13,
+      '10': 'confirmationExpiresInSeconds'
+    },
   ],
 };
 
@@ -608,20 +666,289 @@ const CompletePairingResponse$json = {
 final $typed_data.Uint8List completePairingResponseDescriptor = $convert.base64Decode(
     'ChdDb21wbGV0ZVBhaXJpbmdSZXNwb25zZRIbCglkZXZpY2VfaWQYASABKAlSCGRldmljZUlkEi'
     'EKDGFjY2Vzc190b2tlbhgCIAEoCVILYWNjZXNzVG9rZW4SIwoNcmVmcmVzaF90b2tlbhgDIAEo'
-    'CVIMcmVmcmVzaFRva2VuEhYKBnNjb3BlcxgEIAMoCVIGc2NvcGVz');
+    'CVIMcmVmcmVzaFRva2VuEhYKBnNjb3BlcxgEIAMoCVIGc2NvcGVzEiMKDWNyZWRlbnRpYWxfaW'
+    'QYBSABKAlSDGNyZWRlbnRpYWxJZBIxChRjb25maXJtYXRpb25fcGF5bG9hZBgGIAEoDFITY29u'
+    'ZmlybWF0aW9uUGF5bG9hZBIpChBnYXRld2F5X2F1ZGllbmNlGAcgASgJUg9nYXRld2F5QXVkaW'
+    'VuY2USRQofY29uZmlybWF0aW9uX2V4cGlyZXNfaW5fc2Vjb25kcxgIIAEoDVIcY29uZmlybWF0'
+    'aW9uRXhwaXJlc0luU2Vjb25kcw==');
+
+@$core.Deprecated('Use inspectPairingRequestDescriptor instead')
+const InspectPairingRequest$json = {
+  '1': 'InspectPairingRequest',
+  '2': [
+    {'1': 'user_code', '3': 1, '4': 1, '5': 9, '10': 'userCode'},
+  ],
+};
+
+/// Descriptor for `InspectPairingRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List inspectPairingRequestDescriptor = $convert.base64Decode(
+    'ChVJbnNwZWN0UGFpcmluZ1JlcXVlc3QSGwoJdXNlcl9jb2RlGAEgASgJUgh1c2VyQ29kZQ==');
+
+@$core.Deprecated('Use inspectPairingResponseDescriptor instead')
+const InspectPairingResponse$json = {
+  '1': 'InspectPairingResponse',
+  '2': [
+    {'1': 'pairing_id', '3': 1, '4': 1, '5': 9, '10': 'pairingId'},
+    {
+      '1': 'device_display_name',
+      '3': 2,
+      '4': 1,
+      '5': 9,
+      '10': 'deviceDisplayName'
+    },
+    {
+      '1': 'device_fingerprint',
+      '3': 3,
+      '4': 1,
+      '5': 9,
+      '10': 'deviceFingerprint'
+    },
+    {
+      '1': 'gateway_fingerprint',
+      '3': 4,
+      '4': 1,
+      '5': 9,
+      '10': 'gatewayFingerprint'
+    },
+    {'1': 'gateway_audience', '3': 5, '4': 1, '5': 9, '10': 'gatewayAudience'},
+    {'1': 'requested_scopes', '3': 6, '4': 3, '5': 9, '10': 'requestedScopes'},
+    {
+      '1': 'expires_in_seconds',
+      '3': 7,
+      '4': 1,
+      '5': 13,
+      '10': 'expiresInSeconds'
+    },
+  ],
+};
+
+/// Descriptor for `InspectPairingResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List inspectPairingResponseDescriptor = $convert.base64Decode(
+    'ChZJbnNwZWN0UGFpcmluZ1Jlc3BvbnNlEh0KCnBhaXJpbmdfaWQYASABKAlSCXBhaXJpbmdJZB'
+    'IuChNkZXZpY2VfZGlzcGxheV9uYW1lGAIgASgJUhFkZXZpY2VEaXNwbGF5TmFtZRItChJkZXZp'
+    'Y2VfZmluZ2VycHJpbnQYAyABKAlSEWRldmljZUZpbmdlcnByaW50Ei8KE2dhdGV3YXlfZmluZ2'
+    'VycHJpbnQYBCABKAlSEmdhdGV3YXlGaW5nZXJwcmludBIpChBnYXRld2F5X2F1ZGllbmNlGAUg'
+    'ASgJUg9nYXRld2F5QXVkaWVuY2USKQoQcmVxdWVzdGVkX3Njb3BlcxgGIAMoCVIPcmVxdWVzdG'
+    'VkU2NvcGVzEiwKEmV4cGlyZXNfaW5fc2Vjb25kcxgHIAEoDVIQZXhwaXJlc0luU2Vjb25kcw==');
+
+@$core.Deprecated('Use approvePairingRequestDescriptor instead')
+const ApprovePairingRequest$json = {
+  '1': 'ApprovePairingRequest',
+  '2': [
+    {'1': 'pairing_id', '3': 1, '4': 1, '5': 9, '10': 'pairingId'},
+    {'1': 'user_code', '3': 2, '4': 1, '5': 9, '10': 'userCode'},
+    {'1': 'approved_scopes', '3': 3, '4': 3, '5': 9, '10': 'approvedScopes'},
+    {
+      '1': 'expected_device_fingerprint',
+      '3': 4,
+      '4': 1,
+      '5': 9,
+      '10': 'expectedDeviceFingerprint'
+    },
+    {
+      '1': 'expected_gateway_fingerprint',
+      '3': 5,
+      '4': 1,
+      '5': 9,
+      '10': 'expectedGatewayFingerprint'
+    },
+    {
+      '1': 'expected_gateway_audience',
+      '3': 6,
+      '4': 1,
+      '5': 9,
+      '10': 'expectedGatewayAudience'
+    },
+    {
+      '1': 'administrator_signature',
+      '3': 7,
+      '4': 1,
+      '5': 11,
+      '6': '.agent_talk.v1.DeviceSignature',
+      '10': 'administratorSignature'
+    },
+  ],
+};
+
+/// Descriptor for `ApprovePairingRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List approvePairingRequestDescriptor = $convert.base64Decode(
+    'ChVBcHByb3ZlUGFpcmluZ1JlcXVlc3QSHQoKcGFpcmluZ19pZBgBIAEoCVIJcGFpcmluZ0lkEh'
+    'sKCXVzZXJfY29kZRgCIAEoCVIIdXNlckNvZGUSJwoPYXBwcm92ZWRfc2NvcGVzGAMgAygJUg5h'
+    'cHByb3ZlZFNjb3BlcxI+ChtleHBlY3RlZF9kZXZpY2VfZmluZ2VycHJpbnQYBCABKAlSGWV4cG'
+    'VjdGVkRGV2aWNlRmluZ2VycHJpbnQSQAocZXhwZWN0ZWRfZ2F0ZXdheV9maW5nZXJwcmludBgF'
+    'IAEoCVIaZXhwZWN0ZWRHYXRld2F5RmluZ2VycHJpbnQSOgoZZXhwZWN0ZWRfZ2F0ZXdheV9hdW'
+    'RpZW5jZRgGIAEoCVIXZXhwZWN0ZWRHYXRld2F5QXVkaWVuY2USVwoXYWRtaW5pc3RyYXRvcl9z'
+    'aWduYXR1cmUYByABKAsyHi5hZ2VudF90YWxrLnYxLkRldmljZVNpZ25hdHVyZVIWYWRtaW5pc3'
+    'RyYXRvclNpZ25hdHVyZQ==');
+
+@$core.Deprecated('Use approvePairingResponseDescriptor instead')
+const ApprovePairingResponse$json = {
+  '1': 'ApprovePairingResponse',
+  '2': [
+    {'1': 'approved', '3': 1, '4': 1, '5': 8, '10': 'approved'},
+    {
+      '1': 'expires_in_seconds',
+      '3': 2,
+      '4': 1,
+      '5': 13,
+      '10': 'expiresInSeconds'
+    },
+  ],
+};
+
+/// Descriptor for `ApprovePairingResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List approvePairingResponseDescriptor =
+    $convert.base64Decode(
+        'ChZBcHByb3ZlUGFpcmluZ1Jlc3BvbnNlEhoKCGFwcHJvdmVkGAEgASgIUghhcHByb3ZlZBIsCh'
+        'JleHBpcmVzX2luX3NlY29uZHMYAiABKA1SEGV4cGlyZXNJblNlY29uZHM=');
+
+@$core.Deprecated('Use confirmPairingRequestDescriptor instead')
+const ConfirmPairingRequest$json = {
+  '1': 'ConfirmPairingRequest',
+  '2': [
+    {'1': 'pairing_id', '3': 1, '4': 1, '5': 9, '10': 'pairingId'},
+    {'1': 'credential_id', '3': 2, '4': 1, '5': 9, '10': 'credentialId'},
+    {
+      '1': 'device_signature',
+      '3': 3,
+      '4': 1,
+      '5': 11,
+      '6': '.agent_talk.v1.DeviceSignature',
+      '10': 'deviceSignature'
+    },
+  ],
+};
+
+/// Descriptor for `ConfirmPairingRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List confirmPairingRequestDescriptor = $convert.base64Decode(
+    'ChVDb25maXJtUGFpcmluZ1JlcXVlc3QSHQoKcGFpcmluZ19pZBgBIAEoCVIJcGFpcmluZ0lkEi'
+    'MKDWNyZWRlbnRpYWxfaWQYAiABKAlSDGNyZWRlbnRpYWxJZBJJChBkZXZpY2Vfc2lnbmF0dXJl'
+    'GAMgASgLMh4uYWdlbnRfdGFsay52MS5EZXZpY2VTaWduYXR1cmVSD2RldmljZVNpZ25hdHVyZQ'
+    '==');
+
+@$core.Deprecated('Use confirmPairingResponseDescriptor instead')
+const ConfirmPairingResponse$json = {
+  '1': 'ConfirmPairingResponse',
+  '2': [
+    {'1': 'paired', '3': 1, '4': 1, '5': 8, '10': 'paired'},
+    {'1': 'device_id', '3': 2, '4': 1, '5': 9, '10': 'deviceId'},
+    {'1': 'credential_id', '3': 3, '4': 1, '5': 9, '10': 'credentialId'},
+    {'1': 'access_token', '3': 4, '4': 1, '5': 9, '10': 'accessToken'},
+    {'1': 'refresh_token', '3': 5, '4': 1, '5': 9, '10': 'refreshToken'},
+    {'1': 'scopes', '3': 6, '4': 3, '5': 9, '10': 'scopes'},
+    {
+      '1': 'access_expires_at_unix_ms',
+      '3': 7,
+      '4': 1,
+      '5': 4,
+      '10': 'accessExpiresAtUnixMs'
+    },
+    {
+      '1': 'refresh_expires_at_unix_ms',
+      '3': 8,
+      '4': 1,
+      '5': 4,
+      '10': 'refreshExpiresAtUnixMs'
+    },
+    {'1': 'gateway_audience', '3': 9, '4': 1, '5': 9, '10': 'gatewayAudience'},
+  ],
+};
+
+/// Descriptor for `ConfirmPairingResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List confirmPairingResponseDescriptor = $convert.base64Decode(
+    'ChZDb25maXJtUGFpcmluZ1Jlc3BvbnNlEhYKBnBhaXJlZBgBIAEoCFIGcGFpcmVkEhsKCWRldm'
+    'ljZV9pZBgCIAEoCVIIZGV2aWNlSWQSIwoNY3JlZGVudGlhbF9pZBgDIAEoCVIMY3JlZGVudGlh'
+    'bElkEiEKDGFjY2Vzc190b2tlbhgEIAEoCVILYWNjZXNzVG9rZW4SIwoNcmVmcmVzaF90b2tlbh'
+    'gFIAEoCVIMcmVmcmVzaFRva2VuEhYKBnNjb3BlcxgGIAMoCVIGc2NvcGVzEjgKGWFjY2Vzc19l'
+    'eHBpcmVzX2F0X3VuaXhfbXMYByABKARSFWFjY2Vzc0V4cGlyZXNBdFVuaXhNcxI6ChpyZWZyZX'
+    'NoX2V4cGlyZXNfYXRfdW5peF9tcxgIIAEoBFIWcmVmcmVzaEV4cGlyZXNBdFVuaXhNcxIpChBn'
+    'YXRld2F5X2F1ZGllbmNlGAkgASgJUg9nYXRld2F5QXVkaWVuY2U=');
+
+@$core.Deprecated('Use refreshDeviceCredentialRequestDescriptor instead')
+const RefreshDeviceCredentialRequest$json = {
+  '1': 'RefreshDeviceCredentialRequest',
+  '2': [
+    {'1': 'credential_id', '3': 1, '4': 1, '5': 9, '10': 'credentialId'},
+    {'1': 'refresh_token', '3': 2, '4': 1, '5': 9, '10': 'refreshToken'},
+    {
+      '1': 'device_signature',
+      '3': 3,
+      '4': 1,
+      '5': 11,
+      '6': '.agent_talk.v1.DeviceSignature',
+      '10': 'deviceSignature'
+    },
+  ],
+};
+
+/// Descriptor for `RefreshDeviceCredentialRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List refreshDeviceCredentialRequestDescriptor =
+    $convert.base64Decode(
+        'Ch5SZWZyZXNoRGV2aWNlQ3JlZGVudGlhbFJlcXVlc3QSIwoNY3JlZGVudGlhbF9pZBgBIAEoCV'
+        'IMY3JlZGVudGlhbElkEiMKDXJlZnJlc2hfdG9rZW4YAiABKAlSDHJlZnJlc2hUb2tlbhJJChBk'
+        'ZXZpY2Vfc2lnbmF0dXJlGAMgASgLMh4uYWdlbnRfdGFsay52MS5EZXZpY2VTaWduYXR1cmVSD2'
+        'RldmljZVNpZ25hdHVyZQ==');
+
+@$core.Deprecated('Use refreshDeviceCredentialResponseDescriptor instead')
+const RefreshDeviceCredentialResponse$json = {
+  '1': 'RefreshDeviceCredentialResponse',
+  '2': [
+    {'1': 'device_id', '3': 1, '4': 1, '5': 9, '10': 'deviceId'},
+    {'1': 'credential_id', '3': 2, '4': 1, '5': 9, '10': 'credentialId'},
+    {'1': 'access_token', '3': 3, '4': 1, '5': 9, '10': 'accessToken'},
+    {'1': 'refresh_token', '3': 4, '4': 1, '5': 9, '10': 'refreshToken'},
+    {'1': 'scopes', '3': 5, '4': 3, '5': 9, '10': 'scopes'},
+    {
+      '1': 'access_expires_at_unix_ms',
+      '3': 6,
+      '4': 1,
+      '5': 4,
+      '10': 'accessExpiresAtUnixMs'
+    },
+    {
+      '1': 'refresh_expires_at_unix_ms',
+      '3': 7,
+      '4': 1,
+      '5': 4,
+      '10': 'refreshExpiresAtUnixMs'
+    },
+    {'1': 'gateway_audience', '3': 8, '4': 1, '5': 9, '10': 'gatewayAudience'},
+  ],
+};
+
+/// Descriptor for `RefreshDeviceCredentialResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List refreshDeviceCredentialResponseDescriptor = $convert.base64Decode(
+    'Ch9SZWZyZXNoRGV2aWNlQ3JlZGVudGlhbFJlc3BvbnNlEhsKCWRldmljZV9pZBgBIAEoCVIIZG'
+    'V2aWNlSWQSIwoNY3JlZGVudGlhbF9pZBgCIAEoCVIMY3JlZGVudGlhbElkEiEKDGFjY2Vzc190'
+    'b2tlbhgDIAEoCVILYWNjZXNzVG9rZW4SIwoNcmVmcmVzaF90b2tlbhgEIAEoCVIMcmVmcmVzaF'
+    'Rva2VuEhYKBnNjb3BlcxgFIAMoCVIGc2NvcGVzEjgKGWFjY2Vzc19leHBpcmVzX2F0X3VuaXhf'
+    'bXMYBiABKARSFWFjY2Vzc0V4cGlyZXNBdFVuaXhNcxI6ChpyZWZyZXNoX2V4cGlyZXNfYXRfdW'
+    '5peF9tcxgHIAEoBFIWcmVmcmVzaEV4cGlyZXNBdFVuaXhNcxIpChBnYXRld2F5X2F1ZGllbmNl'
+    'GAggASgJUg9nYXRld2F5QXVkaWVuY2U=');
 
 @$core.Deprecated('Use revokeDeviceRequestDescriptor instead')
 const RevokeDeviceRequest$json = {
   '1': 'RevokeDeviceRequest',
   '2': [
     {'1': 'device_id', '3': 1, '4': 1, '5': 9, '10': 'deviceId'},
+    {'1': 'reason_code', '3': 2, '4': 1, '5': 9, '10': 'reasonCode'},
+    {
+      '1': 'administrator_signature',
+      '3': 3,
+      '4': 1,
+      '5': 11,
+      '6': '.agent_talk.v1.DeviceSignature',
+      '10': 'administratorSignature'
+    },
   ],
 };
 
 /// Descriptor for `RevokeDeviceRequest`. Decode as a `google.protobuf.DescriptorProto`.
-final $typed_data.Uint8List revokeDeviceRequestDescriptor =
-    $convert.base64Decode(
-        'ChNSZXZva2VEZXZpY2VSZXF1ZXN0EhsKCWRldmljZV9pZBgBIAEoCVIIZGV2aWNlSWQ=');
+final $typed_data.Uint8List revokeDeviceRequestDescriptor = $convert.base64Decode(
+    'ChNSZXZva2VEZXZpY2VSZXF1ZXN0EhsKCWRldmljZV9pZBgBIAEoCVIIZGV2aWNlSWQSHwoLcm'
+    'Vhc29uX2NvZGUYAiABKAlSCnJlYXNvbkNvZGUSVwoXYWRtaW5pc3RyYXRvcl9zaWduYXR1cmUY'
+    'AyABKAsyHi5hZ2VudF90YWxrLnYxLkRldmljZVNpZ25hdHVyZVIWYWRtaW5pc3RyYXRvclNpZ2'
+    '5hdHVyZQ==');
 
 @$core.Deprecated('Use revokeDeviceResponseDescriptor instead')
 const RevokeDeviceResponse$json = {

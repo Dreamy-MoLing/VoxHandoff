@@ -4,7 +4,7 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
-import type { AgentCapabilities, StageFailure } from "./common_pb.js";
+import type { AgentCapabilities, DeviceSignature, StageFailure } from "./common_pb.js";
 import { file_agent_talk_v1_common } from "./common_pb.js";
 import type { Ack, ApprovalDecision, ClientCommand, ControlLease, HandshakeAccepted, HandshakeOffer, Heartbeat, ProtocolError, RequestStatus } from "./control_pb.js";
 import { file_agent_talk_v1_control } from "./control_pb.js";
@@ -16,7 +16,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file agent_talk/v1/gateway.proto.
  */
 export const file_agent_talk_v1_gateway: GenFile = /*@__PURE__*/
-  fileDesc("ChthZ2VudF90YWxrL3YxL2dhdGV3YXkucHJvdG8SDWFnZW50X3RhbGsudjEijQIKFENvbm5lY3RDbGllbnRSZXF1ZXN0EjIKCWhhbmRzaGFrZRgBIAEoCzIdLmFnZW50X3RhbGsudjEuSGFuZHNoYWtlT2ZmZXJIABItCgloZWFydGJlYXQYAiABKAsyGC5hZ2VudF90YWxrLnYxLkhlYXJ0YmVhdEgAEiEKA2FjaxgDIAEoCzISLmFnZW50X3RhbGsudjEuQWNrSAASLwoHY29tbWFuZBgEIAEoCzIcLmFnZW50X3RhbGsudjEuQ2xpZW50Q29tbWFuZEgAEjYKDnByb3RvY29sX2Vycm9yGAUgASgLMhwuYWdlbnRfdGFsay52MS5Qcm90b2NvbEVycm9ySABCBgoEYm9keSLaAgoVQ29ubmVjdENsaWVudFJlc3BvbnNlEjUKCWhhbmRzaGFrZRgBIAEoCzIgLmFnZW50X3RhbGsudjEuSGFuZHNoYWtlQWNjZXB0ZWRIABItCgloZWFydGJlYXQYAiABKAsyGC5hZ2VudF90YWxrLnYxLkhlYXJ0YmVhdEgAEi0KBWV2ZW50GAMgASgLMhwuYWdlbnRfdGFsay52MS5FdmVudEVudmVsb3BlSAASNgoOcmVxdWVzdF9zdGF0dXMYBCABKAsyHC5hZ2VudF90YWxrLnYxLlJlcXVlc3RTdGF0dXNIABI0Cg1jb250cm9sX2xlYXNlGAUgASgLMhsuYWdlbnRfdGFsay52MS5Db250cm9sTGVhc2VIABI2Cg5wcm90b2NvbF9lcnJvchgGIAEoCzIcLmFnZW50X3RhbGsudjEuUHJvdG9jb2xFcnJvckgAQgYKBGJvZHkiWgoOTm9kZURlc2NyaXB0b3ISDwoHbm9kZV9pZBgBIAEoCRIUCgxkaXNwbGF5X25hbWUYAiABKAkSEAoIcGxhdGZvcm0YAyABKAkSDwoHdmVyc2lvbhgEIAEoCSKwAQoPQWdlbnREZXNjcmlwdG9yEhAKCGFnZW50X2lkGAEgASgJEhQKDGRpc3BsYXlfbmFtZRgCIAEoCRIPCgdhZGFwdGVyGAMgASgJEg8KB3ZlcnNpb24YBCABKAkSGwoTY2FwYWJpbGl0eV9yZXZpc2lvbhgFIAEoCRI2CgxjYXBhYmlsaXRpZXMYBiABKAsyIC5hZ2VudF90YWxrLnYxLkFnZW50Q2FwYWJpbGl0aWVzIm8KEE5vZGVSZWdpc3RyYXRpb24SKwoEbm9kZRgBIAEoCzIdLmFnZW50X3RhbGsudjEuTm9kZURlc2NyaXB0b3ISLgoGYWdlbnRzGAIgAygLMh4uYWdlbnRfdGFsay52MS5BZ2VudERlc2NyaXB0b3Ii2AEKD0Rpc3BhdGNoUmVxdWVzdBITCgtkaXNwYXRjaF9pZBgBIAEoCRISCgpyZXF1ZXN0X2lkGAIgASgJEhcKD2lkZW1wb3RlbmN5X2tleRgDIAEoCRIXCg9jb252ZXJzYXRpb25faWQYBCABKAkSEgoKc2Vzc2lvbl9pZBgFIAEoCRIPCgdub2RlX2lkGAYgASgJEhAKCGFnZW50X2lkGAcgASgJEhsKE2NhcGFiaWxpdHlfcmV2aXNpb24YCCABKAkSFgoOY29uZmlybWVkX3RleHQYCSABKAkiVQoRRGlzcGF0Y2hJbnRlcnJ1cHQSEwoLZGlzcGF0Y2hfaWQYASABKAkSEgoKcmVxdWVzdF9pZBgCIAEoCRIXCg9pZGVtcG90ZW5jeV9rZXkYAyABKAkivgEKEERpc3BhdGNoQXBwcm92YWwSEwoLZGlzcGF0Y2hfaWQYASABKAkSEgoKcmVxdWVzdF9pZBgCIAEoCRITCgthcHByb3ZhbF9pZBgDIAEoCRIXCg9pZGVtcG90ZW5jeV9rZXkYBCABKAkSMQoIZGVjaXNpb24YBSABKA4yHy5hZ2VudF90YWxrLnYxLkFwcHJvdmFsRGVjaXNpb24SIAoYb3BlcmF0aW9uX3N1bW1hcnlfc2hhMjU2GAYgASgJIosBChVEaXNwYXRjaENsYXJpZmljYXRpb24SEwoLZGlzcGF0Y2hfaWQYASABKAkSEgoKcmVxdWVzdF9pZBgCIAEoCRIYChBjbGFyaWZpY2F0aW9uX2lkGAMgASgJEhcKD2lkZW1wb3RlbmN5X2tleRgEIAEoCRIWCg5jb25maXJtZWRfdGV4dBgFIAEoCSKHAQoLRGlzcGF0Y2hBY2sSEwoLZGlzcGF0Y2hfaWQYASABKAkSEgoKcmVxdWVzdF9pZBgCIAEoCRIQCghhY2NlcHRlZBgDIAEoCBIxCgdmYWlsdXJlGAQgASgLMhsuYWdlbnRfdGFsay52MS5TdGFnZUZhaWx1cmVIAIgBAUIKCghfZmFpbHVyZSLTAgoSQ29ubmVjdE5vZGVSZXF1ZXN0EjIKCWhhbmRzaGFrZRgBIAEoCzIdLmFnZW50X3RhbGsudjEuSGFuZHNoYWtlT2ZmZXJIABItCgloZWFydGJlYXQYAiABKAsyGC5hZ2VudF90YWxrLnYxLkhlYXJ0YmVhdEgAEjcKDHJlZ2lzdHJhdGlvbhgDIAEoCzIfLmFnZW50X3RhbGsudjEuTm9kZVJlZ2lzdHJhdGlvbkgAEjIKDGRpc3BhdGNoX2FjaxgEIAEoCzIaLmFnZW50X3RhbGsudjEuRGlzcGF0Y2hBY2tIABItCgVldmVudBgFIAEoCzIcLmFnZW50X3RhbGsudjEuRXZlbnRFbnZlbG9wZUgAEjYKDnByb3RvY29sX2Vycm9yGAYgASgLMhwuYWdlbnRfdGFsay52MS5Qcm90b2NvbEVycm9ySABCBgoEYm9keSK9AwoTQ29ubmVjdE5vZGVSZXNwb25zZRI1CgloYW5kc2hha2UYASABKAsyIC5hZ2VudF90YWxrLnYxLkhhbmRzaGFrZUFjY2VwdGVkSAASLQoJaGVhcnRiZWF0GAIgASgLMhguYWdlbnRfdGFsay52MS5IZWFydGJlYXRIABI6ChBkaXNwYXRjaF9yZXF1ZXN0GAMgASgLMh4uYWdlbnRfdGFsay52MS5EaXNwYXRjaFJlcXVlc3RIABI+ChJkaXNwYXRjaF9pbnRlcnJ1cHQYBCABKAsyIC5hZ2VudF90YWxrLnYxLkRpc3BhdGNoSW50ZXJydXB0SAASPAoRZGlzcGF0Y2hfYXBwcm92YWwYBSABKAsyHy5hZ2VudF90YWxrLnYxLkRpc3BhdGNoQXBwcm92YWxIABJGChZkaXNwYXRjaF9jbGFyaWZpY2F0aW9uGAYgASgLMiQuYWdlbnRfdGFsay52MS5EaXNwYXRjaENsYXJpZmljYXRpb25IABI2Cg5wcm90b2NvbF9lcnJvchgHIAEoCzIcLmFnZW50X3RhbGsudjEuUHJvdG9jb2xFcnJvckgAQgYKBGJvZHkiTQoTQmVnaW5QYWlyaW5nUmVxdWVzdBIbChNkZXZpY2VfZGlzcGxheV9uYW1lGAEgASgJEhkKEWRldmljZV9wdWJsaWNfa2V5GAIgASgMInMKFEJlZ2luUGFpcmluZ1Jlc3BvbnNlEhIKCnBhaXJpbmdfaWQYASABKAkSEQoJdXNlcl9jb2RlGAIgASgJEhgKEHZlcmlmaWNhdGlvbl91cmkYAyABKAkSGgoSZXhwaXJlc19pbl9zZWNvbmRzGAQgASgNIkIKFkNvbXBsZXRlUGFpcmluZ1JlcXVlc3QSEgoKcGFpcmluZ19pZBgBIAEoCRIUCgxkZXZpY2VfcHJvb2YYAiABKAkiaQoXQ29tcGxldGVQYWlyaW5nUmVzcG9uc2USEQoJZGV2aWNlX2lkGAEgASgJEhQKDGFjY2Vzc190b2tlbhgCIAEoCRIVCg1yZWZyZXNoX3Rva2VuGAMgASgJEg4KBnNjb3BlcxgEIAMoCSIoChNSZXZva2VEZXZpY2VSZXF1ZXN0EhEKCWRldmljZV9pZBgBIAEoCSInChRSZXZva2VEZXZpY2VSZXNwb25zZRIPCgdyZXZva2VkGAEgASgIMtEBChVHYXRld2F5Q29udHJvbFNlcnZpY2USXgoNQ29ubmVjdENsaWVudBIjLmFnZW50X3RhbGsudjEuQ29ubmVjdENsaWVudFJlcXVlc3QaJC5hZ2VudF90YWxrLnYxLkNvbm5lY3RDbGllbnRSZXNwb25zZSgBMAESWAoLQ29ubmVjdE5vZGUSIS5hZ2VudF90YWxrLnYxLkNvbm5lY3ROb2RlUmVxdWVzdBoiLmFnZW50X3RhbGsudjEuQ29ubmVjdE5vZGVSZXNwb25zZSgBMAEypAIKDlBhaXJpbmdTZXJ2aWNlElcKDEJlZ2luUGFpcmluZxIiLmFnZW50X3RhbGsudjEuQmVnaW5QYWlyaW5nUmVxdWVzdBojLmFnZW50X3RhbGsudjEuQmVnaW5QYWlyaW5nUmVzcG9uc2USYAoPQ29tcGxldGVQYWlyaW5nEiUuYWdlbnRfdGFsay52MS5Db21wbGV0ZVBhaXJpbmdSZXF1ZXN0GiYuYWdlbnRfdGFsay52MS5Db21wbGV0ZVBhaXJpbmdSZXNwb25zZRJXCgxSZXZva2VEZXZpY2USIi5hZ2VudF90YWxrLnYxLlJldm9rZURldmljZVJlcXVlc3QaIy5hZ2VudF90YWxrLnYxLlJldm9rZURldmljZVJlc3BvbnNlYgZwcm90bzM", [file_agent_talk_v1_common, file_agent_talk_v1_control, file_agent_talk_v1_event]);
+  fileDesc("ChthZ2VudF90YWxrL3YxL2dhdGV3YXkucHJvdG8SDWFnZW50X3RhbGsudjEijQIKFENvbm5lY3RDbGllbnRSZXF1ZXN0EjIKCWhhbmRzaGFrZRgBIAEoCzIdLmFnZW50X3RhbGsudjEuSGFuZHNoYWtlT2ZmZXJIABItCgloZWFydGJlYXQYAiABKAsyGC5hZ2VudF90YWxrLnYxLkhlYXJ0YmVhdEgAEiEKA2FjaxgDIAEoCzISLmFnZW50X3RhbGsudjEuQWNrSAASLwoHY29tbWFuZBgEIAEoCzIcLmFnZW50X3RhbGsudjEuQ2xpZW50Q29tbWFuZEgAEjYKDnByb3RvY29sX2Vycm9yGAUgASgLMhwuYWdlbnRfdGFsay52MS5Qcm90b2NvbEVycm9ySABCBgoEYm9keSLaAgoVQ29ubmVjdENsaWVudFJlc3BvbnNlEjUKCWhhbmRzaGFrZRgBIAEoCzIgLmFnZW50X3RhbGsudjEuSGFuZHNoYWtlQWNjZXB0ZWRIABItCgloZWFydGJlYXQYAiABKAsyGC5hZ2VudF90YWxrLnYxLkhlYXJ0YmVhdEgAEi0KBWV2ZW50GAMgASgLMhwuYWdlbnRfdGFsay52MS5FdmVudEVudmVsb3BlSAASNgoOcmVxdWVzdF9zdGF0dXMYBCABKAsyHC5hZ2VudF90YWxrLnYxLlJlcXVlc3RTdGF0dXNIABI0Cg1jb250cm9sX2xlYXNlGAUgASgLMhsuYWdlbnRfdGFsay52MS5Db250cm9sTGVhc2VIABI2Cg5wcm90b2NvbF9lcnJvchgGIAEoCzIcLmFnZW50X3RhbGsudjEuUHJvdG9jb2xFcnJvckgAQgYKBGJvZHkiWgoOTm9kZURlc2NyaXB0b3ISDwoHbm9kZV9pZBgBIAEoCRIUCgxkaXNwbGF5X25hbWUYAiABKAkSEAoIcGxhdGZvcm0YAyABKAkSDwoHdmVyc2lvbhgEIAEoCSKwAQoPQWdlbnREZXNjcmlwdG9yEhAKCGFnZW50X2lkGAEgASgJEhQKDGRpc3BsYXlfbmFtZRgCIAEoCRIPCgdhZGFwdGVyGAMgASgJEg8KB3ZlcnNpb24YBCABKAkSGwoTY2FwYWJpbGl0eV9yZXZpc2lvbhgFIAEoCRI2CgxjYXBhYmlsaXRpZXMYBiABKAsyIC5hZ2VudF90YWxrLnYxLkFnZW50Q2FwYWJpbGl0aWVzIm8KEE5vZGVSZWdpc3RyYXRpb24SKwoEbm9kZRgBIAEoCzIdLmFnZW50X3RhbGsudjEuTm9kZURlc2NyaXB0b3ISLgoGYWdlbnRzGAIgAygLMh4uYWdlbnRfdGFsay52MS5BZ2VudERlc2NyaXB0b3Ii2AEKD0Rpc3BhdGNoUmVxdWVzdBITCgtkaXNwYXRjaF9pZBgBIAEoCRISCgpyZXF1ZXN0X2lkGAIgASgJEhcKD2lkZW1wb3RlbmN5X2tleRgDIAEoCRIXCg9jb252ZXJzYXRpb25faWQYBCABKAkSEgoKc2Vzc2lvbl9pZBgFIAEoCRIPCgdub2RlX2lkGAYgASgJEhAKCGFnZW50X2lkGAcgASgJEhsKE2NhcGFiaWxpdHlfcmV2aXNpb24YCCABKAkSFgoOY29uZmlybWVkX3RleHQYCSABKAkiVQoRRGlzcGF0Y2hJbnRlcnJ1cHQSEwoLZGlzcGF0Y2hfaWQYASABKAkSEgoKcmVxdWVzdF9pZBgCIAEoCRIXCg9pZGVtcG90ZW5jeV9rZXkYAyABKAkivgEKEERpc3BhdGNoQXBwcm92YWwSEwoLZGlzcGF0Y2hfaWQYASABKAkSEgoKcmVxdWVzdF9pZBgCIAEoCRITCgthcHByb3ZhbF9pZBgDIAEoCRIXCg9pZGVtcG90ZW5jeV9rZXkYBCABKAkSMQoIZGVjaXNpb24YBSABKA4yHy5hZ2VudF90YWxrLnYxLkFwcHJvdmFsRGVjaXNpb24SIAoYb3BlcmF0aW9uX3N1bW1hcnlfc2hhMjU2GAYgASgJIosBChVEaXNwYXRjaENsYXJpZmljYXRpb24SEwoLZGlzcGF0Y2hfaWQYASABKAkSEgoKcmVxdWVzdF9pZBgCIAEoCRIYChBjbGFyaWZpY2F0aW9uX2lkGAMgASgJEhcKD2lkZW1wb3RlbmN5X2tleRgEIAEoCRIWCg5jb25maXJtZWRfdGV4dBgFIAEoCSKHAQoLRGlzcGF0Y2hBY2sSEwoLZGlzcGF0Y2hfaWQYASABKAkSEgoKcmVxdWVzdF9pZBgCIAEoCRIQCghhY2NlcHRlZBgDIAEoCBIxCgdmYWlsdXJlGAQgASgLMhsuYWdlbnRfdGFsay52MS5TdGFnZUZhaWx1cmVIAIgBAUIKCghfZmFpbHVyZSLTAgoSQ29ubmVjdE5vZGVSZXF1ZXN0EjIKCWhhbmRzaGFrZRgBIAEoCzIdLmFnZW50X3RhbGsudjEuSGFuZHNoYWtlT2ZmZXJIABItCgloZWFydGJlYXQYAiABKAsyGC5hZ2VudF90YWxrLnYxLkhlYXJ0YmVhdEgAEjcKDHJlZ2lzdHJhdGlvbhgDIAEoCzIfLmFnZW50X3RhbGsudjEuTm9kZVJlZ2lzdHJhdGlvbkgAEjIKDGRpc3BhdGNoX2FjaxgEIAEoCzIaLmFnZW50X3RhbGsudjEuRGlzcGF0Y2hBY2tIABItCgVldmVudBgFIAEoCzIcLmFnZW50X3RhbGsudjEuRXZlbnRFbnZlbG9wZUgAEjYKDnByb3RvY29sX2Vycm9yGAYgASgLMhwuYWdlbnRfdGFsay52MS5Qcm90b2NvbEVycm9ySABCBgoEYm9keSK9AwoTQ29ubmVjdE5vZGVSZXNwb25zZRI1CgloYW5kc2hha2UYASABKAsyIC5hZ2VudF90YWxrLnYxLkhhbmRzaGFrZUFjY2VwdGVkSAASLQoJaGVhcnRiZWF0GAIgASgLMhguYWdlbnRfdGFsay52MS5IZWFydGJlYXRIABI6ChBkaXNwYXRjaF9yZXF1ZXN0GAMgASgLMh4uYWdlbnRfdGFsay52MS5EaXNwYXRjaFJlcXVlc3RIABI+ChJkaXNwYXRjaF9pbnRlcnJ1cHQYBCABKAsyIC5hZ2VudF90YWxrLnYxLkRpc3BhdGNoSW50ZXJydXB0SAASPAoRZGlzcGF0Y2hfYXBwcm92YWwYBSABKAsyHy5hZ2VudF90YWxrLnYxLkRpc3BhdGNoQXBwcm92YWxIABJGChZkaXNwYXRjaF9jbGFyaWZpY2F0aW9uGAYgASgLMiQuYWdlbnRfdGFsay52MS5EaXNwYXRjaENsYXJpZmljYXRpb25IABI2Cg5wcm90b2NvbF9lcnJvchgHIAEoCzIcLmFnZW50X3RhbGsudjEuUHJvdG9jb2xFcnJvckgAQgYKBGJvZHkiigEKE0JlZ2luUGFpcmluZ1JlcXVlc3QSGwoTZGV2aWNlX2Rpc3BsYXlfbmFtZRgBIAEoCRIZChFkZXZpY2VfcHVibGljX2tleRgCIAEoDBIYChByZXF1ZXN0ZWRfc2NvcGVzGAMgAygJEiEKGWV4cGVjdGVkX2dhdGV3YXlfYXVkaWVuY2UYBCABKAki5AEKFEJlZ2luUGFpcmluZ1Jlc3BvbnNlEhIKCnBhaXJpbmdfaWQYASABKAkSEQoJdXNlcl9jb2RlGAIgASgJEhgKEHZlcmlmaWNhdGlvbl91cmkYAyABKAkSGgoSZXhwaXJlc19pbl9zZWNvbmRzGAQgASgNEhwKFGRldmljZV9wcm9vZl9wYXlsb2FkGAUgASgMEhoKEmRldmljZV9maW5nZXJwcmludBgGIAEoCRIbChNnYXRld2F5X2ZpbmdlcnByaW50GAcgASgJEhgKEGdhdGV3YXlfYXVkaWVuY2UYCCABKAkifAoWQ29tcGxldGVQYWlyaW5nUmVxdWVzdBISCgpwYWlyaW5nX2lkGAEgASgJEhQKDGRldmljZV9wcm9vZhgCIAEoCRI4ChBkZXZpY2Vfa2V5X3Byb29mGAMgASgLMh4uYWdlbnRfdGFsay52MS5EZXZpY2VTaWduYXR1cmUi4QEKF0NvbXBsZXRlUGFpcmluZ1Jlc3BvbnNlEhEKCWRldmljZV9pZBgBIAEoCRIUCgxhY2Nlc3NfdG9rZW4YAiABKAkSFQoNcmVmcmVzaF90b2tlbhgDIAEoCRIOCgZzY29wZXMYBCADKAkSFQoNY3JlZGVudGlhbF9pZBgFIAEoCRIcChRjb25maXJtYXRpb25fcGF5bG9hZBgGIAEoDBIYChBnYXRld2F5X2F1ZGllbmNlGAcgASgJEicKH2NvbmZpcm1hdGlvbl9leHBpcmVzX2luX3NlY29uZHMYCCABKA0iKgoVSW5zcGVjdFBhaXJpbmdSZXF1ZXN0EhEKCXVzZXJfY29kZRgBIAEoCSLSAQoWSW5zcGVjdFBhaXJpbmdSZXNwb25zZRISCgpwYWlyaW5nX2lkGAEgASgJEhsKE2RldmljZV9kaXNwbGF5X25hbWUYAiABKAkSGgoSZGV2aWNlX2ZpbmdlcnByaW50GAMgASgJEhsKE2dhdGV3YXlfZmluZ2VycHJpbnQYBCABKAkSGAoQZ2F0ZXdheV9hdWRpZW5jZRgFIAEoCRIYChByZXF1ZXN0ZWRfc2NvcGVzGAYgAygJEhoKEmV4cGlyZXNfaW5fc2Vjb25kcxgHIAEoDSKGAgoVQXBwcm92ZVBhaXJpbmdSZXF1ZXN0EhIKCnBhaXJpbmdfaWQYASABKAkSEQoJdXNlcl9jb2RlGAIgASgJEhcKD2FwcHJvdmVkX3Njb3BlcxgDIAMoCRIjChtleHBlY3RlZF9kZXZpY2VfZmluZ2VycHJpbnQYBCABKAkSJAocZXhwZWN0ZWRfZ2F0ZXdheV9maW5nZXJwcmludBgFIAEoCRIhChlleHBlY3RlZF9nYXRld2F5X2F1ZGllbmNlGAYgASgJEj8KF2FkbWluaXN0cmF0b3Jfc2lnbmF0dXJlGAcgASgLMh4uYWdlbnRfdGFsay52MS5EZXZpY2VTaWduYXR1cmUiRgoWQXBwcm92ZVBhaXJpbmdSZXNwb25zZRIQCghhcHByb3ZlZBgBIAEoCBIaChJleHBpcmVzX2luX3NlY29uZHMYAiABKA0ifAoVQ29uZmlybVBhaXJpbmdSZXF1ZXN0EhIKCnBhaXJpbmdfaWQYASABKAkSFQoNY3JlZGVudGlhbF9pZBgCIAEoCRI4ChBkZXZpY2Vfc2lnbmF0dXJlGAMgASgLMh4uYWdlbnRfdGFsay52MS5EZXZpY2VTaWduYXR1cmUi8AEKFkNvbmZpcm1QYWlyaW5nUmVzcG9uc2USDgoGcGFpcmVkGAEgASgIEhEKCWRldmljZV9pZBgCIAEoCRIVCg1jcmVkZW50aWFsX2lkGAMgASgJEhQKDGFjY2Vzc190b2tlbhgEIAEoCRIVCg1yZWZyZXNoX3Rva2VuGAUgASgJEg4KBnNjb3BlcxgGIAMoCRIhChlhY2Nlc3NfZXhwaXJlc19hdF91bml4X21zGAcgASgEEiIKGnJlZnJlc2hfZXhwaXJlc19hdF91bml4X21zGAggASgEEhgKEGdhdGV3YXlfYXVkaWVuY2UYCSABKAkiiAEKHlJlZnJlc2hEZXZpY2VDcmVkZW50aWFsUmVxdWVzdBIVCg1jcmVkZW50aWFsX2lkGAEgASgJEhUKDXJlZnJlc2hfdG9rZW4YAiABKAkSOAoQZGV2aWNlX3NpZ25hdHVyZRgDIAEoCzIeLmFnZW50X3RhbGsudjEuRGV2aWNlU2lnbmF0dXJlIukBCh9SZWZyZXNoRGV2aWNlQ3JlZGVudGlhbFJlc3BvbnNlEhEKCWRldmljZV9pZBgBIAEoCRIVCg1jcmVkZW50aWFsX2lkGAIgASgJEhQKDGFjY2Vzc190b2tlbhgDIAEoCRIVCg1yZWZyZXNoX3Rva2VuGAQgASgJEg4KBnNjb3BlcxgFIAMoCRIhChlhY2Nlc3NfZXhwaXJlc19hdF91bml4X21zGAYgASgEEiIKGnJlZnJlc2hfZXhwaXJlc19hdF91bml4X21zGAcgASgEEhgKEGdhdGV3YXlfYXVkaWVuY2UYCCABKAkifgoTUmV2b2tlRGV2aWNlUmVxdWVzdBIRCglkZXZpY2VfaWQYASABKAkSEwoLcmVhc29uX2NvZGUYAiABKAkSPwoXYWRtaW5pc3RyYXRvcl9zaWduYXR1cmUYAyABKAsyHi5hZ2VudF90YWxrLnYxLkRldmljZVNpZ25hdHVyZSInChRSZXZva2VEZXZpY2VSZXNwb25zZRIPCgdyZXZva2VkGAEgASgIMtEBChVHYXRld2F5Q29udHJvbFNlcnZpY2USXgoNQ29ubmVjdENsaWVudBIjLmFnZW50X3RhbGsudjEuQ29ubmVjdENsaWVudFJlcXVlc3QaJC5hZ2VudF90YWxrLnYxLkNvbm5lY3RDbGllbnRSZXNwb25zZSgBMAESWAoLQ29ubmVjdE5vZGUSIS5hZ2VudF90YWxrLnYxLkNvbm5lY3ROb2RlUmVxdWVzdBoiLmFnZW50X3RhbGsudjEuQ29ubmVjdE5vZGVSZXNwb25zZSgBMAEyuwUKDlBhaXJpbmdTZXJ2aWNlElcKDEJlZ2luUGFpcmluZxIiLmFnZW50X3RhbGsudjEuQmVnaW5QYWlyaW5nUmVxdWVzdBojLmFnZW50X3RhbGsudjEuQmVnaW5QYWlyaW5nUmVzcG9uc2USXQoOSW5zcGVjdFBhaXJpbmcSJC5hZ2VudF90YWxrLnYxLkluc3BlY3RQYWlyaW5nUmVxdWVzdBolLmFnZW50X3RhbGsudjEuSW5zcGVjdFBhaXJpbmdSZXNwb25zZRJdCg5BcHByb3ZlUGFpcmluZxIkLmFnZW50X3RhbGsudjEuQXBwcm92ZVBhaXJpbmdSZXF1ZXN0GiUuYWdlbnRfdGFsay52MS5BcHByb3ZlUGFpcmluZ1Jlc3BvbnNlEmAKD0NvbXBsZXRlUGFpcmluZxIlLmFnZW50X3RhbGsudjEuQ29tcGxldGVQYWlyaW5nUmVxdWVzdBomLmFnZW50X3RhbGsudjEuQ29tcGxldGVQYWlyaW5nUmVzcG9uc2USXQoOQ29uZmlybVBhaXJpbmcSJC5hZ2VudF90YWxrLnYxLkNvbmZpcm1QYWlyaW5nUmVxdWVzdBolLmFnZW50X3RhbGsudjEuQ29uZmlybVBhaXJpbmdSZXNwb25zZRJ4ChdSZWZyZXNoRGV2aWNlQ3JlZGVudGlhbBItLmFnZW50X3RhbGsudjEuUmVmcmVzaERldmljZUNyZWRlbnRpYWxSZXF1ZXN0Gi4uYWdlbnRfdGFsay52MS5SZWZyZXNoRGV2aWNlQ3JlZGVudGlhbFJlc3BvbnNlElcKDFJldm9rZURldmljZRIiLmFnZW50X3RhbGsudjEuUmV2b2tlRGV2aWNlUmVxdWVzdBojLmFnZW50X3RhbGsudjEuUmV2b2tlRGV2aWNlUmVzcG9uc2ViBnByb3RvMw", [file_agent_talk_v1_common, file_agent_talk_v1_control, file_agent_talk_v1_event]);
 
 /**
  * @generated from message agent_talk.v1.ConnectClientRequest
@@ -534,6 +534,16 @@ export type BeginPairingRequest = Message<"agent_talk.v1.BeginPairingRequest"> &
    * @generated from field: bytes device_public_key = 2;
    */
   devicePublicKey: Uint8Array;
+
+  /**
+   * @generated from field: repeated string requested_scopes = 3;
+   */
+  requestedScopes: string[];
+
+  /**
+   * @generated from field: string expected_gateway_audience = 4;
+   */
+  expectedGatewayAudience: string;
 };
 
 /**
@@ -566,6 +576,26 @@ export type BeginPairingResponse = Message<"agent_talk.v1.BeginPairingResponse">
    * @generated from field: uint32 expires_in_seconds = 4;
    */
   expiresInSeconds: number;
+
+  /**
+   * @generated from field: bytes device_proof_payload = 5;
+   */
+  deviceProofPayload: Uint8Array;
+
+  /**
+   * @generated from field: string device_fingerprint = 6;
+   */
+  deviceFingerprint: string;
+
+  /**
+   * @generated from field: string gateway_fingerprint = 7;
+   */
+  gatewayFingerprint: string;
+
+  /**
+   * @generated from field: string gateway_audience = 8;
+   */
+  gatewayAudience: string;
 };
 
 /**
@@ -585,9 +615,17 @@ export type CompletePairingRequest = Message<"agent_talk.v1.CompletePairingReque
   pairingId: string;
 
   /**
+   * Deprecated pre-implementation placeholder. Gateways must not accept this
+   * field as proof and clients must use device_key_proof instead.
+   *
    * @generated from field: string device_proof = 2;
    */
   deviceProof: string;
+
+  /**
+   * @generated from field: agent_talk.v1.DeviceSignature device_key_proof = 3;
+   */
+  deviceKeyProof?: DeviceSignature | undefined;
 };
 
 /**
@@ -607,6 +645,9 @@ export type CompletePairingResponse = Message<"agent_talk.v1.CompletePairingResp
   deviceId: string;
 
   /**
+   * Reserved for wire compatibility with the pre-implementation draft. Valid
+   * credentials are returned only by ConfirmPairing.
+   *
    * @generated from field: string access_token = 2;
    */
   accessToken: string;
@@ -620,6 +661,26 @@ export type CompletePairingResponse = Message<"agent_talk.v1.CompletePairingResp
    * @generated from field: repeated string scopes = 4;
    */
   scopes: string[];
+
+  /**
+   * @generated from field: string credential_id = 5;
+   */
+  credentialId: string;
+
+  /**
+   * @generated from field: bytes confirmation_payload = 6;
+   */
+  confirmationPayload: Uint8Array;
+
+  /**
+   * @generated from field: string gateway_audience = 7;
+   */
+  gatewayAudience: string;
+
+  /**
+   * @generated from field: uint32 confirmation_expires_in_seconds = 8;
+   */
+  confirmationExpiresInSeconds: number;
 };
 
 /**
@@ -630,6 +691,302 @@ export const CompletePairingResponseSchema: GenMessage<CompletePairingResponse> 
   messageDesc(file_agent_talk_v1_gateway, 15);
 
 /**
+ * @generated from message agent_talk.v1.InspectPairingRequest
+ */
+export type InspectPairingRequest = Message<"agent_talk.v1.InspectPairingRequest"> & {
+  /**
+   * @generated from field: string user_code = 1;
+   */
+  userCode: string;
+};
+
+/**
+ * Describes the message agent_talk.v1.InspectPairingRequest.
+ * Use `create(InspectPairingRequestSchema)` to create a new message.
+ */
+export const InspectPairingRequestSchema: GenMessage<InspectPairingRequest> = /*@__PURE__*/
+  messageDesc(file_agent_talk_v1_gateway, 16);
+
+/**
+ * @generated from message agent_talk.v1.InspectPairingResponse
+ */
+export type InspectPairingResponse = Message<"agent_talk.v1.InspectPairingResponse"> & {
+  /**
+   * @generated from field: string pairing_id = 1;
+   */
+  pairingId: string;
+
+  /**
+   * @generated from field: string device_display_name = 2;
+   */
+  deviceDisplayName: string;
+
+  /**
+   * @generated from field: string device_fingerprint = 3;
+   */
+  deviceFingerprint: string;
+
+  /**
+   * @generated from field: string gateway_fingerprint = 4;
+   */
+  gatewayFingerprint: string;
+
+  /**
+   * @generated from field: string gateway_audience = 5;
+   */
+  gatewayAudience: string;
+
+  /**
+   * @generated from field: repeated string requested_scopes = 6;
+   */
+  requestedScopes: string[];
+
+  /**
+   * @generated from field: uint32 expires_in_seconds = 7;
+   */
+  expiresInSeconds: number;
+};
+
+/**
+ * Describes the message agent_talk.v1.InspectPairingResponse.
+ * Use `create(InspectPairingResponseSchema)` to create a new message.
+ */
+export const InspectPairingResponseSchema: GenMessage<InspectPairingResponse> = /*@__PURE__*/
+  messageDesc(file_agent_talk_v1_gateway, 17);
+
+/**
+ * @generated from message agent_talk.v1.ApprovePairingRequest
+ */
+export type ApprovePairingRequest = Message<"agent_talk.v1.ApprovePairingRequest"> & {
+  /**
+   * @generated from field: string pairing_id = 1;
+   */
+  pairingId: string;
+
+  /**
+   * @generated from field: string user_code = 2;
+   */
+  userCode: string;
+
+  /**
+   * @generated from field: repeated string approved_scopes = 3;
+   */
+  approvedScopes: string[];
+
+  /**
+   * @generated from field: string expected_device_fingerprint = 4;
+   */
+  expectedDeviceFingerprint: string;
+
+  /**
+   * @generated from field: string expected_gateway_fingerprint = 5;
+   */
+  expectedGatewayFingerprint: string;
+
+  /**
+   * @generated from field: string expected_gateway_audience = 6;
+   */
+  expectedGatewayAudience: string;
+
+  /**
+   * @generated from field: agent_talk.v1.DeviceSignature administrator_signature = 7;
+   */
+  administratorSignature?: DeviceSignature | undefined;
+};
+
+/**
+ * Describes the message agent_talk.v1.ApprovePairingRequest.
+ * Use `create(ApprovePairingRequestSchema)` to create a new message.
+ */
+export const ApprovePairingRequestSchema: GenMessage<ApprovePairingRequest> = /*@__PURE__*/
+  messageDesc(file_agent_talk_v1_gateway, 18);
+
+/**
+ * @generated from message agent_talk.v1.ApprovePairingResponse
+ */
+export type ApprovePairingResponse = Message<"agent_talk.v1.ApprovePairingResponse"> & {
+  /**
+   * @generated from field: bool approved = 1;
+   */
+  approved: boolean;
+
+  /**
+   * @generated from field: uint32 expires_in_seconds = 2;
+   */
+  expiresInSeconds: number;
+};
+
+/**
+ * Describes the message agent_talk.v1.ApprovePairingResponse.
+ * Use `create(ApprovePairingResponseSchema)` to create a new message.
+ */
+export const ApprovePairingResponseSchema: GenMessage<ApprovePairingResponse> = /*@__PURE__*/
+  messageDesc(file_agent_talk_v1_gateway, 19);
+
+/**
+ * @generated from message agent_talk.v1.ConfirmPairingRequest
+ */
+export type ConfirmPairingRequest = Message<"agent_talk.v1.ConfirmPairingRequest"> & {
+  /**
+   * @generated from field: string pairing_id = 1;
+   */
+  pairingId: string;
+
+  /**
+   * @generated from field: string credential_id = 2;
+   */
+  credentialId: string;
+
+  /**
+   * @generated from field: agent_talk.v1.DeviceSignature device_signature = 3;
+   */
+  deviceSignature?: DeviceSignature | undefined;
+};
+
+/**
+ * Describes the message agent_talk.v1.ConfirmPairingRequest.
+ * Use `create(ConfirmPairingRequestSchema)` to create a new message.
+ */
+export const ConfirmPairingRequestSchema: GenMessage<ConfirmPairingRequest> = /*@__PURE__*/
+  messageDesc(file_agent_talk_v1_gateway, 20);
+
+/**
+ * @generated from message agent_talk.v1.ConfirmPairingResponse
+ */
+export type ConfirmPairingResponse = Message<"agent_talk.v1.ConfirmPairingResponse"> & {
+  /**
+   * @generated from field: bool paired = 1;
+   */
+  paired: boolean;
+
+  /**
+   * @generated from field: string device_id = 2;
+   */
+  deviceId: string;
+
+  /**
+   * @generated from field: string credential_id = 3;
+   */
+  credentialId: string;
+
+  /**
+   * @generated from field: string access_token = 4;
+   */
+  accessToken: string;
+
+  /**
+   * @generated from field: string refresh_token = 5;
+   */
+  refreshToken: string;
+
+  /**
+   * @generated from field: repeated string scopes = 6;
+   */
+  scopes: string[];
+
+  /**
+   * @generated from field: uint64 access_expires_at_unix_ms = 7;
+   */
+  accessExpiresAtUnixMs: bigint;
+
+  /**
+   * @generated from field: uint64 refresh_expires_at_unix_ms = 8;
+   */
+  refreshExpiresAtUnixMs: bigint;
+
+  /**
+   * @generated from field: string gateway_audience = 9;
+   */
+  gatewayAudience: string;
+};
+
+/**
+ * Describes the message agent_talk.v1.ConfirmPairingResponse.
+ * Use `create(ConfirmPairingResponseSchema)` to create a new message.
+ */
+export const ConfirmPairingResponseSchema: GenMessage<ConfirmPairingResponse> = /*@__PURE__*/
+  messageDesc(file_agent_talk_v1_gateway, 21);
+
+/**
+ * @generated from message agent_talk.v1.RefreshDeviceCredentialRequest
+ */
+export type RefreshDeviceCredentialRequest = Message<"agent_talk.v1.RefreshDeviceCredentialRequest"> & {
+  /**
+   * @generated from field: string credential_id = 1;
+   */
+  credentialId: string;
+
+  /**
+   * @generated from field: string refresh_token = 2;
+   */
+  refreshToken: string;
+
+  /**
+   * @generated from field: agent_talk.v1.DeviceSignature device_signature = 3;
+   */
+  deviceSignature?: DeviceSignature | undefined;
+};
+
+/**
+ * Describes the message agent_talk.v1.RefreshDeviceCredentialRequest.
+ * Use `create(RefreshDeviceCredentialRequestSchema)` to create a new message.
+ */
+export const RefreshDeviceCredentialRequestSchema: GenMessage<RefreshDeviceCredentialRequest> = /*@__PURE__*/
+  messageDesc(file_agent_talk_v1_gateway, 22);
+
+/**
+ * @generated from message agent_talk.v1.RefreshDeviceCredentialResponse
+ */
+export type RefreshDeviceCredentialResponse = Message<"agent_talk.v1.RefreshDeviceCredentialResponse"> & {
+  /**
+   * @generated from field: string device_id = 1;
+   */
+  deviceId: string;
+
+  /**
+   * @generated from field: string credential_id = 2;
+   */
+  credentialId: string;
+
+  /**
+   * @generated from field: string access_token = 3;
+   */
+  accessToken: string;
+
+  /**
+   * @generated from field: string refresh_token = 4;
+   */
+  refreshToken: string;
+
+  /**
+   * @generated from field: repeated string scopes = 5;
+   */
+  scopes: string[];
+
+  /**
+   * @generated from field: uint64 access_expires_at_unix_ms = 6;
+   */
+  accessExpiresAtUnixMs: bigint;
+
+  /**
+   * @generated from field: uint64 refresh_expires_at_unix_ms = 7;
+   */
+  refreshExpiresAtUnixMs: bigint;
+
+  /**
+   * @generated from field: string gateway_audience = 8;
+   */
+  gatewayAudience: string;
+};
+
+/**
+ * Describes the message agent_talk.v1.RefreshDeviceCredentialResponse.
+ * Use `create(RefreshDeviceCredentialResponseSchema)` to create a new message.
+ */
+export const RefreshDeviceCredentialResponseSchema: GenMessage<RefreshDeviceCredentialResponse> = /*@__PURE__*/
+  messageDesc(file_agent_talk_v1_gateway, 23);
+
+/**
  * @generated from message agent_talk.v1.RevokeDeviceRequest
  */
 export type RevokeDeviceRequest = Message<"agent_talk.v1.RevokeDeviceRequest"> & {
@@ -637,6 +994,16 @@ export type RevokeDeviceRequest = Message<"agent_talk.v1.RevokeDeviceRequest"> &
    * @generated from field: string device_id = 1;
    */
   deviceId: string;
+
+  /**
+   * @generated from field: string reason_code = 2;
+   */
+  reasonCode: string;
+
+  /**
+   * @generated from field: agent_talk.v1.DeviceSignature administrator_signature = 3;
+   */
+  administratorSignature?: DeviceSignature | undefined;
 };
 
 /**
@@ -644,7 +1011,7 @@ export type RevokeDeviceRequest = Message<"agent_talk.v1.RevokeDeviceRequest"> &
  * Use `create(RevokeDeviceRequestSchema)` to create a new message.
  */
 export const RevokeDeviceRequestSchema: GenMessage<RevokeDeviceRequest> = /*@__PURE__*/
-  messageDesc(file_agent_talk_v1_gateway, 16);
+  messageDesc(file_agent_talk_v1_gateway, 24);
 
 /**
  * @generated from message agent_talk.v1.RevokeDeviceResponse
@@ -661,7 +1028,7 @@ export type RevokeDeviceResponse = Message<"agent_talk.v1.RevokeDeviceResponse">
  * Use `create(RevokeDeviceResponseSchema)` to create a new message.
  */
 export const RevokeDeviceResponseSchema: GenMessage<RevokeDeviceResponse> = /*@__PURE__*/
-  messageDesc(file_agent_talk_v1_gateway, 17);
+  messageDesc(file_agent_talk_v1_gateway, 25);
 
 /**
  * @generated from service agent_talk.v1.GatewayControlService
@@ -699,12 +1066,44 @@ export const PairingService: GenService<{
     output: typeof BeginPairingResponseSchema;
   },
   /**
+   * @generated from rpc agent_talk.v1.PairingService.InspectPairing
+   */
+  inspectPairing: {
+    methodKind: "unary";
+    input: typeof InspectPairingRequestSchema;
+    output: typeof InspectPairingResponseSchema;
+  },
+  /**
+   * @generated from rpc agent_talk.v1.PairingService.ApprovePairing
+   */
+  approvePairing: {
+    methodKind: "unary";
+    input: typeof ApprovePairingRequestSchema;
+    output: typeof ApprovePairingResponseSchema;
+  },
+  /**
    * @generated from rpc agent_talk.v1.PairingService.CompletePairing
    */
   completePairing: {
     methodKind: "unary";
     input: typeof CompletePairingRequestSchema;
     output: typeof CompletePairingResponseSchema;
+  },
+  /**
+   * @generated from rpc agent_talk.v1.PairingService.ConfirmPairing
+   */
+  confirmPairing: {
+    methodKind: "unary";
+    input: typeof ConfirmPairingRequestSchema;
+    output: typeof ConfirmPairingResponseSchema;
+  },
+  /**
+   * @generated from rpc agent_talk.v1.PairingService.RefreshDeviceCredential
+   */
+  refreshDeviceCredential: {
+    methodKind: "unary";
+    input: typeof RefreshDeviceCredentialRequestSchema;
+    output: typeof RefreshDeviceCredentialResponseSchema;
   },
   /**
    * @generated from rpc agent_talk.v1.PairingService.RevokeDevice

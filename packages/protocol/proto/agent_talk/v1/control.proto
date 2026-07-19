@@ -71,6 +71,7 @@ message ResolveApproval {
   string approval_id = 2;
   ApprovalDecision decision = 3;
   string operation_summary_sha256 = 4;
+  DeviceSignature device_signature = 5;
 }
 
 message ResolveClarification {
