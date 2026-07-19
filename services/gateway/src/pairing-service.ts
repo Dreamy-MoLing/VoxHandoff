@@ -50,7 +50,9 @@ function mapPairingError(error: unknown): never {
         return Code.FailedPrecondition;
     }
   })();
-  throw new ConnectError(error.message, code);
+  throw new ConnectError(error.message, code, {
+    "agent-talk-error-code": error.code,
+  });
 }
 
 async function execute<T>(operation: () => Promise<T>): Promise<T> {

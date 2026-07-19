@@ -153,7 +153,7 @@ packages:
     source: hosted
     version: "7.0.1"
   fixnum:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: fixnum
       sha256: b6dc7065e46c974bc7c5f143080a6764ec7a4be6da1285ececdc37be96de53be
@@ -280,7 +280,7 @@ packages:
     source: hosted
     version: "2.3.3"
   grpc:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: grpc
       sha256: "86be3a7d39ad865b214a7370021ac80e68939238b507730de6d97fc662cb2723"

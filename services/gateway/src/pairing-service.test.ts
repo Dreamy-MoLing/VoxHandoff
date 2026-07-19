@@ -171,6 +171,7 @@ test("maps stable pairing failures to safe Connect status codes", async () => {
     (error: unknown) =>
       error instanceof ConnectError &&
       error.code === Code.ResourceExhausted &&
+      error.metadata.get("agent-talk-error-code") === "rate_limited" &&
       error.message.includes("Too many pairing attempts"),
   );
 });

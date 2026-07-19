@@ -440,6 +440,7 @@ shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值�
 
 ### 12.4 故障语义
 
+- 配对 unary RPC 每个用户动作只发起一次；Gateway 用 `agent-talk-error-code` trailer 携带白名单领域错误码，Client 不解析或展示远端原始 message。只有明确的领域/状态拒绝可进入 failed/待批准，传输超时、断线、取消、未知状态或调用后本地异常均进入 `uncertain`，必须由用户显式恢复并复用已经持久化的同一请求/签名；
 - gRPC 故障：停止 live delta，以耐久快照恢复；
 - PowerSync 故障：本地历史可读，live 事件标记等待持久化；
 - Gateway/耐久账本（PostgreSQL 或 Embedded SQLite）故障：草稿保留，未确认命令不发送；
