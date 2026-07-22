@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
         android:allowBackup="false"
-        android:label="agent_talk_client"
+        android:label="VoxHandoff"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -204,7 +204,7 @@ async function hermes(args: ParsedArgs): Promise<void> {
   let sessionId = args.values.get("session");
   if (args.flags.has("create-session")) {
     if (sessionId) throw new Error("Options --session and --create-session cannot be combined");
-    sessionId = await client.createSession("Agent Talk protocol PoC");
+    sessionId = await client.createSession("VoxHandoff protocol PoC");
     print({ kind: "session_created", sessionId });
   }
 
@@ -308,7 +308,7 @@ async function hermes(args: ParsedArgs): Promise<void> {
 }
 
 function usage(): void {
-  process.stdout.write(`Agent Talk protocol PoC\n\n`);
+  process.stdout.write(`VoxHandoff protocol PoC\n\n`);
   process.stdout.write(`  doctor\n`);
   process.stdout.write(
     `  codex --prompt TEXT [--cwd PATH] [--thread ID] [--interrupt-after-ms N] [--approval-probe|--failure-probe]\n`,

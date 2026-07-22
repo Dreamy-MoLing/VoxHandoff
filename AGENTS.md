@@ -1,8 +1,8 @@
-# Agent Talk repository guide
+# VoxHandoff repository guide
 
 ## Product contract
 
-Agent Talk is a voice relay for local and remote coding/automation agents. It records locally, produces editable text, sends only confirmed text to an explicitly selected Agent, preserves the complete Agent reply, and optionally speaks a separate short summary.
+VoxHandoff is a voice relay for local and remote coding/automation agents. It records locally, produces editable text, sends only confirmed text to an explicitly selected Agent, preserves the complete Agent reply, and optionally speaks a separate short summary.
 
 `spec/` is the only active product and engineering baseline:
 

@@ -9,7 +9,7 @@ class AgentTalkApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Agent Talk',
+      title: 'VoxHandoff',
       debugShowCheckedModeBanner: false,
       theme: buildAgentTalkDarkTheme(),
       home: const HomeScreen(),

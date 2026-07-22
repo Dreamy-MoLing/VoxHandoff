@@ -1,4 +1,4 @@
-# Agent Talk client guide
+# VoxHandoff client guide
 
 This file inherits the repository-root `AGENTS.md`. Root product and security
 invariants remain binding; this file only narrows the rules for

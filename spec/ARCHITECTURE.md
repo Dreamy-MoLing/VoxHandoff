@@ -1,4 +1,4 @@
-# Agent Talk 技术架构
+# VoxHandoff 技术架构
 
 ## 1. 架构原则
 
@@ -43,7 +43,7 @@ Windows / Linux / macOS / iOS / Android
             │ authenticated gRPC live + cursor sync
             │ HTTPS pairing/control
             ▼
-┌──────────────── Agent Talk Gateway ─────────────┐
+┌──────────────── VoxHandoff Gateway ─────────────┐
 │ auth/pairing  capability  router  event ledger  │
 │ control lease  idempotency  outbox  diagnostics │
 └───────────┬──────────────────────┬───────────────┘
@@ -199,6 +199,8 @@ message Envelope {
 UI 由 capability 决定功能是否出现，不通过失败探测能力。
 
 ### 5.4 版本协商与滚动升级
+
+VoxHandoff 是产品与仓库品牌。既有 `agent_talk.v1` protobuf package、`agent-talk/*` 签名 domain、`@agent-talk/*` package scope、存储键和平台 application ID 是已经进入持久数据或跨组件契约的兼容标识，不随展示品牌改名；未来只有带明确 wire/data migration、双读窗口和回滚证据的独立变更才能替换。
 
 Handshake 必须携带：当前 protocol major/minor、可接受的 minor 范围、schema build/hash、组件版本、组件角色和 capability revision。规则如下：
 
@@ -366,7 +368,7 @@ PowerSync 类型和 schema 若被引入，只能存在于 `SyncAdapter`。移除
 - 使用原生 Gateway WSS、role/scope、设备身份和配对；
 - 适配器保存可撤销设备身份，不默认请求管理员 scope；
 - 事件缺口刷新权威状态，不假设永久回放；
-- Agent Talk Client 不直接接触 OpenClaw 管理密钥。
+- VoxHandoff Client 不直接接触 OpenClaw 管理密钥。
 
 ## 10. 语音架构
 
@@ -527,7 +529,7 @@ shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值�
 
 ### 15.4 严重度校准
 
-| 严重度 | Agent Talk 语境 |
+| 严重度 | VoxHandoff 语境 |
 | --- | --- |
 | Critical | 未认证/已撤销设备获得 administer/approve；自动批准高风险操作；重放导致重复或错主机执行；公网可达 RCE/管理员凭据泄露 |
 | High | observe-only/旧设备可 send/interrupt/approve；跨会话串线影响用户操作；远程 STT 未同意上传；普通日志持久化可用 secret/大量私密正文；协议降级把失败/uncertain 变成功 |

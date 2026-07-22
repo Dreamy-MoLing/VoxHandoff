@@ -289,7 +289,7 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
         _InlineNotice(
           icon: Icons.front_hand_outlined,
           message:
-              'Agent Talk will not click Approve for you. This button only asks '
+              'VoxHandoff will not click Approve for you. This button only asks '
               'the Gateway whether your separate owner decision is now present.',
           color: context.visualTokens.attention,
         ),

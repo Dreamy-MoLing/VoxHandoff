@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "dev.agenttalk" "\0"
-            VALUE "FileDescription", "agent_talk_client" "\0"
+            VALUE "FileDescription", "VoxHandoff" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "agent_talk_client" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 dev.agenttalk. All rights reserved." "\0"
             VALUE "OriginalFilename", "agent_talk_client.exe" "\0"
-            VALUE "ProductName", "agent_talk_client" "\0"
+            VALUE "ProductName", "VoxHandoff" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

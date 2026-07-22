@@ -1,6 +1,6 @@
-# Agent Talk
+# VoxHandoff
 
-Agent Talk 是面向 Codex、Hermes、OpenClaw 和未来 Agent 的本地优先跨平台语音客户端。它覆盖 Windows、Linux、macOS、iOS 和 Android：将语音转成可编辑文字，通过官方 Agent 协议提交已确认请求，保留完整回复，并使用独立短文本进行语音播报。
+VoxHandoff 是面向 Codex、Hermes、OpenClaw 和未来 Agent 的安全、本地优先跨平台语音中继。它覆盖 Windows、Linux、macOS、iOS 和 Android：将语音转成可编辑文字，只把用户确认的文字交接给明确选择的 Agent，保留完整回复，并使用独立短文本进行语音播报。
 
 项目当前处于协议核心阶段。正式开发只以 [`spec/`](spec/README.md) 为准：
 

@@ -53,9 +53,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: Semantics(
           header: true,
-          label: 'Agent Talk',
+          label: 'VoxHandoff',
           child: const Text(
-            'AGENT / TALK',
+            'VOX / HANDOFF',
             style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 2.2),
           ),
         ),
@@ -314,7 +314,7 @@ class _StaticSignalLens extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.visualTokens;
     return Semantics(
-      label: 'Agent Talk idle status',
+      label: 'VoxHandoff idle status',
       child: SizedBox.square(
         dimension: 124,
         child: CustomPaint(

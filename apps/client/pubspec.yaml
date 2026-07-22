@@ -1,5 +1,5 @@
 name: agent_talk_client
-description: Five-platform text and voice client for Agent Talk.
+description: Five-platform text and voice client for VoxHandoff.
 publish_to: none
 version: 0.1.0+1
 

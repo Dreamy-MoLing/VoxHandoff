@@ -1,5 +1,5 @@
 name: agent_talk_protocol
-description: Generated Agent Talk protocol bindings for Flutter clients.
+description: Generated VoxHandoff protocol bindings for Flutter clients.
 version: 0.1.0
 publish_to: none
 

@@ -40,7 +40,7 @@ void main() {
 
     await tester.pumpWidget(const ProviderScope(child: AgentTalkApp()));
 
-    expect(find.text('AGENT / TALK'), findsOneWidget);
+    expect(find.text('VOX / HANDOFF'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

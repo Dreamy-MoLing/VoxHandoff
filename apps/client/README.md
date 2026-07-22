@@ -1,4 +1,4 @@
-# Agent Talk client
+# VoxHandoff client
 
 Flutter client shared by Windows, Linux, macOS, iOS, and Android.
 

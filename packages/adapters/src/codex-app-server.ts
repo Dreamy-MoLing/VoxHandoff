@@ -89,7 +89,7 @@ export class CodexAppServerClient extends EventEmitter {
       command: options.command ?? "codex",
       args: options.args ?? ["app-server", "--listen", "stdio://"],
       clientName: options.clientName ?? "agent_talk",
-      clientTitle: options.clientTitle ?? "Agent Talk",
+      clientTitle: options.clientTitle ?? "VoxHandoff",
       clientVersion: options.clientVersion ?? "0.1.0",
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
     };

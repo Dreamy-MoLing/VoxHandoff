@@ -1,4 +1,4 @@
-# Agent Talk 开发与交付规范
+# VoxHandoff 开发与交付规范
 
 ## 1. 当前状态
 
@@ -76,7 +76,7 @@
 - STT、GPT-SoVITS 和音频播放真链路；
 - 跨设备、远程网络、打包和发布测试。
 
-Hermes 默认 gateway 当前由 user systemd service 运行并关联 QQBot；它不是 Agent Talk 测试资源。Live PoC 必须使用不同 HERMES_HOME、端口、PID/state 目录和只含所需 provider key 的干净子进程环境，不得停止、重启或复用默认 gateway。
+Hermes 默认 gateway 当前由 user systemd service 运行并关联 QQBot；它不是 VoxHandoff 测试资源。Live PoC 必须使用不同 HERMES_HOME、端口、PID/state 目录和只含所需 provider key 的干净子进程环境，不得停止、重启或复用默认 gateway。
 
 ## 2. 仓库布局
 
