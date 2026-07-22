@@ -64,30 +64,14 @@ class ClientEventConvergenceException implements Exception {
 }
 
 class ClientEventConvergence {
-  factory ClientEventConvergence({
-    required ClientEventLedger ledger,
-    required String expectedDeviceId,
-  }) {
-    if (expectedDeviceId.isEmpty ||
-        expectedDeviceId.length > 256 ||
-        expectedDeviceId.contains(RegExp(r'[\u0000-\u001f\u007f]'))) {
-      throw const FormatException('The expected device identity is invalid.');
-    }
-    return ClientEventConvergence._(ledger, expectedDeviceId);
-  }
+  factory ClientEventConvergence({required ClientEventLedger ledger}) =>
+      ClientEventConvergence._(ledger);
 
-  const ClientEventConvergence._(this._ledger, this._expectedDeviceId);
+  const ClientEventConvergence._(this._ledger);
 
   final ClientEventLedger _ledger;
-  final String _expectedDeviceId;
 
   Future<ClientEventConvergenceResult> accept(ClientEventRecord event) async {
-    if (event.deviceId != _expectedDeviceId) {
-      throw const ClientEventConvergenceException(
-        code: 'wrong_device',
-        safeMessage: 'The event belongs to a different device.',
-      );
-    }
     await _verifyRequestRoute(event);
 
     final cursor = await _readCursor(event.conversationId);
@@ -125,16 +109,6 @@ class ClientEventConvergence {
 
   Future<void> _verifyRequestRoute(ClientEventRecord event) async {
     final requestId = event.requestId;
-    if (requestId == null) {
-      if (event.kind == ClientEventKind.connectionReady ||
-          event.kind == ClientEventKind.connectionLost) {
-        return;
-      }
-      throw const ClientEventConvergenceException(
-        code: 'request_missing',
-        safeMessage: 'The event does not identify its request.',
-      );
-    }
     final request = await _readRequest(requestId);
     if (request == null) {
       throw const ClientEventConvergenceException(
@@ -142,7 +116,7 @@ class ClientEventConvergence {
         safeMessage: 'The event does not match a tracked request.',
       );
     }
-    if (request.deviceId != event.deviceId ||
+    if (request.originDeviceId != event.originDeviceId ||
         request.conversationId != event.conversationId ||
         request.sessionId != event.sessionId ||
         request.requestId != requestId) {

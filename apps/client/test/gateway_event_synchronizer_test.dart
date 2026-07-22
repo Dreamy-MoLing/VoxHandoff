@@ -11,9 +11,45 @@ import 'package:flutter_test/flutter_test.dart';
 
 class FakeEventLedger implements ClientEventLedger {
   final requests = <String, TrackedClientRequest>{};
+  final localSubmissions = <String, LocalClientSubmission>{};
   final cursors = <String, ConversationEventCursor>{};
   final events = <BigInt, ClientEventRecord>{};
   var failCommit = false;
+
+  @override
+  Future<void> trackRequest(TrackedClientRequest request) async {
+    requests[request.requestId] = request;
+  }
+
+  @override
+  Future<void> prepareLocalSubmission(
+    TrackedClientRequest route,
+    LocalClientSubmission submission,
+  ) async {
+    requests[route.requestId] = route;
+    localSubmissions[submission.requestId] = submission;
+  }
+
+  @override
+  Future<LocalClientSubmission?> readLocalSubmission(String requestId) async =>
+      localSubmissions[requestId];
+
+  @override
+  Future<void> advanceLocalSubmission(
+    String requestId, {
+    required LocalClientSubmissionDisposition expectedDisposition,
+    required LocalClientSubmissionDisposition nextDisposition,
+  }) async {
+    final current = localSubmissions[requestId]!;
+    localSubmissions[requestId] = LocalClientSubmission(
+      requestId: current.requestId,
+      originDeviceId: current.originDeviceId,
+      commandId: current.commandId,
+      idempotencyKey: current.idempotencyKey,
+      confirmedTextSha256: current.confirmedTextSha256,
+      disposition: nextDisposition,
+    );
+  }
 
   @override
   Future<void> commitNextEvent(
@@ -116,10 +152,7 @@ GatewayEventSynchronizer synchronizer(
   var nextId = 0;
   return GatewayEventSynchronizer(
     mapper: GatewayEventMapper(),
-    convergence: ClientEventConvergence(
-      ledger: ledger,
-      expectedDeviceId: 'device-1',
-    ),
+    convergence: ClientEventConvergence(ledger: ledger),
     commandIdFactory: (purpose) => '$purpose-${++nextId}',
     onCommitted: onCommitted,
   );
@@ -131,10 +164,13 @@ void main() {
     () async {
       final ledger = FakeEventLedger();
       ledger.requests['request-1'] = TrackedClientRequest(
-        deviceId: 'device-1',
+        originDeviceId: 'device-1',
         conversationId: 'conversation-1',
         sessionId: 'session-1',
         requestId: 'request-1',
+        nodeId: 'node-1',
+        agentId: 'agent-1',
+        capabilityRevision: 'capability-revision-1',
       );
       final committed = <BigInt>[];
       final connection = FakeLiveEventConnection();
@@ -175,10 +211,13 @@ void main() {
     () async {
       final ledger = FakeEventLedger();
       ledger.requests['request-1'] = TrackedClientRequest(
-        deviceId: 'device-1',
+        originDeviceId: 'device-1',
         conversationId: 'conversation-1',
         sessionId: 'session-1',
         requestId: 'request-1',
+        nodeId: 'node-1',
+        agentId: 'agent-1',
+        capabilityRevision: 'capability-revision-1',
       );
       final committed = <BigInt>[];
       final connection = FakeLiveEventConnection();
@@ -203,10 +242,13 @@ void main() {
     () async {
       final ledger = FakeEventLedger()..failCommit = true;
       ledger.requests['request-1'] = TrackedClientRequest(
-        deviceId: 'device-1',
+        originDeviceId: 'device-1',
         conversationId: 'conversation-1',
         sessionId: 'session-1',
         requestId: 'request-1',
+        nodeId: 'node-1',
+        agentId: 'agent-1',
+        capabilityRevision: 'capability-revision-1',
       );
       final connection = FakeLiveEventConnection();
       final running = synchronizer(ledger).run(connection);

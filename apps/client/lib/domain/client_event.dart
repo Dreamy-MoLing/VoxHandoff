@@ -151,22 +151,22 @@ class ClientEventRecord {
   ClientEventRecord({
     required this.eventId,
     required this.connectionId,
-    required this.deviceId,
+    required this.originDeviceId,
     required this.conversationId,
+    required this.requestId,
     required this.sequence,
     required this.occurredAt,
     required this.kind,
     required this.content,
     required this.envelopeSha256,
     this.sessionId,
-    this.requestId,
   }) {
     if (!_opaque(eventId) ||
         !_opaque(connectionId) ||
-        !_opaque(deviceId) ||
+        !_opaque(originDeviceId) ||
         !_opaque(conversationId) ||
         (sessionId != null && !_opaque(sessionId!)) ||
-        (requestId != null && !_opaque(requestId!)) ||
+        !_opaque(requestId) ||
         sequence <= BigInt.zero ||
         sequence > _maximumUint64 ||
         !occurredAt.isUtc ||
@@ -180,10 +180,10 @@ class ClientEventRecord {
 
   final String eventId;
   final String connectionId;
-  final String deviceId;
+  final String originDeviceId;
   final String conversationId;
   final String? sessionId;
-  final String? requestId;
+  final String requestId;
   final BigInt sequence;
   final DateTime occurredAt;
   final ClientEventKind kind;
@@ -193,35 +193,83 @@ class ClientEventRecord {
   bool samePersistedFact(ClientEventRecord other) =>
       eventId == other.eventId &&
       connectionId == other.connectionId &&
-      deviceId == other.deviceId &&
+      originDeviceId == other.originDeviceId &&
       conversationId == other.conversationId &&
       sessionId == other.sessionId &&
       requestId == other.requestId &&
       sequence == other.sequence &&
       occurredAt == other.occurredAt &&
       kind == other.kind &&
+      _sameClientEventContent(content, other.content) &&
       envelopeSha256 == other.envelopeSha256;
 }
 
 class TrackedClientRequest {
   TrackedClientRequest({
-    required this.deviceId,
+    required this.originDeviceId,
     required this.conversationId,
     required this.requestId,
+    required this.nodeId,
+    required this.agentId,
+    required this.capabilityRevision,
     this.sessionId,
+    this.acceptedSequence,
   }) {
-    if (!_opaque(deviceId) ||
+    if (!_opaque(originDeviceId) ||
         !_opaque(conversationId) ||
         !_opaque(requestId) ||
-        (sessionId != null && !_opaque(sessionId!))) {
+        !_opaque(nodeId) ||
+        !_opaque(agentId) ||
+        !_opaque(capabilityRevision) ||
+        (sessionId != null && !_opaque(sessionId!)) ||
+        (acceptedSequence != null &&
+            (acceptedSequence! <= BigInt.zero ||
+                acceptedSequence! > ClientEventRecord._maximumUint64))) {
       throw const FormatException('The tracked Client request is invalid.');
     }
   }
 
-  final String deviceId;
+  final String originDeviceId;
   final String conversationId;
   final String? sessionId;
   final String requestId;
+  final String nodeId;
+  final String agentId;
+  final String capabilityRevision;
+  final BigInt? acceptedSequence;
+}
+
+enum LocalClientSubmissionDisposition {
+  prepared,
+  outcomeUnknown,
+  accepted,
+  rejected,
+}
+
+class LocalClientSubmission {
+  LocalClientSubmission({
+    required this.requestId,
+    required this.originDeviceId,
+    required this.commandId,
+    required this.idempotencyKey,
+    required this.confirmedTextSha256,
+    required this.disposition,
+  }) {
+    if (!_opaque(requestId) ||
+        !_opaque(originDeviceId) ||
+        !_opaque(commandId) ||
+        !_opaque(idempotencyKey) ||
+        !RegExp(r'^[0-9a-f]{64}$').hasMatch(confirmedTextSha256)) {
+      throw const FormatException('The local Client submission is invalid.');
+    }
+  }
+
+  final String requestId;
+  final String originDeviceId;
+  final String commandId;
+  final String idempotencyKey;
+  final String confirmedTextSha256;
+  final LocalClientSubmissionDisposition disposition;
 }
 
 class ConversationEventCursor {
@@ -244,6 +292,28 @@ class ConversationEventCursor {
 }
 
 abstract interface class ClientEventLedger {
+  /// Records a request route before accepting any event for that request.
+  /// Implementations may enrich a null accepted sequence exactly once, but
+  /// must reject every other route or acceptance fact conflict.
+  Future<void> trackRequest(TrackedClientRequest request);
+
+  /// Atomically prepares a local route and submission without retaining the
+  /// confirmed text. Remote snapshots use [trackRequest] instead.
+  Future<void> prepareLocalSubmission(
+    TrackedClientRequest route,
+    LocalClientSubmission submission,
+  );
+
+  Future<LocalClientSubmission?> readLocalSubmission(String requestId);
+
+  /// Advances a local submission with compare-and-set semantics. Backward or
+  /// otherwise unsafe transitions must fail closed.
+  Future<void> advanceLocalSubmission(
+    String requestId, {
+    required LocalClientSubmissionDisposition expectedDisposition,
+    required LocalClientSubmissionDisposition nextDisposition,
+  });
+
   Future<TrackedClientRequest?> readRequest(String requestId);
 
   Future<ConversationEventCursor?> readCursor(String conversationId);
@@ -293,3 +363,59 @@ bool _contentMatchesKind(
   ClientEventKind.requestInterrupted => content is TerminalClientEventContent,
   ClientEventKind.unsupported => content is UnsupportedClientEventContent,
 };
+
+bool _sameClientEventContent(
+  ClientEventContent left,
+  ClientEventContent right,
+) {
+  if (left is EmptyClientEventContent && right is EmptyClientEventContent) {
+    return true;
+  }
+  if (left is SafeMessageClientEventContent &&
+      right is SafeMessageClientEventContent) {
+    return left.safeMessage == right.safeMessage;
+  }
+  if (left is MessageClientEventContent && right is MessageClientEventContent) {
+    return left.text == right.text && left.revision == right.revision;
+  }
+  if (left is ToolClientEventContent && right is ToolClientEventContent) {
+    return left.toolName == right.toolName &&
+        left.stage == right.stage &&
+        left.safeSummary == right.safeSummary;
+  }
+  if (left is ApprovalClientEventContent &&
+      right is ApprovalClientEventContent) {
+    return left.approvalId == right.approvalId &&
+        left.safeSummary == right.safeSummary &&
+        left.operationSummarySha256 == right.operationSummarySha256 &&
+        left.expiresAt == right.expiresAt;
+  }
+  if (left is ClarificationClientEventContent &&
+      right is ClarificationClientEventContent) {
+    return left.clarificationId == right.clarificationId &&
+        left.safePrompt == right.safePrompt &&
+        left.expiresAt == right.expiresAt;
+  }
+  if (left is TerminalClientEventContent &&
+      right is TerminalClientEventContent) {
+    return _sameClientStageFailure(left.failure, right.failure);
+  }
+  if (left is UnsupportedClientEventContent &&
+      right is UnsupportedClientEventContent) {
+    return left.nativeTypeNumber == right.nativeTypeNumber &&
+        left.safeMessage == right.safeMessage;
+  }
+  return false;
+}
+
+bool _sameClientStageFailure(
+  ClientStageFailure? left,
+  ClientStageFailure? right,
+) {
+  if (left == null || right == null) return left == right;
+  return left.stage == right.stage &&
+      left.category == right.category &&
+      left.code == right.code &&
+      left.safeMessage == right.safeMessage &&
+      left.retryable == right.retryable;
+}

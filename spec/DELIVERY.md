@@ -61,16 +61,17 @@
 - 客户端配对已通过生成的 Dart `PairingServiceClient` 接入 Begin/Complete/Confirm unary RPC，每次调用固定有限 timeout 且只尝试一次；Complete 明确清空废弃 proof 字段并提交 Ed25519 结构化签名。Gateway 以 trailer 返回受控领域错误码，客户端仅接受本地白名单并使用固定安全文案，远端 message 不进入 UI；断线、超时、取消及未知本地异常统一保持 `uncertain`，离线 fake 覆盖三阶段 wire 映射、未批准、未知错误码和无自动重试；
 - `GatewayGrpcChannelFactory` 只从无 userinfo/path/query/fragment 的规范 HTTPS audience 建立 channel，固定有限 connect timeout，使用系统信任或启动前可解析的显式 CA；生产 API 不暴露 bad-certificate callback。明文只存在于命名为 `insecureLoopbackForTests` 的 factory，且仅接受字面量 `127.0.0.1`/`::1`，离线测试覆盖自签 CA、地址混淆、非 loopback 明文和超界 timeout；
 - Dart 客户端已复用生成的 `GatewayControlServiceClient` 和 `grpc` SDK 建立认证双向流：active bearer 仅进入 metadata，Client offer 为首帧，连接 timeout 与 handshake timeout 有界且不误作长连接总 deadline；Gateway role、协议 1.0、connection ID、capability、scope 与 attachments=false 均 fail closed。业务帧先于握手、重复握手、空帧、远端 protocol error、同步/异步 transport 故障均脱敏且不自动重连；离线 fake 覆盖命令、精确 Ack、heartbeat、event 映射、超时、过期凭据与 secret diagnostics。`toolchains/protocol.json` 固定有序 proto SHA-256，repository gate 防止 Dart offer 与 schema 静默漂移；
-- Client event domain 已与 protobuf/Flutter 隔离，完整保留 message、tool、approval、clarification、terminal failure 和 unsupported 安全载荷；Gateway mapper 严格校验协议、type/payload、identity、uint64、UTC timestamp、审批 hash 与 1 MiB 上限，并只公开固定脱敏异常。`ClientEventConvergence` 固定 request/device/conversation/session route，要求 sequence 连续，以完整 envelope SHA-256 识别精确重复/冲突，并定义完整事件 + cursor 的原子 CAS ledger contract；live synchronizer 只在耐久提交或精确读回后 Ack，缺口不展示/不 Ack且同一缺口只发送一个有界 replay，异常关闭流但不重提用户命令。离线 fake 已覆盖连续提交、乱序、重复、冲突、写入响应丢失、存储失败、replay 去重和 view 单次发布；实际 Drift/PowerSync ledger 实现仍属于后续同步 spike，当前不得声称离线历史已经耐久落盘；
-- Dart protocol 依赖经真实 pub solver 将 `protobuf` 修正为与 `grpc 5.1.0` 相容的 6.x，不使用 dependency override；PowerSync/Drift 尚未进入运行依赖，等待 M2 同步 spike 和许可证/运维 gate；
+- Client event domain 已与 protobuf/Flutter 隔离，完整保留 request-bound connection lifecycle、message、tool、approval、clarification、terminal failure 和 unsupported 安全载荷；Gateway mapper 严格校验协议、type/payload、identity、uint64、UTC timestamp、审批 hash 与 1 MiB 上限，并只公开固定脱敏异常。`ClientEventConvergence` 按 request 的 origin device/conversation/session route 收敛所有已认证观察设备，要求 sequence 连续，以完整 typed payload 与 envelope SHA-256 识别精确重复/冲突；live synchronizer 只在耐久提交或精确读回后 Ack，缺口不展示/不 Ack且同一缺口只发送一个有界 replay，异常关闭流但不重提用户命令；
+- Drift 2.34.2 + SQLite 3.5.0 已实现私有生成数据库与安全领域 facade：完整事件、request route、accepted sequence 和 conversation cursor 原子提交，uint64 以 20 位十进制 TEXT 保存，cursor 通过复合外键指向精确事件。本地 command/idempotency/hash 与跨设备 route 分表，`prepared → outcomeUnknown → accepted/rejected` 只允许前向 CAS；confirmed text 不进入提交状态表，request acceptance 可在同一事务收敛未知结果。内存并发/回滚、typed payload 损坏、SQLite CHECK/FK、完整文件关闭重开与 90 项 Flutter 测试均已通过；
+- Dart protocol 依赖经真实 pub solver 将 `protobuf` 修正为与 `grpc 5.1.0` 相容的 6.x，不使用 dependency override；客户端运行依赖已固定 `drift 2.34.2`、`path_provider 2.1.6` 和传递依赖 `sqlite3 3.5.0`，开发生成器固定 `drift_dev 2.34.0` / `build_runner 2.15.1`。PowerSync 未进入依赖，仅保留通过独立许可、运维、最小授权和量化收益 gate 后的可选 adapter；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
 未完成或未实测：
 
 - OpenClaw adapter；
-- PostgreSQL/PowerSync/Drift 同步决策与实现；
-- Flutter 客户端的 Gateway live stream、会话/事件/审批和真实平台安全存储构建；
+- Flutter 中央 frame router、未知 request 状态恢复、启动 cursor replay 与目录/会话/事件/审批生产 UI 接线；
+- 一桌面一手机的跨设备观察/接管/断网恢复，以及五平台真实安全存储与 native build；
 - STT、GPT-SoVITS 和音频播放真链路；
 - 跨设备、远程网络、打包和发布测试。
 
@@ -111,7 +112,7 @@ scripts/                # 协议、质量与构建脚本
 - 依赖只有在明显改善正确性、五端覆盖或维护成本时加入；
 - 版本写入 lockfile，升级单独评审 breaking change 和许可证；
 - fixture/fake 测试离线运行，live test 显式开启且默认只读/低风险。
-- 规格未覆盖的问题不得由实现默默决定；先在对应 `spec/` 文档写明选择、拒绝方案、迁移/回滚和验收影响。
+- 规格未覆盖的普通实现问题可先以隔离 spike 和真实构建/测试决定；形成提交时必须同步写明稳定选择、拒绝方案、迁移/回滚和验收影响。涉及非协商安全、公共协议、权威数据或平台范围时仍须先更新规格。
 
 ### 3.2 TypeScript
 
@@ -143,8 +144,8 @@ scripts/                # 协议、质量与构建脚本
 - PostgreSQL migration 只向前，生产数据不使用自动 destructive reset；
 - event/request/idempotency 的唯一约束由数据库保证；
 - outbox 与业务事实同事务；
-- PowerSync sync rules 进入版本控制并做最小授权测试；
-- Drift/PowerSync schema 变更做旧版本 Client 兼容和离线升级测试。
+- Drift schema 变更做旧版本 Client 兼容、文件重启和离线升级测试；
+- 若通过 gate 引入 PowerSync，其 sync rules 必须进入版本控制并做最小授权、升级和 cursor-sync 退出测试。
 
 ### 3.6 Git 与版本治理
 
@@ -168,6 +169,8 @@ scripts/                # 协议、质量与构建脚本
 | `flutter_riverpod` | 3.3.2，Flutter lockfile | MIT | pub.dev 五平台声明；只承载可重建 application/view state，真实 analyze/widget test 已通过 | provider 后方保留普通 Dart domain/controller；可替换状态管理而不改变 Gateway 耐久事实 |
 | Dart `cryptography` | 2.9.0，Flutter lockfile | Apache-2.0 | Ed25519/SHA-256 覆盖 Android/iOS/Linux/macOS/Windows；短配对签名使用统一 API 和纯 Dart fallback | `DeviceKeyVault` 隔离算法/密钥实现；可切 OS-backed signer 而不改变 pairing/application 契约 |
 | `flutter_secure_storage` | 10.3.1，Flutter lockfile | BSD-3-Clause | 发布者验证、五平台 federated plugin；Android RSA-OAEP/AES-GCM、Apple Keychain、Linux libsecret、Windows 平台实现；完整 Dart analyze/test 已通过 | 所有调用隔离在 `SecureValueStore`，可逐平台替换原生 signer/store；普通数据库只保留 opaque 引用 |
+| `drift` / `path_provider` / `sqlite3` | 2.34.2 / 2.1.6 / 3.5.0，Flutter lockfile | MIT / BSD-3-Clause / MIT | Drift Native background executor + Application Support 固定路径覆盖五个目标平台；内存事务、SQLite 约束与真实文件重启测试已通过；未保留无实际调用的 `drift_flutter` | `ClientEventLedger`/storage adapter 隔离 schema、路径与 executor；可替换 SQLite driver 或历史同步 transport，不改变完整事件、cursor、replay/Ack 契约 |
+| `drift_dev` / `build_runner` | 2.34.0 / 2.15.1，Flutter lockfile | MIT / BSD-3-Clause | 仅开发期生成；真实 pub solver 证明 `drift_dev >=2.34.1+1` 的 Analyzer 13 与 Flutter 3.44.6 固定测试栈冲突，因此精确固定最后兼容版本而不使用 override | 提交生成的 Dart 文件并做一致性门；升级 Flutter 后单独重跑 solver/generator，也可改为 `.drift`/手写 SQL adapter 而不改变领域接口 |
 | `pg` / `@types/pg` | 8.22.0 / 8.20.0，npm lockfile | MIT | node-postgres 长期维护；使用底层 Pool/transaction API，不引入 ORM | `GatewayLedger` 隔离 SQL；可替换其他 PostgreSQL driver 而不改变 acceptance 语义 |
 | PostgreSQL test image | 17 Alpine，固定 manifest digest | PostgreSQL License；镜像含各组件许可证 | 官方镜像；本地隔离测试和 CI 使用同一 digest | 生产部署独立；测试可换受支持 PostgreSQL 版本并先跑 migration/fixture gate |
 | `@connectrpc/connect` / `@connectrpc/connect-node` | 2.1.2，npm lockfile | Apache-2.0 | Buf/CNCF Connect 官方 TypeScript 实现；支持 Node、gRPC 与 streaming，真实 HTTP/2 测试通过 | service 只依赖生成的标准 Protobuf descriptor；可换 `grpc-js` 而不改变 wire schema/账本 |
@@ -229,11 +232,11 @@ Buf remote generation 需要网络，但普通 `npm run check` 和离线测试�
 - 原创“夜航信号台”token、组件状态目录、手机/桌面 golden 与 accessibility gate；
 - 登录/配对、Agent/会话选择、完整回复、工具事件和审批；
 - gRPC live stream；
-- PowerSync/Drift spike 与许可证/运维 gate；
+- Drift 原子本地账本与已认证 cursor-sync；PowerSync 只做独立许可证/运维/收益 gate；
 - 一台桌面和一台手机观察、接管、断网和恢复；
 - OS secure storage 五端真实测试。
 
-退出条件：一桌面一手机对同一会话无重复、无串线，离线历史可读；若 PowerSync gate 失败，启动 cursor-sync fallback，不阻塞 UI。
+退出条件：一桌面一手机对同一会话无重复、无串线，离线历史可读；cursor-sync 是必须通过的基线，PowerSync gate 失败不阻塞 UI。
 
 ### M3 — 语音闭环
 
@@ -296,7 +299,7 @@ Buf remote generation 需要网络，但普通 `npm run check` 和离线测试�
 - Windows、Linux、macOS、Android、iOS build + smoke；
 - 真实安全存储写入/重启/读回/撤销；
 - 麦克风权限、设备断开和音频播放中断；
-- PostgreSQL/PowerSync/Gateway 重启和升级；
+- PostgreSQL/Drift/Gateway 重启和升级；启用 PowerSync 后再加入其退出/恢复矩阵；
 - Codex/Hermes/OpenClaw 允许版本的 live compatibility；
 - 性能、内存、GPU、冷/热 STT/TTS 指标。
 
@@ -417,7 +420,7 @@ UI 不展示虚构完成百分比。诊断页面显示最后真实事件、同�
 | 远程 STT 泄露音频 | 默认关闭、provider 同意、目标/TLS/保留提示 | 未确认上传或目标变化后继续上传即 Critical |
 | Codex app-server 协议变化 | 当前版本生成 schema + 12 项兼容检查 | CI/live matrix 失败即阻止升级 |
 | Hermes 真链路未验证 | fake SSE 已覆盖，完整 gateway 不擅自启动 | 建隔离 profile 后完成 M0 gate |
-| PowerSync FSL 与 Drift beta | Sync Adapter 隔离 + contract test | 许可/稳定性失败切 cursor sync |
+| PowerSync 引入第二同步/授权平面 | 当前采用 Drift + 已认证 cursor sync；PowerSync 仅位于可选 Sync Adapter | 只有许可、运维、最小授权和量化收益同时过门才引入 |
 | 五端插件能力不一致 | record/media/security adapter + real device tests | 单平台失败显式降级或写原生 plugin |
 | TTS 冷启动/崩溃 | 常驻预热、分段、纯文字降级 | 不达标时限制自动播报长度 |
 | STT 技术词误识别 | 默认确认、高风险审批独立 | 30 条基准不达标切换后端 |

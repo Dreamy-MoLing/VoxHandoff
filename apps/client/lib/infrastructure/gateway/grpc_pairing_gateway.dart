@@ -45,10 +45,7 @@ class GeneratedPairingUnaryRpc implements PairingUnaryRpc {
 }
 
 class GrpcPairingGateway implements PairingGatewayPort {
-  GrpcPairingGateway(
-    this._rpc, {
-    this.timeout = const Duration(seconds: 15),
-  });
+  GrpcPairingGateway(this._rpc, {this.timeout = const Duration(seconds: 15)});
 
   static const _errorCodeTrailer = 'agent-talk-error-code';
 

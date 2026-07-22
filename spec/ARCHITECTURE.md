@@ -20,12 +20,12 @@
 | 音频播放 | `media_kit` 适配器 | 只负责播放/停止；不得持有业务状态 |
 | 安全存储 | `flutter_secure_storage` + 平台复核 | Linux 打包 libsecret；Windows/macOS/iOS/Android 做真实读回和迁移测试 |
 | 视觉 | Flutter widgets/CustomPainter + GLSL fragment shader | Rive 仅作辅助微动效，核心视觉有静态回退 |
-| 本地数据 | PowerSync SQLite + Drift adapter | Drift 桥接仍为 beta，隔离并做契约测试 |
+| 本地数据 | Drift 2.34.2 + path_provider 2.1.6 + SQLite 3.5.0 | 完整事件与 conversation cursor 同事务提交；uint64 使用规范定宽十进制 TEXT，SDK 隔离在 storage adapter |
 | 领域核心/Node/Gateway | TypeScript + Node.js 22 LTS 基线 | strict 模式；外部 payload 从 `unknown` 校验 |
 | 公共协议 | Protocol Buffers + Buf | 从单一 schema 生成 Dart/TypeScript；执行 breaking check |
 | 实时传输 | gRPC bidirectional streaming | HTTP/2 + TLS；Client/Node 均主动连接 Gateway |
 | 权威存储 | PostgreSQL | 事务、outbox、事件序号、权限和审计 |
-| 跨端同步 | PowerSync Open Edition | 服务端 FSL 许可需发布前复核；位于 Sync Adapter 后 |
+| 跨端同步 | Gateway gRPC cursor sync | 复用现有认证、replay、Ack 和 PostgreSQL 权威；PowerSync 保留为通过独立许可/运维 gate 后的可选 Sync Adapter |
 | 本地 STT | Python sidecar | 优先成熟 Whisper 系后端；以版本化 stdio/loopback 契约替换 |
 | TTS | GPT-SoVITS HTTP adapter | 支持其他 TTS；不把模型生命周期写进 Client |
 | 多实例消息总线 | NATS JetStream（达到门槛后） | 首版 PostgreSQL outbox 足够，不自研队列 |
@@ -38,18 +38,18 @@
 Windows / Linux / macOS / iOS / Android
 ┌──────────────── Flutter Client ────────────────┐
 │ UI + Riverpod + local audio + local STT/TTS    │
-│ PowerSync SQLite/Drift + secure credential ref │
+│ Drift SQLite read model + secure credential ref│
 └───────────┬──────────────────────┬──────────────┘
-            │ gRPC live stream     │ durable sync
-            │ HTTPS control        │
-            ▼                      ▼
+            │ authenticated gRPC live + cursor sync
+            │ HTTPS pairing/control
+            ▼
 ┌──────────────── Agent Talk Gateway ─────────────┐
 │ auth/pairing  capability  router  event ledger  │
 │ control lease  idempotency  outbox  diagnostics │
 └───────────┬──────────────────────┬───────────────┘
-            │                      │
-            ▼                      ▼
-       PostgreSQL            PowerSync Service
+            │
+            ▼
+       PostgreSQL
             ▲
             │ outbound gRPC node stream
 ┌───────────┴─────────────────────────────────────┐
@@ -65,7 +65,7 @@ Embedded 桌面模式可以把 Gateway 和 Node 打包为本地 sidecar，通过
 | 模式 | 命令/事件权威 | Client 读模型 | 认证边界 | 远程设备 |
 | --- | --- | --- | --- | --- |
 | Embedded standalone | bundled sidecar 的应用私有 SQLite 账本 | Client 本地 SQLite | Flutter desktop host 启动的专用 stdio；每次启动完成一次随机 challenge 握手 | 不支持 |
-| Self-hosted | Gateway PostgreSQL | PowerSync/Drift 或 cursor-sync SQLite | 设备密钥、短期 access token、scope、TLS | 支持 |
+| Self-hosted | Gateway PostgreSQL | Drift/SQLite + cursor sync；可选 PowerSync adapter | 设备密钥、短期 access token、scope、TLS | 支持 |
 | Hybrid | Self-hosted Gateway PostgreSQL | 同 Self-hosted | 同 Self-hosted；每个请求额外固定 `nodeId` | 支持 |
 
 Embedded SQLite 必须实现与 PostgreSQL 路径相同的 request ID、idempotency uniqueness、conversation sequence、accepted 事务和恢复语义；区别只在存储与传输，不在领域行为。sidecar 在同一事务写入 request、`request.accepted` 和本地 dispatch outbox，提交后才能驱动 Agent。Flutter Client 自身的 SQLite 仍只是读模型和草稿库，不能充当执行账本。
@@ -81,7 +81,7 @@ Embedded host 与 sidecar 只使用父进程创建的私有 stdio。sidecar 启�
 - 页面、可访问性、动画和用户输入；
 - 麦克风、音频播放、本地 STT/TTS 调度；
 - gRPC live stream 与 HTTPS 配对；
-- PowerSync/Drift 本地读取、草稿和低风险元数据 outbox UX；
+- Drift/SQLite 本地读取、草稿和低风险元数据 outbox UX；
 - OS 安全存储、通知和平台入口。
 
 不得：
@@ -112,7 +112,7 @@ Embedded host 与 sidecar 只使用父进程创建的私有 stdio。sidecar 启�
 - Client/Node 流管理与请求路由；
 - control lease、多设备接管和审计；
 - PostgreSQL 事务/outbox；
-- PowerSync 授权视图和下载权限。
+- 已认证 cursor-sync 查询与最小授权；若启用可选 PowerSync adapter，再负责其授权视图和下载规则。
 
 Gateway 需要看到请求明文才能驱动 Agent，因此首版不宣称端到端加密。
 
@@ -140,7 +140,7 @@ Gateway 需要看到请求明文才能驱动 Agent，因此首版不宣称端到
 - Node ↔ Codex：app-server stdio；
 - Node ↔ Hermes：HTTPS/SSE，或同机 TUI Gateway 协议；
 - Adapter ↔ OpenClaw：Gateway WSS；
-- Client durable sync：PowerSync → local SQLite。
+- Client durable sync：Gateway cursor replay/status → Drift local SQLite；可选 PowerSync 只替代历史快照传输。
 
 WebRTC 不进入默认主链路，因为不持续上传原始音频。未来远程流式音频必须作为独立 media channel，不混入 Agent event stream。
 
@@ -304,9 +304,9 @@ Gateway/Client 重启或重连时从耐久账本恢复 pending approval。Agent 
 5. 写入 Gateway outbox；
 6. 提交后才向 Client 返回 accepted。
 
-重连时 Client 发送每个活跃 conversation 的 `lastAckSequence`。Gateway 在短期窗口续传；游标过旧或存在缺口时，Client 先以 PowerSync 本地快照收敛，再订阅最新事件。未知请求只按 request ID 查询，绝不自动复制提交。
+重连时 Client 从 Drift 读取每个活跃 conversation 的耐久 cursor，并以有界 replay 分页追赶 PostgreSQL 事件，再订阅/并行收敛 live 事件。未知 request 先保持未落库、未展示、未 Ack，只按 request ID 查询 Gateway 耐久状态、严格写入本地 route 后重新处理原 envelope；绝不自动复制提交。若未来启用 PowerSync，它只能替代历史快照传输，不能改变这套身份、原子提交和精确 Ack 语义。
 
-Flutter Client 的 protobuf 只停留在 Gateway infrastructure adapter：mapper 对 protocol、event/payload 对应关系、opaque identity、uint64 sequence、UTC timestamp、审批摘要 hash 和 1 MiB envelope 上限 fail closed，再转换为不依赖 protobuf/Flutter 的完整领域事件。Client 本地事件账本必须把完整事件与 conversation cursor 在同一事务提交，并以 `expectedPreviousSequence` 做 CAS；提交成功或提交响应丢失后读回完全相同事实，才能发送包含 conversation/event/sequence 的精确 Ack。已提交的完全相同重复事件可再次 Ack 但不得再次发布到 view；同 sequence 的 connection/device/conversation/session/request、时间、类型或 envelope hash 任一变化均为冲突。缺口事件不落库、不展示、不 Ack，只按当前耐久 cursor 发出有界 replay；相同缺口尚未收敛时不重复发送 replay command。合法 Node 重连可以使后续递增 sequence 使用新的 connection ID，因此 connection ID 参与逐事件防冲突而不被错误固定为整段 conversation 常量。mapper、账本或收敛异常必须关闭当前流且不得自动重提用户命令。
+Flutter Client 的 protobuf 只停留在 Gateway infrastructure adapter：mapper 对 protocol、event/payload 对应关系、opaque identity、uint64 sequence、UTC timestamp、审批摘要 hash 和 1 MiB envelope 上限 fail closed，再转换为不依赖 protobuf/Flutter 的完整领域事件。耐久 `EventEnvelope.device_id` 表示请求的 origin device，不是当前观察设备；已认证 stream principal 决定谁能观察，多个设备必须收敛同一字节事实。request-bound `connection.ready/lost` 属于 Agent lifecycle 并可耐久保存，Gateway transport 的连接状态则由 handshake/stream 独立表达；缺少 request identity 的业务事件一律拒绝。Client 本地事件账本必须把完整事件与 conversation cursor 在同一事务提交，并以 `expectedPreviousSequence` 做 CAS；提交成功或提交响应丢失后读回完全相同事实，才能发送包含 conversation/event/sequence 的精确 Ack。已提交的完全相同重复事件可再次 Ack 但不得再次发布到 view；同 sequence 的 connection/origin device/conversation/session/request、时间、类型、typed payload 或 envelope hash 任一变化均为冲突。缺口事件不落库、不展示、不 Ack，只按当前耐久 cursor 发出有界 replay；相同缺口尚未收敛时不重复发送 replay command。合法 Node 重连可以使后续递增 sequence 使用新的 connection ID，因此 connection ID 参与逐事件防冲突而不被错误固定为整段 conversation 常量。mapper、账本或收敛异常必须关闭当前流且不得自动重提用户命令。
 
 Client 离线时只能保存草稿和明确列入 allowlist 的低风险元数据变更。可执行 Agent command 不进入自动排空的 Client outbox；用户点击发送但尚未建立可认证 live stream 时仍保持草稿并显示“未发送”。写出 command 后连接中断且未收到耐久 acceptance proof 时进入 `uncertain`，重连只执行 `GetRequest(requestId)` 或 replay，不重新调用 Send。
 
@@ -328,14 +328,16 @@ Client 离线时只能保存草稿和明确列入 allowlist 的低风险元数�
 
 ## 8. 同步方案及退出路径
 
-PowerSync Open Edition 提供 PostgreSQL 到五端 SQLite 的 local-first 同步。采用条件：
+M2 的实际基线为 PostgreSQL + 已认证 gRPC cursor sync + Drift/SQLite。它复用 Gateway 已有的身份、事件 replay、精确 Ack 与故障诊断，不新增第二套公开服务、授权规则、备份或运维平面；Client 离线时从 SQLite 读取完整已提交历史，可执行命令仍不进入自动排空 outbox。
 
-- Client SDK 的 Apache-2.0 许可可接受；
-- Service 的 FSL 源码可用许可通过正式发布复核；
-- 自托管运行、升级、备份和监控通过运维测试；
-- beta `drift_sqlite_async` 通过通知、离线写、重连和 schema 升级契约测试。
+PowerSync Open Edition 只保留为可选加速器，须同时满足以下条件才可进入运行依赖：
 
-PowerSync 类型和 schema 只存在于 Sync Adapter。若许可、稳定性或运维不合格，切换为 PostgreSQL + gRPC cursor sync + Drift/SQLite；公共 Protobuf、领域模型和 UI 不变。
+- Client SDK 的 Apache-2.0 许可和 Service 的届时许可证通过发布复核；
+- 自托管认证、最小下载授权、升级、备份、监控和事故恢复有独立证据；
+- Flutter/Drift 桥接通过通知、离线读取、重连、schema 升级和五平台构建契约测试；
+- 相比现有 cursor sync 有可量化收益，且没有复制审批、凭据或命令权威。
+
+PowerSync 类型和 schema 若被引入，只能存在于 `SyncAdapter`。移除它时保留 Drift schema、公共 Protobuf、领域模型和 UI，以 cursor sync 完整恢复；当前未通过上述 gate，因此不建立 `infra/powersync` 服务或配置。
 
 ## 9. Agent 适配
 
@@ -448,7 +450,7 @@ shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值�
 
 - 配对 unary RPC 每个用户动作只发起一次；Gateway 用 `agent-talk-error-code` trailer 携带白名单领域错误码，Client 不解析或展示远端原始 message。只有明确的领域/状态拒绝可进入 failed/待批准，传输超时、断线、取消、未知状态或调用后本地异常均进入 `uncertain`，必须由用户显式恢复并复用已经持久化的同一请求/签名；
 - gRPC 故障：停止 live delta，以耐久快照恢复；
-- PowerSync 故障：本地历史可读，live 事件标记等待持久化；
+- cursor-sync 故障：本地已提交历史可读，未耐久 live 事件不展示、不 Ack；可选 PowerSync 故障同样退回 cursor sync；
 - Gateway/耐久账本（PostgreSQL 或 Embedded SQLite）故障：草稿保留，未确认命令不发送；
 - Agent 故障：完整已接收文字保留，request 进入明确失败或 uncertain；
 - STT/TTS/视觉故障：退化为文字交互。
@@ -464,7 +466,7 @@ shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值�
 
 ## 14. 选型依据
 
-以下资料是 2026-07-18 基线的复核入口；依赖升级时重新检查，不把链接当作永久兼容保证：
+以下资料是 2026-07-19 基线的复核入口；依赖升级时重新检查，不把链接当作永久兼容保证：
 
 - [Flutter 支持平台](https://docs.flutter.dev/reference/supported-platforms)
 - [record 平台能力矩阵](https://pub.dev/packages/record)
@@ -473,6 +475,8 @@ shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值�
 - [Riverpod](https://pub.dev/packages/riverpod)
 - [gRPC Dart basics](https://grpc.io/docs/languages/dart/basics/)
 - [Buf 文档](https://buf.build/docs/)
+- [Drift 平台支持](https://drift.simonbinder.eu/platforms/)
+- [Drift Native 数据库与 SQLite build hooks](https://drift.simonbinder.eu/platforms/vm/)
 - [PowerSync Flutter SDK](https://docs.powersync.com/client-sdks/reference/flutter/)
 - [PowerSync Drift 集成](https://docs.powersync.com/client-sdks/orms/flutter-orm-support)
 - [PowerSync 项目与许可证说明](https://github.com/powersync-ja)

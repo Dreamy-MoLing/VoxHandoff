@@ -4,11 +4,49 @@ import 'package:flutter_test/flutter_test.dart';
 
 class FakeClientEventLedger implements ClientEventLedger {
   final requests = <String, TrackedClientRequest>{};
+  final localSubmissions = <String, LocalClientSubmission>{};
   final cursors = <String, ConversationEventCursor>{};
   final events = <String, Map<BigInt, ClientEventRecord>>{};
   var commitCalls = 0;
   var failCommit = false;
   var failAfterCommit = false;
+
+  @override
+  Future<void> trackRequest(TrackedClientRequest request) async {
+    final existing = requests[request.requestId];
+    if (existing != null) throw StateError('request already tracked');
+    requests[request.requestId] = request;
+  }
+
+  @override
+  Future<void> prepareLocalSubmission(
+    TrackedClientRequest route,
+    LocalClientSubmission submission,
+  ) async {
+    requests[route.requestId] = route;
+    localSubmissions[submission.requestId] = submission;
+  }
+
+  @override
+  Future<LocalClientSubmission?> readLocalSubmission(String requestId) async =>
+      localSubmissions[requestId];
+
+  @override
+  Future<void> advanceLocalSubmission(
+    String requestId, {
+    required LocalClientSubmissionDisposition expectedDisposition,
+    required LocalClientSubmissionDisposition nextDisposition,
+  }) async {
+    final current = localSubmissions[requestId]!;
+    localSubmissions[requestId] = LocalClientSubmission(
+      requestId: current.requestId,
+      originDeviceId: current.originDeviceId,
+      commandId: current.commandId,
+      idempotencyKey: current.idempotencyKey,
+      confirmedTextSha256: current.confirmedTextSha256,
+      disposition: nextDisposition,
+    );
+  }
 
   @override
   Future<void> commitNextEvent(
@@ -59,10 +97,10 @@ ClientEventRecord event({
   int sequence = 1,
   String eventId = 'event-1',
   String connectionId = 'node-connection-1',
-  String deviceId = 'device-1',
+  String originDeviceId = 'origin-device-a',
   String conversationId = 'conversation-1',
   String? sessionId = 'session-1',
-  String? requestId = 'request-1',
+  String requestId = 'request-1',
   String digest =
       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   ClientEventKind kind = ClientEventKind.messageCompleted,
@@ -70,7 +108,7 @@ ClientEventRecord event({
 }) => ClientEventRecord(
   eventId: eventId,
   connectionId: connectionId,
-  deviceId: deviceId,
+  originDeviceId: originDeviceId,
   conversationId: conversationId,
   sessionId: sessionId,
   requestId: requestId,
@@ -79,20 +117,21 @@ ClientEventRecord event({
   kind: kind,
   content:
       content ??
-      (kind == ClientEventKind.connectionReady
-          ? const SafeMessageClientEventContent('Connected.')
-          : MessageClientEventContent(
-              text: 'Complete full reply $sequence',
-              revision: BigInt.from(sequence),
-            )),
+      MessageClientEventContent(
+        text: 'Complete full reply $sequence',
+        revision: BigInt.from(sequence),
+      ),
   envelopeSha256: digest,
 );
 
 TrackedClientRequest request() => TrackedClientRequest(
-  deviceId: 'device-1',
+  originDeviceId: 'origin-device-a',
   conversationId: 'conversation-1',
   sessionId: 'session-1',
   requestId: 'request-1',
+  nodeId: 'node-1',
+  agentId: 'agent-1',
+  capabilityRevision: 'capability-revision-1',
 );
 
 void main() {
@@ -101,10 +140,7 @@ void main() {
     () async {
       final ledger = FakeClientEventLedger();
       ledger.requests['request-1'] = request();
-      final convergence = ClientEventConvergence(
-        ledger: ledger,
-        expectedDeviceId: 'device-1',
-      );
+      final convergence = ClientEventConvergence(ledger: ledger);
       final incoming = event();
 
       final result = await convergence.accept(incoming);
@@ -128,10 +164,7 @@ void main() {
     () async {
       final ledger = FakeClientEventLedger();
       ledger.requests['request-1'] = request();
-      final convergence = ClientEventConvergence(
-        ledger: ledger,
-        expectedDeviceId: 'device-1',
-      );
+      final convergence = ClientEventConvergence(ledger: ledger);
 
       final result = await convergence.accept(
         event(sequence: 3, eventId: 'event-3'),
@@ -152,16 +185,31 @@ void main() {
     () async {
       final ledger = FakeClientEventLedger();
       ledger.requests['request-1'] = request();
-      final convergence = ClientEventConvergence(
-        ledger: ledger,
-        expectedDeviceId: 'device-1',
-      );
+      final convergence = ClientEventConvergence(ledger: ledger);
       final incoming = event();
       await convergence.accept(incoming);
 
       final duplicate = await convergence.accept(incoming);
       expect(duplicate, isA<ClientEventDuplicate>());
       expect(ledger.commitCalls, 1);
+
+      await expectLater(
+        convergence.accept(
+          event(
+            content: MessageClientEventContent(
+              text: 'Conflicting full reply under the same digest',
+              revision: BigInt.one,
+            ),
+          ),
+        ),
+        throwsA(
+          isA<ClientEventConvergenceException>().having(
+            (error) => error.code,
+            'code',
+            'event_identity_conflict',
+          ),
+        ),
+      );
 
       await expectLater(
         convergence.accept(event(connectionId: 'stale-node-connection')),
@@ -177,27 +225,31 @@ void main() {
   );
 
   test(
-    'rejects wrong device, request, conversation, and session facts',
+    'accepts another device origin but rejects a forged tracked route',
     () async {
       final ledger = FakeClientEventLedger();
       ledger.requests['request-1'] = request();
-      final convergence = ClientEventConvergence(
-        ledger: ledger,
-        expectedDeviceId: 'device-1',
-      );
+      final convergence = ClientEventConvergence(ledger: ledger);
+
+      final accepted = await convergence.accept(event());
+      expect(accepted, isA<ClientEventCommitted>());
+
+      final freshLedger = FakeClientEventLedger();
+      freshLedger.requests['request-1'] = request();
+      final freshConvergence = ClientEventConvergence(ledger: freshLedger);
 
       for (final incoming in [
-        event(deviceId: 'device-2'),
+        event(originDeviceId: 'forged-origin-device'),
         event(requestId: 'request-unknown'),
         event(conversationId: 'conversation-2'),
         event(sessionId: 'session-2'),
       ]) {
         await expectLater(
-          convergence.accept(incoming),
+          freshConvergence.accept(incoming),
           throwsA(isA<ClientEventConvergenceException>()),
         );
       }
-      expect(ledger.commitCalls, 0);
+      expect(freshLedger.commitCalls, 0);
     },
   );
 
@@ -206,10 +258,7 @@ void main() {
     () async {
       final ledger = FakeClientEventLedger()..failCommit = true;
       ledger.requests['request-1'] = request();
-      final convergence = ClientEventConvergence(
-        ledger: ledger,
-        expectedDeviceId: 'device-1',
-      );
+      final convergence = ClientEventConvergence(ledger: ledger);
 
       await expectLater(
         convergence.accept(event()),
@@ -230,10 +279,7 @@ void main() {
   test('recovers an exact commit whose local response was lost', () async {
     final ledger = FakeClientEventLedger()..failAfterCommit = true;
     ledger.requests['request-1'] = request();
-    final convergence = ClientEventConvergence(
-      ledger: ledger,
-      expectedDeviceId: 'device-1',
-    );
+    final convergence = ClientEventConvergence(ledger: ledger);
 
     final result = await convergence.accept(event());
 
@@ -241,30 +287,7 @@ void main() {
     expect(ledger.cursors['conversation-1']!.eventId, 'event-1');
   });
 
-  test('allows only connection facts to omit a request identity', () async {
-    final ledger = FakeClientEventLedger();
-    final convergence = ClientEventConvergence(
-      ledger: ledger,
-      expectedDeviceId: 'device-1',
-    );
-
-    await expectLater(
-      convergence.accept(event(requestId: null)),
-      throwsA(
-        isA<ClientEventConvergenceException>().having(
-          (error) => error.code,
-          'code',
-          'request_missing',
-        ),
-      ),
-    );
-    final connection = await convergence.accept(
-      event(
-        requestId: null,
-        sessionId: null,
-        kind: ClientEventKind.connectionReady,
-      ),
-    );
-    expect(connection, isA<ClientEventCommitted>());
+  test('the domain rejects an event without request identity', () {
+    expect(() => event(requestId: ''), throwsA(isA<FormatException>()));
   });
 }

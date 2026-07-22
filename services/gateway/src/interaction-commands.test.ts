@@ -178,6 +178,41 @@ test("accepts one explicit interrupt and returns the same durable result on exac
   assert.equal(ledger.commands.length, 1);
 });
 
+test("keeps the request origin device on interrupt events after another device takes control", async () => {
+  const ledger = new FakeInteractionLedger();
+  ledger.device = { deviceId: "device-b", active: true, scopes: ["interrupt"] };
+  ledger.lease = {
+    ...ledger.lease!,
+    deviceId: "device-b",
+    leaseId: "lease-b",
+    revision: 3n,
+  };
+  const takeoverInput: InterruptCommandInput = {
+    ...input,
+    commandId: "interrupt-command-b",
+    idempotencyKey: "interrupt-idempotency-b",
+    deviceId: "device-b",
+    leaseId: "lease-b",
+    leaseRevision: 3n,
+  };
+  const deps = dependencies();
+
+  const accepted = await acceptInterruptCommand(ledger, takeoverInput, deps);
+
+  assert.equal(accepted.kind, "accepted");
+  if (accepted.kind === "accepted") {
+    assert.equal(accepted.request.deviceId, "device-1");
+    assert.equal(accepted.facts.command.deviceId, "device-b");
+    assert.equal(accepted.facts.event.deviceId, "device-1");
+  }
+
+  const retry = await acceptInterruptCommand(ledger, takeoverInput, deps);
+  assert.equal(retry.kind, "existing");
+  assert.equal(ledger.commands.length, 1);
+  assert.equal(ledger.facts?.command.deviceId, "device-b");
+  assert.equal(ledger.facts?.event.deviceId, "device-1");
+});
+
 test("rejects interrupt without scope, current lease, capability, or active request", async () => {
   const scenarios: Array<(ledger: FakeInteractionLedger) => void> = [
     (ledger) => { ledger.device = { deviceId: "device-1", active: true, scopes: ["send"] }; },

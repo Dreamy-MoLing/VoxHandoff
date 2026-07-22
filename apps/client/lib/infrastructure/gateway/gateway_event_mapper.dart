@@ -63,10 +63,10 @@ class GatewayEventMapper {
       return ClientEventRecord(
         eventId: envelope.eventId,
         connectionId: envelope.connectionId,
-        deviceId: envelope.deviceId,
+        originDeviceId: envelope.deviceId,
         conversationId: envelope.conversationId,
         sessionId: _optionalOpaque(envelope.sessionId),
-        requestId: _optionalOpaque(envelope.requestId),
+        requestId: envelope.requestId,
         sequence: BigInt.parse(envelope.sequence.toStringUnsigned()),
         occurredAt: _timestamp(
           envelope.occurredAt.seconds,

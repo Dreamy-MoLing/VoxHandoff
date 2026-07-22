@@ -48,6 +48,7 @@ void main() {
       final mapped = await mapper.map(envelope());
 
       expect(mapped.eventId, 'event-1');
+      expect(mapped.originDeviceId, 'device-1');
       expect(mapped.sequence, BigInt.one);
       expect(mapped.kind, ClientEventKind.messageCompleted);
       expect(mapped.occurredAt, DateTime.utc(2030, 1, 1, 0, 0, 0, 123));
@@ -80,6 +81,26 @@ void main() {
       expect(content.safeMessage, 'Upgrade required.');
     },
   );
+
+  test('maps request-bound durable connection lifecycle events', () async {
+    final mapper = GatewayEventMapper();
+
+    final mapped = await mapper.map(
+      envelope(
+        event: AgentEvent(
+          type: AgentEventType.AGENT_EVENT_TYPE_CONNECTION_LOST,
+          connection: ConnectionEvent(safeMessage: 'Connection lost.'),
+        ),
+      ),
+    );
+
+    expect(mapped.kind, ClientEventKind.connectionLost);
+    expect(mapped.requestId, 'request-1');
+    expect(
+      (mapped.content as SafeMessageClientEventContent).safeMessage,
+      'Connection lost.',
+    );
+  });
 
   test(
     'rejects a type and payload mismatch with no remote text in the error',
@@ -116,12 +137,14 @@ void main() {
       final mapper = GatewayEventMapper();
       final invalidProtocol = envelope()..protocol.minor = 1;
       final invalidIdentity = envelope(eventId: 'bad\nevent');
+      final missingRequestIdentity = envelope(requestId: '');
       final invalidTimestamp = envelope()..occurredAt.nanos = 1000000000;
       final invalidSequence = envelope(sequence: Int64.ZERO);
 
       for (final value in [
         invalidProtocol,
         invalidIdentity,
+        missingRequestIdentity,
         invalidTimestamp,
         invalidSequence,
       ]) {

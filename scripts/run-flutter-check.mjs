@@ -71,6 +71,37 @@ if (mismatches.length > 0) {
   );
 }
 
+const clientRoot = path.join(root, "apps/client");
+const generatedFiles = [
+  path.join(clientRoot, "lib/infrastructure/storage/drift_client_event_ledger.g.dart"),
+];
+const generatedBefore = await Promise.all(
+  generatedFiles.map((file) => readFile(file)),
+);
+
 await run(executable("dart"), ["analyze"], path.join(root, "packages/protocol/dart"));
-await run(executable("flutter"), ["analyze"], path.join(root, "apps/client"));
-await run(executable("flutter"), ["test"], path.join(root, "apps/client"));
+await run(
+  executable("dart"),
+  ["run", "build_runner", "build"],
+  clientRoot,
+);
+const generatedAfter = await Promise.all(
+  generatedFiles.map((file) => readFile(file)),
+);
+const staleGenerated = generatedFiles.filter(
+  (_, index) => !generatedBefore[index].equals(generatedAfter[index]),
+);
+if (staleGenerated.length > 0) {
+  throw new Error(
+    `Flutter generated files were stale and have been refreshed: ${staleGenerated
+      .map((file) => path.relative(root, file))
+      .join(", ")}`,
+  );
+}
+await run(
+  executable("dart"),
+  ["format", "--output=none", "--set-exit-if-changed", "lib", "test"],
+  clientRoot,
+);
+await run(executable("flutter"), ["analyze"], clientRoot);
+await run(executable("flutter"), ["test"], clientRoot);

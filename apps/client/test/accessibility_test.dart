@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('unpaired shell meets baseline accessibility guidelines', (tester) async {
+  testWidgets('unpaired shell meets baseline accessibility guidelines', (
+    tester,
+  ) async {
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(const ProviderScope(child: AgentTalkApp()));
 

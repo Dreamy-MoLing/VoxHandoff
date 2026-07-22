@@ -250,7 +250,7 @@ export async function acceptInterruptCommand(
       event: {
         eventId: dependencies.newOpaqueId(),
         connectionId: input.connectionId,
-        deviceId: input.deviceId,
+        deviceId: request.deviceId,
         conversationId: input.conversationId,
         sessionId: request.sessionId,
         requestId: input.requestId,
