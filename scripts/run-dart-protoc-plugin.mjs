@@ -7,7 +7,11 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const flutterRoot = process.env.AGENT_TALK_FLUTTER_ROOT;
 const dart = flutterRoot === undefined
   ? "dart"
-  : path.join(flutterRoot, "bin", process.platform === "win32" ? "dart.bat" : "dart");
+  : path.join(
+      flutterRoot,
+      "bin/cache/dart-sdk/bin",
+      process.platform === "win32" ? "dart.exe" : "dart",
+    );
 const protocolPackage = path.join(root, "packages/protocol/dart");
 
 const child = spawn(

@@ -54,9 +54,6 @@ jobs:
         if: github.event_name == 'pull_request'
         run: npm run protocol:breaking -- --against ".git#branch=origin/${{ github.base_ref }},subdir=packages/protocol/proto"
 
-      - name: Check generated Dart protocol bindings
-        run: npm run protocol:check:dart
-
       - name: Run offline tests
         run: npm test
 
@@ -102,6 +99,11 @@ jobs:
       - name: Install Flutter client dependencies
         working-directory: apps/client
         run: flutter pub get
+
+      - name: Check generated Dart protocol bindings locally
+        env:
+          AGENT_TALK_FLUTTER_ROOT: ${{ env.FLUTTER_ROOT }}
+        run: npm run protocol:check:dart
 
       - name: Run Flutter quality gate
         env:
