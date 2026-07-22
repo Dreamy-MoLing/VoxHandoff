@@ -2,9 +2,9 @@
 
 ## 1. 当前状态
 
-基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.19.0、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和本地 Dart `protoc_plugin` 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。M2 使用官方 stable Flutter 3.44.6 / Dart 3.12.2 用户级 SDK，Linux archive SHA-256 固定于 `toolchains/flutter.json`；Fedora 主机已安装 Clang 22.1.8、GTK 3 与 libsecret development headers，Linux release build 和 Secret Service 真读写/删除通过。当前主机仍无 Android SDK，Android/iOS/macOS/Windows 由 PR 的固定版本 runner build 门提供证据。
+基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.19.0、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和本地 Dart `protoc_plugin` 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。M2 使用官方 stable Flutter 3.44.6 / Dart 3.12.2 用户级 SDK，Linux archive SHA-256 固定于 `toolchains/flutter.json`；Fedora 主机已安装 Clang 22.1.8、GTK 3 与 libsecret development headers，Linux release build 和 Secret Service 真读写/删除通过。当前主机仍无 Android SDK；PR #1 的固定版本 runner 已完成 Android/iOS/macOS/Windows build。
 
-当前阶段：M2 Flutter 文字客户端与同步实现完成，等待本分支 PR 的五平台构建门形成最终远端证据；M-1、M0 与 M1 已完成。下一阶段从 M3 语音闭环开始，不得回退 M2 的完整文字、审批、lease、cursor 或 uncertain 语义。
+当前阶段：M2 Flutter 文字客户端与同步完成；PR #1 的首轮 GitHub Actions run `29899751800` 已通过 Node/PostgreSQL、Linux quality/Secret Service、Android、macOS/iOS 和 Windows 全部门。M-1、M0 与 M1 已完成。下一阶段从 M3 语音闭环开始，不得回退 M2 的完整文字、审批、lease、cursor 或 uncertain 语义。
 
 已完成：
 
@@ -242,7 +242,7 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 
 退出条件：一桌面一手机对同一会话无重复、无串线，离线历史可读；cursor-sync 是必须通过的基线，PowerSync gate 失败不阻塞 UI。
 
-完成证据：Gateway directory/conversation 的追加协议、expand-first PostgreSQL migration、并发幂等创建和生产 Flutter workspace 已接通；两个独立 Client 账本/router 对共同事件、显式接管、断线与 cursor 续播收敛且没有生成 Send；完整回复、工具/审批/澄清/终态、签名审批、lease 定时续租和 uncertain 不重提均有离线门。固定 PostgreSQL 17 的 migration/并发/恢复门与真实 HTTP/2 TLS loopback 已在 Fedora 44 复验；Linux release 与 Secret Service 写/读/删真链路通过。其余四平台由 PR build matrix 验证共享工程可编译，实体设备与签名发行仍按 M5 单独验收。
+完成证据：Gateway directory/conversation 的追加协议、expand-first PostgreSQL migration、并发幂等创建和生产 Flutter workspace 已接通；两个独立 Client 账本/router 对共同事件、显式接管、断线与 cursor 续播收敛且没有生成 Send；完整回复、工具/审批/澄清/终态、签名审批、lease 定时续租和 uncertain 不重提均有离线门。固定 PostgreSQL 17 的 migration/并发/恢复门与真实 HTTP/2 TLS loopback 已在 Fedora 44 复验；Linux release 与 Secret Service 写/读/删真链路通过。[GitHub Actions run 29899751800](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/29899751800) 进一步通过 Node/PostgreSQL、Linux quality/keyring、Android、macOS/iOS 与 Windows 全部门；实体设备与签名发行仍按 M5 单独验收。
 
 ### M3 — 语音闭环
 
