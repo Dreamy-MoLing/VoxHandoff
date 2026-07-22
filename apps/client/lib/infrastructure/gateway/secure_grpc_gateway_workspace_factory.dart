@@ -151,10 +151,20 @@ class _SecureGrpcGatewayWorkspaceSession implements GatewayWorkspaceSession {
   }
 
   @override
+  void renewControl(ClientControlLeaseSnapshot lease) {
+    _commands.renewControl(
+      commandId: _opaqueId('lease-renewal-command'),
+      idempotencyKey: _opaqueId('lease-renewal-idempotency'),
+      lease: lease,
+    );
+  }
+
+  @override
   Future<String> sendConfirmedText({
     required ClientConversationDirectoryEntry conversation,
     required ClientControlLeaseSnapshot lease,
     required String confirmedText,
+    required void Function(String requestId) onPrepared,
   }) async {
     if (_closed ||
         lease.conversationId != conversation.conversationId ||
@@ -189,6 +199,7 @@ class _SecureGrpcGatewayWorkspaceSession implements GatewayWorkspaceSession {
     );
     _outstandingRequestIds.add(requestId);
     try {
+      onPrepared(requestId);
       _commands.sendConfirmedText(
         commandId: commandId,
         idempotencyKey: idempotencyKey,

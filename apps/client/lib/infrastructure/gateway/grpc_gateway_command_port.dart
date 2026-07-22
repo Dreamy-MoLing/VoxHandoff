@@ -118,6 +118,25 @@ class GrpcGatewayCommandPort implements ClientGatewayCommandPort {
   }
 
   @override
+  void renewControl({
+    required String commandId,
+    required String idempotencyKey,
+    required ClientControlLeaseSnapshot lease,
+  }) {
+    _connection.sendCommand(
+      ClientCommand(
+        commandId: commandId,
+        idempotencyKey: idempotencyKey,
+        conversationId: lease.conversationId,
+        renewLease: RenewControlLease(
+          leaseId: lease.leaseId,
+          expectedRevision: _uint64(lease.revision),
+        ),
+      ),
+    );
+  }
+
+  @override
   void sendConfirmedText({
     required String commandId,
     required String idempotencyKey,

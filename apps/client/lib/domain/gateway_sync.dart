@@ -298,6 +298,12 @@ abstract interface class ClientGatewayCommandPort {
     required bool explicitTakeover,
   });
 
+  void renewControl({
+    required String commandId,
+    required String idempotencyKey,
+    required ClientControlLeaseSnapshot lease,
+  });
+
   void sendConfirmedText({
     required String commandId,
     required String idempotencyKey,

@@ -40,6 +40,13 @@ class RecordingCommandPort implements ClientGatewayCommandPort {
   }
 
   @override
+  void renewControl({
+    required String commandId,
+    required String idempotencyKey,
+    required ClientControlLeaseSnapshot lease,
+  }) {}
+
+  @override
   void sendConfirmedText({
     required String commandId,
     required String idempotencyKey,

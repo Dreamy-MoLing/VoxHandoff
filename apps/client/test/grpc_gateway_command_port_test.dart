@@ -104,6 +104,11 @@ void main() {
       conversationId: 'conversation-1',
       explicitTakeover: true,
     );
+    port.renewControl(
+      commandId: 'renew-command-1',
+      idempotencyKey: 'renew-idempotency-1',
+      lease: lease,
+    );
     port.sendConfirmedText(
       commandId: 'send-command-1',
       idempotencyKey: 'send-idempotency-1',
@@ -148,6 +153,7 @@ void main() {
       ClientCommand_Command.listDirectory,
       ClientCommand_Command.createConversation,
       ClientCommand_Command.acquireLease,
+      ClientCommand_Command.renewLease,
       ClientCommand_Command.send,
       ClientCommand_Command.interrupt,
       ClientCommand_Command.resolveApproval,
@@ -155,18 +161,20 @@ void main() {
     ]);
     expect(connection.commands[1].createConversation.title, 'Codex work');
     expect(connection.commands[2].acquireLease.explicitTakeover, isTrue);
-    expect(connection.commands[3].leaseRevision.toString(), '2');
-    expect(connection.commands[3].send.confirmedText, 'Confirmed text');
+    expect(connection.commands[3].renewLease.leaseId, 'lease-1');
+    expect(connection.commands[3].renewLease.expectedRevision.toString(), '2');
+    expect(connection.commands[4].leaseRevision.toString(), '2');
+    expect(connection.commands[4].send.confirmedText, 'Confirmed text');
     expect(
-      connection.commands[5].resolveApproval.decision,
+      connection.commands[6].resolveApproval.decision,
       ApprovalDecision.APPROVAL_DECISION_DENY,
     );
     expect(
-      connection.commands[5].resolveApproval.deviceSignature.signature,
+      connection.commands[6].resolveApproval.deviceSignature.signature,
       hasLength(64),
     );
     expect(
-      connection.commands[6].resolveClarification.confirmedText,
+      connection.commands[7].resolveClarification.confirmedText,
       'Explicit answer',
     );
   });

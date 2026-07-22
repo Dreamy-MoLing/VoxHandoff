@@ -38,10 +38,12 @@ abstract interface class GatewayWorkspaceSession {
     ClientControlLeaseSnapshot? expected,
     required bool explicitTakeover,
   });
+  void renewControl(ClientControlLeaseSnapshot lease);
   Future<String> sendConfirmedText({
     required ClientConversationDirectoryEntry conversation,
     required ClientControlLeaseSnapshot lease,
     required String confirmedText,
+    required void Function(String requestId) onPrepared,
   });
   void interruptRequest({
     required ClientEventRecord event,
@@ -80,6 +82,7 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
   GatewayWorkspaceSessionFactory? _factory;
   GatewayWorkspaceSession? _session;
   bool _connecting = false;
+  final Map<String, Timer> _leaseRenewalTimers = {};
 
   String? get deviceId => _session?.deviceId;
 
@@ -87,6 +90,7 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
   GatewayWorkspaceState build() {
     _factory = ref.watch(gatewayWorkspaceSessionFactoryProvider);
     ref.onDispose(() {
+      _cancelLeaseRenewals();
       final session = _session;
       _session = null;
       if (session != null) unawaited(session.close());
@@ -199,12 +203,36 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
         lease.deviceId != session.deviceId) {
       throw StateError('This device does not own the selected control lease.');
     }
-    final requestId = await session.sendConfirmedText(
-      conversation: conversation,
-      lease: lease,
-      confirmedText: text,
-    );
-    ref.read(clientSessionProvider.notifier).beginSubmission(requestId);
+    String? requestId;
+    try {
+      await session.sendConfirmedText(
+        conversation: conversation,
+        lease: lease,
+        confirmedText: text,
+        onPrepared: (preparedRequestId) {
+          requestId = preparedRequestId;
+          ref
+              .read(clientSessionProvider.notifier)
+              .beginSubmission(preparedRequestId);
+        },
+      );
+    } on Object {
+      final preparedRequestId = requestId;
+      if (preparedRequestId != null &&
+          ref.read(clientSessionProvider).draftPhase == DraftPhase.submitting) {
+        ref
+            .read(clientSessionProvider.notifier)
+            .markAcceptanceUncertain(preparedRequestId);
+        state = state.copyWith(
+          safeErrorCode: 'submission_outcome_uncertain',
+          safeErrorMessage:
+              'The submission outcome is uncertain. It was not resent.',
+          uncertainRequestId: preparedRequestId,
+        );
+        return;
+      }
+      rethrow;
+    }
   }
 
   void interrupt(ClientEventRecord event) {
@@ -298,9 +326,72 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
   }
 
   void _acceptLease(ClientControlLeaseSnapshot lease) {
+    final previous = state.leases[lease.conversationId];
+    if (previous != null && previous.leaseId == lease.leaseId) {
+      if (lease.revision < previous.revision) return;
+      if (lease.revision == previous.revision &&
+          (lease.deviceId != previous.deviceId ||
+              lease.expiresAt != previous.expiresAt)) {
+        throw StateError(
+          'The control lease revision conflicts with prior state.',
+        );
+      }
+    }
+    _leaseRenewalTimers.remove(lease.conversationId)?.cancel();
     state = state.copyWith(
       leases: {...state.leases, lease.conversationId: lease},
     );
+    final session = _session;
+    final delay = _leaseRenewalDelay(lease, session?.deviceId, DateTime.now());
+    if (session == null || delay == null) return;
+    _leaseRenewalTimers[lease.conversationId] = Timer(
+      delay,
+      () => _renewLease(session, lease),
+    );
+  }
+
+  void _renewLease(
+    GatewayWorkspaceSession session,
+    ClientControlLeaseSnapshot scheduledLease,
+  ) {
+    _leaseRenewalTimers.remove(scheduledLease.conversationId);
+    final current = state.leases[scheduledLease.conversationId];
+    if (_session != session ||
+        current == null ||
+        current.leaseId != scheduledLease.leaseId ||
+        current.revision != scheduledLease.revision ||
+        current.deviceId != session.deviceId ||
+        !current.expiresAt.isAfter(DateTime.now().toUtc())) {
+      return;
+    }
+    try {
+      session.renewControl(current);
+      final expiryDelay = current.expiresAt.difference(DateTime.now().toUtc());
+      if (expiryDelay > Duration.zero) {
+        _leaseRenewalTimers[current.conversationId] = Timer(
+          expiryDelay,
+          () => _expireLease(current),
+        );
+      }
+    } on Object {
+      state = state.copyWith(
+        safeErrorCode: 'control_lease_renewal_failed',
+        safeErrorMessage:
+            'The control lease could not be renewed. No Agent command was sent.',
+      );
+    }
+  }
+
+  void _expireLease(ClientControlLeaseSnapshot expiringLease) {
+    _leaseRenewalTimers.remove(expiringLease.conversationId);
+    final current = state.leases[expiringLease.conversationId];
+    if (current == null ||
+        current.leaseId != expiringLease.leaseId ||
+        current.revision != expiringLease.revision) {
+      return;
+    }
+    final leases = {...state.leases}..remove(expiringLease.conversationId);
+    state = state.copyWith(leases: leases);
   }
 
   Future<void> _reloadEvents(String conversationId) async {
@@ -365,8 +456,30 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
   }
 
   Future<void> _closeSession() async {
+    _cancelLeaseRenewals();
     final session = _session;
     _session = null;
     if (session != null) await session.close();
   }
+
+  void _cancelLeaseRenewals() {
+    for (final timer in _leaseRenewalTimers.values) {
+      timer.cancel();
+    }
+    _leaseRenewalTimers.clear();
+  }
+}
+
+Duration? _leaseRenewalDelay(
+  ClientControlLeaseSnapshot lease,
+  String? deviceId,
+  DateTime now,
+) {
+  if (deviceId == null || lease.deviceId != deviceId) return null;
+  final remaining = lease.expiresAt.difference(now.toUtc());
+  if (remaining <= Duration.zero) return null;
+  const normalInterval = Duration(seconds: 10);
+  if (remaining > normalInterval) return normalInterval;
+  final microseconds = remaining.inMicroseconds ~/ 2;
+  return Duration(microseconds: microseconds > 0 ? microseconds : 1);
 }

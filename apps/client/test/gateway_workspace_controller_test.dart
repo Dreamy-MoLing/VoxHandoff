@@ -24,11 +24,13 @@ class FakeWorkspaceSession implements GatewayWorkspaceSession {
   WorkspaceLeaseCallback? leaseCallback;
   var directoryRequests = 0;
   var acquireCalls = 0;
+  var renewCalls = 0;
   var createCalls = 0;
   var sendCalls = 0;
   var unknownCalls = 0;
   var closeCalls = 0;
   bool? lastExplicitTakeover;
+  bool throwAfterPrepared = false;
   final storedEvents = <ClientEventRecord>[];
 
   @override
@@ -64,6 +66,11 @@ class FakeWorkspaceSession implements GatewayWorkspaceSession {
   }
 
   @override
+  void renewControl(ClientControlLeaseSnapshot lease) {
+    renewCalls += 1;
+  }
+
+  @override
   void createConversation(ClientConversationDirectoryEntry conversation) {
     createCalls += 1;
   }
@@ -73,8 +80,11 @@ class FakeWorkspaceSession implements GatewayWorkspaceSession {
     required ClientConversationDirectoryEntry conversation,
     required ClientControlLeaseSnapshot lease,
     required String confirmedText,
+    required void Function(String requestId) onPrepared,
   }) async {
     sendCalls += 1;
+    onPrepared('request-local-1');
+    if (throwAfterPrepared) throw StateError('wire write failed');
     return 'request-local-1';
   }
 
@@ -202,6 +212,52 @@ void main() {
       expect(
         container.read(gatewayWorkspaceProvider).connectionPhase,
         GatewayConnectionPhase.offline,
+      );
+    },
+  );
+
+  test(
+    'renews an owned lease and makes a prepared write failure uncertain',
+    () async {
+      final factory = FakeWorkspaceFactory();
+      final container = ProviderContainer(
+        overrides: [
+          gatewayWorkspaceSessionFactoryProvider.overrideWithValue(factory),
+        ],
+      );
+      addTearDown(container.dispose);
+      final workspace = container.read(gatewayWorkspaceProvider.notifier);
+
+      await workspace.connect();
+      await factory.session.directoryCallback!(directory());
+      await factory.session.leaseCallback!(
+        ClientControlLeaseSnapshot(
+          leaseId: 'lease-short',
+          conversationId: 'conversation-1',
+          deviceId: 'device-1',
+          revision: BigInt.one,
+          expiresAt: DateTime.now().toUtc().add(
+            const Duration(milliseconds: 400),
+          ),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      expect(factory.session.renewCalls, 1);
+
+      final draft = container.read(clientSessionProvider.notifier);
+      draft.editDraft('confirmed text');
+      draft.confirmDraft();
+      factory.session.throwAfterPrepared = true;
+      await workspace.sendConfirmedText('confirmed text');
+
+      expect(factory.session.sendCalls, 1);
+      expect(
+        container.read(clientSessionProvider).draftPhase,
+        DraftPhase.uncertain,
+      );
+      expect(
+        container.read(gatewayWorkspaceProvider).safeErrorCode,
+        'submission_outcome_uncertain',
       );
     },
   );
