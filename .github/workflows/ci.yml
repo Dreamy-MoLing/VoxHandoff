@@ -69,3 +69,103 @@ jobs:
         env:
           AGENT_TALK_POSTGRES_URL: postgresql://agent_talk_ci:agent_talk_ci_only@127.0.0.1:5432/agent_talk_ci
         run: npm run test:postgres
+
+  flutter-linux-quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.44.6
+          cache: true
+
+      - name: Install Linux build and Secret Service dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev
+          libsqlite3-dev dbus-x11 gnome-keyring xvfb
+
+      - name: Install locked Node dependencies
+        run: npm ci
+
+      - name: Install Dart protocol dependencies
+        working-directory: packages/protocol/dart
+        run: flutter pub get
+
+      - name: Install Flutter client dependencies
+        working-directory: apps/client
+        run: flutter pub get
+
+      - name: Run Flutter quality gate
+        env:
+          AGENT_TALK_FLUTTER_ROOT: ${{ env.FLUTTER_ROOT }}
+        run: npm run flutter:check
+
+      - name: Build Linux release
+        working-directory: apps/client
+        run: flutter build linux --release
+
+      - name: Exercise Linux Secret Service round trip
+        working-directory: apps/client
+        run: >-
+          dbus-run-session -- bash -c
+          'eval "$(printf "\n" | gnome-keyring-daemon --unlock --components=secrets)";
+          xvfb-run -a env VOXHANDOFF_SECURE_STORAGE_SELF_TEST=1
+          ./build/linux/x64/release/bundle/agent_talk_client'
+
+  flutter-platform-builds:
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            runner: ubuntu-24.04
+          - platform: apple
+            runner: macos-15
+          - platform: windows
+            runner: windows-2025
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.44.6
+          cache: true
+
+      - name: Install Dart dependencies
+        working-directory: apps/client
+        run: flutter pub get
+
+      - name: Build Android debug APK
+        if: matrix.platform == 'android'
+        working-directory: apps/client
+        run: flutter build apk --debug
+
+      - name: Build macOS release
+        if: matrix.platform == 'apple'
+        working-directory: apps/client
+        run: flutter build macos --release
+
+      - name: Build iOS simulator app
+        if: matrix.platform == 'apple'
+        working-directory: apps/client
+        run: flutter build ios --simulator --debug
+
+      - name: Build Windows release
+        if: matrix.platform == 'windows'
+        working-directory: apps/client
+        run: flutter build windows --release
