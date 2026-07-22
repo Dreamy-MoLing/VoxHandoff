@@ -1,6 +1,6 @@
 # VoxHandoff 正式开发基线
 
-> 基线版本：1.50<br>
+> 基线版本：1.51<br>
 > 生效日期：2026-07-22<br>
 > 状态：Active
 
@@ -31,6 +31,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.51 | 2026-07-22 | 完成 M2 目录/会话协议、Flutter 生产文字工作区、双客户端 cursor 恢复、Linux Secret Service 真读写与五平台构建门 |
 | 1.50 | 2026-07-22 | 正式产品名定为 VoxHandoff；保留既有协议、签名 domain、package scope 与应用 ID 作为兼容标识 |
 | 1.49 | 2026-07-21 | 增补 request route 与 replay 批次协议，落地中央 frame router、未知 request 恢复和启动 cursor replay |
 | 1.48 | 2026-07-21 | 区分绑定契约与可替换实现假设，落地 Drift 原子账本、跨设备 origin route 与本地提交恢复状态 |

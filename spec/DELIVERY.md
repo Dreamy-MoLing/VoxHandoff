@@ -2,9 +2,9 @@
 
 ## 1. 当前状态
 
-基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.18.2、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和远程 Dart generator 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。M2 使用官方 stable Flutter 3.44.6 / Dart 3.12.2 用户级 SDK，Linux archive SHA-256 固定于 `toolchains/flutter.json`；当前主机尚无 Android SDK，Linux native build 仍缺 Clang、GTK 3 与 libsecret development headers。
+基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.19.0、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和本地 Dart `protoc_plugin` 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。M2 使用官方 stable Flutter 3.44.6 / Dart 3.12.2 用户级 SDK，Linux archive SHA-256 固定于 `toolchains/flutter.json`；Fedora 主机已安装 Clang 22.1.8、GTK 3 与 libsecret development headers，Linux release build 和 Secret Service 真读写/删除通过。当前主机仍无 Android SDK，Android/iOS/macOS/Windows 由 PR 的固定版本 runner build 门提供证据。
 
-当前阶段：M2 Flutter 文字客户端与同步。M-1、M0 与 M1 已完成；公共协议、耐久 Gateway 控制面、HTTPS 配对、设备凭据、owner 恢复及 Client/Node 组合收敛门已建立，当前先完成 Flutter/Dart 工具链与五端文字骨架。
+当前阶段：M2 Flutter 文字客户端与同步实现完成，等待本分支 PR 的五平台构建门形成最终远端证据；M-1、M0 与 M1 已完成。下一阶段从 M3 语音闭环开始，不得回退 M2 的完整文字、审批、lease、cursor 或 uncertain 语义。
 
 已完成：
 
@@ -55,26 +55,29 @@
 - 官方 Flutter 3.44.6 / Dart 3.12.2 SDK archive 已固定版本与 SHA-256，生成 Windows/Linux/macOS/iOS/Android 共用客户端工程；Dart protocol package 和客户端均进入 `npm run flutter:check` 的真实 analyze/test 门；
 - Flutter shell 已建立 Riverpod application/domain 分层、原创“夜航信号台”token/静态信号镜和未配对本地草稿体验；发送默认禁用，草稿须显式确认，request acceptance 必须匹配预生成 identity，`uncertain` 禁止覆盖或静默重提；桌面/390px 手机 golden、响应式 widget 和文字对比度/标签/触控目标 accessibility test 已进入质量门；
 - Riverpod `DevicePairingController` 已通过可替换 workflow factory 组合 OS 安全存储、TLS channel、生成的 Pairing client 和 application coordinator；恢复、完成、显式重试、放弃和 channel 关闭均不泄漏到 Widget，基础设施创建失败只发布固定安全文案。用户入口采用原创硬边“手动链路”面板，展示 Establish/Verify/Prove/Sealed 阶段、完整 code/fingerprint/audience/scope 事实、可选私有 CA PEM 与不确定 Confirm 的远端凭据确认；任何 owner approval 仍须在独立已授权设备完成。完整阶段、390px 无溢出、触控语义及桌面/手机 golden 已进入门禁；
-- Dart 客户端在签署配对 proof/confirmation 前必须严格解析 Gateway 待签 bytes，并以本地已检查的 audience、fingerprint、scope 与 credential facts 逐字节重建比对；`DeviceKeyVault` 已隔离待配对 Ed25519 seed、规范 SPKI/fingerprint 与签名能力，RFC 8032 向量、重启读回、损坏拒绝和显式丢弃均有离线测试。真实 OS secure storage adapter 与五端设备测试仍是 M2 后续门；
+- Dart 客户端在签署配对 proof/confirmation 前必须严格解析 Gateway 待签 bytes，并以本地已检查的 audience、fingerprint、scope 与 credential facts 逐字节重建比对；`DeviceKeyVault` 已隔离待配对 Ed25519 seed、规范 SPKI/fingerprint 与签名能力，RFC 8032 向量、重启读回、损坏拒绝和显式丢弃均有离线测试；
 - 客户端配对 application coordinator 已固定 `Begin → owner approval → Complete → Confirm → credential commit` 状态机：challenge/signature/token 不进入公开 UI state，Complete 兼容 token 非空即拒绝，Confirm 成功和 credential vault 落盘前不显示 paired；网络结果不明不自动重试，只有用户显式恢复才复用同一签名，恢复冲突继续保持 `uncertain`。待配对密钥仅在凭据保存后幂等提升为 active，离线测试覆盖双签名、未批准、篡改事实、提前 token、落盘失败、重启恢复与远端可能已激活时的删除确认；
-- `FlutterSecureValueStore` 已把 key、checkpoint 与 access/refresh credential 接到五平台 OS-backed 安全存储；Android 使用独立 namespace、关闭损坏自动清空与应用备份，iOS/macOS 声明 Keychain Sharing，credential 存储键只含 credential ID 的 SHA-256。严格版本化 codec 对 malformed bytes、未知 enum、重复 scope、identity 冲突 fail closed，测试覆盖完整秘密读回、幂等保存和日志字符串不含 token；同一安全存储另保存唯一 active credential 的不透明 ID 引用，重启可发现当前凭据，引用悬空或指向另一凭据即拒绝，凭据写入后引用写入中断由现有 credential-commit 恢复幂等补齐。Linux 真构建/读回仍等待 `libsecret-devel` 与原生工具链门；
+- `FlutterSecureValueStore` 已把 key、checkpoint、Gateway trust profile 与 access/refresh credential 接到五平台 OS-backed 安全存储；Android 使用独立 namespace、关闭损坏自动清空与应用备份，iOS/macOS 声明 Keychain Sharing，credential 存储键只含 credential ID 的 SHA-256。严格版本化 codec 对 malformed bytes、未知 enum、重复 scope、identity 冲突 fail closed；active credential 在 pairing checkpoint 删除后仍可恢复 paired 状态，显式 CA 也随 profile 恢复。Fedora release 二进制已对 Secret Service 完成固定非敏感值的写入、读回、删除和删除后空读，输出不含 secret；
 - 客户端配对已通过生成的 Dart `PairingServiceClient` 接入 Begin/Complete/Confirm unary RPC，每次调用固定有限 timeout 且只尝试一次；Complete 明确清空废弃 proof 字段并提交 Ed25519 结构化签名。Gateway 以 trailer 返回受控领域错误码，客户端仅接受本地白名单并使用固定安全文案，远端 message 不进入 UI；断线、超时、取消及未知本地异常统一保持 `uncertain`，离线 fake 覆盖三阶段 wire 映射、未批准、未知错误码和无自动重试；
 - `GatewayGrpcChannelFactory` 只从无 userinfo/path/query/fragment 的规范 HTTPS audience 建立 channel，固定有限 connect timeout，使用系统信任或启动前可解析的显式 CA；生产 API 不暴露 bad-certificate callback。明文只存在于命名为 `insecureLoopbackForTests` 的 factory，且仅接受字面量 `127.0.0.1`/`::1`，离线测试覆盖自签 CA、地址混淆、非 loopback 明文和超界 timeout；
 - Dart 客户端已复用生成的 `GatewayControlServiceClient` 和 `grpc` SDK 建立认证双向流：active bearer 仅进入 metadata，Client offer 为首帧，连接 timeout 与 handshake timeout 有界且不误作长连接总 deadline；Gateway role、协议 1.0、connection ID、capability、scope 与 attachments=false 均 fail closed。业务帧先于握手、重复握手、空帧、远端 protocol error、同步/异步 transport 故障均脱敏且不自动重连；离线 fake 覆盖命令、精确 Ack、heartbeat、event 映射、超时、过期凭据与 secret diagnostics。`toolchains/protocol.json` 固定有序 proto SHA-256，repository gate 防止 Dart offer 与 schema 静默漂移；
 - Client event domain 已与 protobuf/Flutter 隔离，完整保留 request-bound connection lifecycle、message、tool、approval、clarification、terminal failure 和 unsupported 安全载荷；Gateway mapper 严格校验协议、type/payload、identity、uint64、UTC timestamp、审批 hash 与 1 MiB 上限，并只公开固定脱敏异常。`ClientEventConvergence` 按 request 的 origin device/conversation/session route 收敛所有已认证观察设备，要求 sequence 连续，以完整 typed payload 与 envelope SHA-256 识别精确重复/冲突；中央 frame router 作为 live frame 唯一消费者，在耐久提交或精确读回后才 Ack，缺口不展示/不 Ack且同一未完成页只发送一个有界 replay，异常关闭流但不重提用户命令；
-- Drift 2.34.2 + SQLite 3.5.0 已实现私有生成数据库与安全领域 facade：完整事件、request route、accepted sequence 和 conversation cursor 原子提交，uint64 以 20 位十进制 TEXT 保存，cursor 通过复合外键指向精确事件。本地 command/idempotency/hash 与跨设备 route 分表，`prepared → outcomeUnknown → accepted/rejected` 只允许前向 CAS；confirmed text 不进入提交状态表，request acceptance 可在同一事务收敛未知结果。内存并发/回滚、typed payload 损坏、SQLite CHECK/FK、完整文件关闭重开与 98 项 Flutter 测试均已通过；
+- Drift 2.34.2 + SQLite 3.5.0 已实现私有生成数据库与安全领域 facade：完整事件、request route、accepted sequence 和 conversation cursor 原子提交，uint64 以 20 位十进制 TEXT 保存，cursor 通过复合外键指向精确事件。本地 command/idempotency/hash 与跨设备 route 分表，`prepared → outcomeUnknown → accepted/rejected` 只允许前向 CAS；confirmed text 不进入提交状态表，request acceptance 可在同一事务收敛未知结果。内存并发/回滚、typed payload 损坏、SQLite CHECK/FK、完整文件关闭重开与 Flutter 全量测试均已通过；
 - 公共协议以追加字段扩充 `RequestStatus` 的 origin device/session route，并增加关联 command/conversation/sequence/count 的 `ReplayCompleted` 尾帧；Gateway 每个 replay 页按序返回事件后给出耐久批次边界。Flutter frame mapper 将 protobuf 隔离为领域 frame；中央 router 启动时从 Drift 枚举已跟踪 conversation（无 cursor 从 0 开始），按耐久 cursor 分页，未知 request 事件有界缓冲且每个 request 只查询一次状态，严格保存 route 后才重放原事件和精确 Ack。恢复路径只产生 `GetRequest`/replay/Ack，不生成 `Send` 或其他可执行命令；
+- 公共协议追加 `ListDirectory`、`CreateConversation`、`GatewayDirectory` 与 `ConversationDescriptor`；`0008_conversation_directory.sql` 以 nullable expand-first 字段兼容旧会话，并把新会话绑定创建 device/command/idempotency、Node/Agent/capability/session/title。Gateway 对目录按认证 observe/control scope读取，对创建按 send scope、当前非 revoked Agent 与 capability revision 校验；并发相同创建只返回同一事实，identity 或 idempotency 冲突 fail closed；
+- Flutter production workspace 从 OS 安全存储加载 active credential 与 Gateway trust profile，建立 TLS gRPC、Drift 与唯一中央 router；目录、会话、完整 message/tool/terminal、lease、审批和澄清都只从已映射领域状态进入 UI。发送前原子保存 route、command/idempotency 与 confirmed-text SHA-256，正文不进入提交状态表；只有本设备持有未过期 lease 且草稿已显式确认才写出一次 `Send`，并且在 wire write 前进入 submitting。已 prepare 的写出失败或断流都前向推进为 `outcomeUnknown`，只允许 status/replay 恢复；本设备精确 lease 至多每 10 秒单次续租，接管、断流和过期取消旧 timer，未收到新 revision 不用旧 revision 重试；
+- 审批按钮永不自动触发；用户明确 approve/deny 后，Client 从耐久 request route 取实际 Node host，使用 active credential key 对 credential/device/host/audience/request/approval/decision/original hash/nonce 签名，再携当前 lease 发出一次。澄清必须在独立对话框编辑并明确确认；interrupt 与其他设备接管也必须点击显式动作；
+- 两份独立 Drift 账本与中央 router 的组合验收覆盖桌面/手机共同观察同一完整事件、手机无隐式控制、带当前 revision 的显式接管、断线后从 sequence 2 启动 replay 并收敛到 4；两端无额外 `Send`。已连接工作区另有桌面/390px 手机 golden、完整回复与显式审批 widget gate；
+- CI 新增固定 Flutter 3.44.6 的 Linux analyze/test/release/Secret Service 门，以及 Android debug APK、macOS release、iOS simulator 和 Windows release 构建矩阵；根 `npm run check` 已按 workspace 依赖拓扑在 protocol `--noEmit` 校验后显式生成 `dist`，以移除 `origin/main` 干净 runner 在 Gateway 检查时找不到 `@agent-talk/protocol` 的顺序缺陷；Dart 生成一致性门则在固定 Flutter SDK 就绪后运行。这些是共享 M2 客户端的合并门，不替代 M5 的签名、安装、升级、卸载与实体设备发行验收；
 - Dart protocol 依赖经真实 pub solver 将 `protobuf` 修正为与 `grpc 5.1.0` 相容的 6.x，不使用 dependency override；客户端运行依赖已固定 `drift 2.34.2`、`path_provider 2.1.6` 和传递依赖 `sqlite3 3.5.0`，开发生成器固定 `drift_dev 2.34.0` / `build_runner 2.15.1`。PowerSync 未进入依赖，仅保留通过独立许可、运维、最小授权和量化收益 gate 后的可选 adapter；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
-未完成或未实测：
+M2 之后未完成或未实测：
 
 - OpenClaw adapter；
-- Flutter 目录/会话/事件/审批生产 UI 接线；
-- 一桌面一手机的跨设备观察/接管/断网恢复，以及五平台真实安全存储与 native build；
 - STT、GPT-SoVITS 和音频播放真链路；
-- 跨设备、远程网络、打包和发布测试。
+- 实体手机/桌面的远程网络、非 Linux keyring 真读写、签名打包、安装/升级/卸载与发布测试；这些仍是 M5 发行门，不得从 CI 编译结果推断通过。
 
 Hermes 默认 gateway 当前由 user systemd service 运行并关联 QQBot；它不是 VoxHandoff 测试资源。Live PoC 必须使用不同 HERMES_HOME、端口、PID/state 目录和只含所需 provider key 的干净子进程环境，不得停止、重启或复用默认 gateway。
 
@@ -176,7 +179,7 @@ scripts/                # 协议、质量与构建脚本
 | PostgreSQL test image | 17 Alpine，固定 manifest digest | PostgreSQL License；镜像含各组件许可证 | 官方镜像；本地隔离测试和 CI 使用同一 digest | 生产部署独立；测试可换受支持 PostgreSQL 版本并先跑 migration/fixture gate |
 | `@connectrpc/connect` / `@connectrpc/connect-node` | 2.1.2，npm lockfile | Apache-2.0 | Buf/CNCF Connect 官方 TypeScript 实现；支持 Node、gRPC 与 streaming，真实 HTTP/2 测试通过 | service 只依赖生成的标准 Protobuf descriptor；可换 `grpc-js` 而不改变 wire schema/账本 |
 
-Buf remote generation 需要网络，但普通 `npm run check` 和离线测试只校验已提交 TypeScript 生成物；CI 与显式 `protocol:check:dart` 重新生成 Dart 并逐字比较。`npm run flutter:check` 已使用固定 Flutter/Dart SDK 真编译 protocol package 并分析、测试共享客户端；在各目标平台 toolchain 和 runner build 实际通过前，仍不得把它表述为“五端编译成功”。
+TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖已锁定后不把私有 proto 上传到远程 generator。普通 `npm run check` 校验已提交 TypeScript 生成物并先 emit protocol `dist` 再检查消费者；CI 与显式 `protocol:check:dart` 使用固定 Flutter SDK 内嵌 Dart 重新生成并逐字比较。`npm run flutter:check` 已真编译 protocol package 并分析、测试共享客户端；在各目标平台 toolchain 和 runner build 实际通过前，仍不得把它表述为“五端编译成功”。
 
 ## 4. 里程碑
 
@@ -225,7 +228,7 @@ Buf remote generation 需要网络，但普通 `npm run check` 和离线测试�
 
 完成证据：同一组合测试经实际 `ConnectClient`/`ConnectNode` 双向流和固定 PostgreSQL 17 执行；首次响应丢失、Gateway 实例重建、Client 精确重试、Node dispatch 重投、旧序拒绝、事件精确重试、终态 replay 与 cursor Ack 后，数据库只有一个 request/dispatch，request=`completed`、dispatch=`delivered`、Gateway sequence 和 cursor 均为 4。协议、离线测试、真实 HTTP/2 TLS 与 PostgreSQL 门同时通过。
 
-### M2 — Flutter 文字客户端与同步
+### M2 — Flutter 文字客户端与同步（完成：2026-07-22）
 
 目标：先完成五端共享的文字 Agent 产品骨架。
 
@@ -238,6 +241,8 @@ Buf remote generation 需要网络，但普通 `npm run check` 和离线测试�
 - OS secure storage 五端真实测试。
 
 退出条件：一桌面一手机对同一会话无重复、无串线，离线历史可读；cursor-sync 是必须通过的基线，PowerSync gate 失败不阻塞 UI。
+
+完成证据：Gateway directory/conversation 的追加协议、expand-first PostgreSQL migration、并发幂等创建和生产 Flutter workspace 已接通；两个独立 Client 账本/router 对共同事件、显式接管、断线与 cursor 续播收敛且没有生成 Send；完整回复、工具/审批/澄清/终态、签名审批、lease 定时续租和 uncertain 不重提均有离线门。固定 PostgreSQL 17 的 migration/并发/恢复门与真实 HTTP/2 TLS loopback 已在 Fedora 44 复验；Linux release 与 Secret Service 写/读/删真链路通过。其余四平台由 PR build matrix 验证共享工程可编译，实体设备与签名发行仍按 M5 单独验收。
 
 ### M3 — 语音闭环
 
@@ -350,6 +355,9 @@ npm run protocol:check:dart
 AGENT_TALK_POSTGRES_URL=<isolated-loopback-url> npm run test:postgres
 AGENT_TALK_LOOPBACK_INTEGRATION=1 npm run test:transport
 npm run protocol:codex
+npm run flutter:check
+VOXHANDOFF_SECURE_STORAGE_SELF_TEST=1 \
+  ./apps/client/build/linux/x64/release/bundle/agent_talk_client
 npm run poc -- doctor
 ```
 
