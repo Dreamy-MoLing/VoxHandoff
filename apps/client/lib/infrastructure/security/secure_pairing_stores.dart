@@ -15,6 +15,88 @@ class SecurePairingStoreException implements Exception {
   String toString() => 'SecurePairingStoreException($code): $message';
 }
 
+class GatewayConnectionProfile {
+  GatewayConnectionProfile({
+    required this.gatewayAudience,
+    Iterable<int>? trustedRootCertificates,
+  }) : trustedRootCertificates = trustedRootCertificates == null
+           ? null
+           : List.unmodifiable(trustedRootCertificates) {
+    final uri = Uri.tryParse(gatewayAudience);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        !uri.hasAuthority ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        (uri.path.isNotEmpty && uri.path != '/') ||
+        uri.query.isNotEmpty ||
+        uri.fragment.isNotEmpty ||
+        gatewayAudience.length > 2048 ||
+        (this.trustedRootCertificates?.isEmpty ?? false) ||
+        (this.trustedRootCertificates?.length ?? 0) > 131072) {
+      throw const FormatException('The Gateway connection profile is invalid.');
+    }
+  }
+
+  final String gatewayAudience;
+  final List<int>? trustedRootCertificates;
+}
+
+class SecureGatewayConnectionProfileStore {
+  const SecureGatewayConnectionProfileStore(this._store);
+
+  static const _key = 'agent-talk.v1.gateway-connection-profile';
+  final SecureValueStore _store;
+
+  Future<void> save(GatewayConnectionProfile profile) => _store.write(
+    _key,
+    jsonEncode({
+      'version': 1,
+      'kind': 'gateway_connection_profile',
+      'gateway_audience': profile.gatewayAudience,
+      'trusted_root_certificates': profile.trustedRootCertificates == null
+          ? null
+          : base64Encode(profile.trustedRootCertificates!),
+    }),
+  );
+
+  Future<GatewayConnectionProfile?> load() async {
+    final encoded = await _store.read(_key);
+    if (encoded == null) return null;
+    final map = _decodeMap(encoded, 'Gateway connection profile');
+    if (map['version'] != 1 || map['kind'] != 'gateway_connection_profile') {
+      throw const SecurePairingStoreException(
+        'unsupported_gateway_profile',
+        'The secure Gateway connection profile version is unsupported.',
+      );
+    }
+    try {
+      final certificate = map['trusted_root_certificates'];
+      return GatewayConnectionProfile(
+        gatewayAudience: _requiredString(
+          map,
+          'gateway_audience',
+          maximumBytes: 2048,
+        ),
+        trustedRootCertificates: certificate == null
+            ? null
+            : base64Decode(
+                _requiredString(
+                  map,
+                  'trusted_root_certificates',
+                  maximumBytes: 180000,
+                ),
+              ),
+      );
+    } on FormatException {
+      throw const SecurePairingStoreException(
+        'corrupt_gateway_profile',
+        'The secure Gateway connection profile is malformed.',
+      );
+    }
+  }
+}
+
 class SecurePairingCheckpointStore implements PairingCheckpointStore {
   const SecurePairingCheckpointStore(this._store);
 

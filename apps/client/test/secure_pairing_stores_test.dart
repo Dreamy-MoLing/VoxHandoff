@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:agent_talk_client/domain/device_pairing.dart';
 import 'package:agent_talk_client/infrastructure/security/device_key_vault.dart';
 import 'package:agent_talk_client/infrastructure/security/secure_pairing_stores.dart';
+import 'package:agent_talk_client/infrastructure/gateway/secure_grpc_pairing_workflow_factory.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class FakeSecureValueStore implements SecureValueStore {
@@ -23,6 +24,54 @@ class FakeSecureValueStore implements SecureValueStore {
 }
 
 void main() {
+  test('round-trips the pinned Gateway trust profile', () async {
+    final values = FakeSecureValueStore();
+    final store = SecureGatewayConnectionProfileStore(values);
+    final profile = GatewayConnectionProfile(
+      gatewayAudience: 'https://gateway.example:8443',
+      trustedRootCertificates: const [1, 2, 3, 4],
+    );
+
+    await store.save(profile);
+    final restored = await store.load();
+
+    expect(restored?.gatewayAudience, profile.gatewayAudience);
+    expect(restored?.trustedRootCertificates, [1, 2, 3, 4]);
+  });
+
+  test(
+    'restores an active credential after the checkpoint is removed',
+    () async {
+      final values = FakeSecureValueStore();
+      await SecureGatewayConnectionProfileStore(values).save(
+        GatewayConnectionProfile(gatewayAudience: 'https://gateway.example'),
+      );
+      await SecureDeviceCredentialStore(values).save(
+        DeviceCredentialBundle(
+          keyReference: '0123456789abcdef0123456789abcdef',
+          deviceId: 'device_1',
+          credentialId: 'credential_1',
+          gatewayAudience: 'https://gateway.example',
+          scopes: const ['observe', 'send'],
+          accessToken: 'ACCESS_TOKEN_0123456789_abcdef',
+          refreshToken: 'REFRESH_TOKEN_0123456789_abcdefghijklmnop',
+          accessExpiresAt: DateTime.utc(2030, 1, 1),
+          refreshExpiresAt: DateTime.utc(2030, 2, 1),
+        ),
+      );
+      PairingState? restored;
+
+      final session = await SecureGrpcPairingWorkflowFactory(
+        secureValueStore: values,
+      ).restore(onStateChanged: (state) => restored = state);
+
+      expect(session, isNotNull);
+      expect(restored?.phase, PairingPhase.paired);
+      expect(restored?.deviceId, 'device_1');
+      await session?.close();
+    },
+  );
+
   test('round-trips every secret checkpoint fact without logging bytes', () async {
     final values = FakeSecureValueStore();
     final store = SecurePairingCheckpointStore(values);

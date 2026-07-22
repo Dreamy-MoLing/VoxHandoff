@@ -146,6 +146,93 @@ class GrpcGatewayCommandPort implements ClientGatewayCommandPort {
   }
 
   @override
+  void interruptRequest({
+    required String commandId,
+    required String idempotencyKey,
+    required String conversationId,
+    required String requestId,
+    required ClientControlLeaseSnapshot lease,
+  }) {
+    _connection.sendCommand(
+      ClientCommand(
+        commandId: commandId,
+        idempotencyKey: idempotencyKey,
+        conversationId: conversationId,
+        leaseId: lease.leaseId,
+        leaseRevision: _uint64(lease.revision),
+        requestId: requestId,
+        interrupt: InterruptRequest(requestId: requestId),
+      ),
+    );
+  }
+
+  @override
+  void resolveApproval({
+    required String commandId,
+    required String idempotencyKey,
+    required String conversationId,
+    required String requestId,
+    required String approvalId,
+    required String operationSummarySha256,
+    required ClientApprovalDecision decision,
+    required ClientDeviceSignature deviceSignature,
+    required ClientControlLeaseSnapshot lease,
+  }) {
+    _connection.sendCommand(
+      ClientCommand(
+        commandId: commandId,
+        idempotencyKey: idempotencyKey,
+        conversationId: conversationId,
+        leaseId: lease.leaseId,
+        leaseRevision: _uint64(lease.revision),
+        requestId: requestId,
+        resolveApproval: ResolveApproval(
+          requestId: requestId,
+          approvalId: approvalId,
+          decision: decision == ClientApprovalDecision.approve
+              ? ApprovalDecision.APPROVAL_DECISION_APPROVE
+              : ApprovalDecision.APPROVAL_DECISION_DENY,
+          operationSummarySha256: operationSummarySha256,
+          deviceSignature: DeviceSignature(
+            credentialId: deviceSignature.credentialId,
+            nonce: deviceSignature.nonce,
+            signature: deviceSignature.signature,
+            algorithm:
+                DeviceSignatureAlgorithm.DEVICE_SIGNATURE_ALGORITHM_ED25519,
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void resolveClarification({
+    required String commandId,
+    required String idempotencyKey,
+    required String conversationId,
+    required String requestId,
+    required String clarificationId,
+    required String confirmedText,
+    required ClientControlLeaseSnapshot lease,
+  }) {
+    _connection.sendCommand(
+      ClientCommand(
+        commandId: commandId,
+        idempotencyKey: idempotencyKey,
+        conversationId: conversationId,
+        leaseId: lease.leaseId,
+        leaseRevision: _uint64(lease.revision),
+        requestId: requestId,
+        resolveClarification: ResolveClarification(
+          requestId: requestId,
+          clarificationId: clarificationId,
+          confirmedText: confirmedText,
+        ),
+      ),
+    );
+  }
+
+  @override
   Future<void> close() => _connection.close();
 
   Int64 _uint64(BigInt value) {

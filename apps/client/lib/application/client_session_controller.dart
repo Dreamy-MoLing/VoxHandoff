@@ -73,4 +73,18 @@ class ClientSessionController extends Notifier<ClientSessionState> {
     }
     state = state.copyWith(draftPhase: DraftPhase.uncertain);
   }
+
+  void startNextDraft() {
+    if (state.draftPhase != DraftPhase.accepted) {
+      throw StateError(
+        'Only an accepted draft can be cleared for the next request.',
+      );
+    }
+    state = state.copyWith(
+      draftText: '',
+      draftRevision: state.draftRevision + 1,
+      draftPhase: DraftPhase.editing,
+      clearRequestId: true,
+    );
+  }
 }

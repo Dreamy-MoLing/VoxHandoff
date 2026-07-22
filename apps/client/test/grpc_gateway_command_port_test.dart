@@ -112,16 +112,62 @@ void main() {
       lease: lease,
       confirmedText: 'Confirmed text',
     );
+    port.interruptRequest(
+      commandId: 'interrupt-command-1',
+      idempotencyKey: 'interrupt-idempotency-1',
+      conversationId: 'conversation-1',
+      requestId: 'request-1',
+      lease: lease,
+    );
+    port.resolveApproval(
+      commandId: 'approval-command-1',
+      idempotencyKey: 'approval-idempotency-1',
+      conversationId: 'conversation-1',
+      requestId: 'request-1',
+      approvalId: 'approval-1',
+      operationSummarySha256: ''.padLeft(64, 'a'),
+      decision: ClientApprovalDecision.deny,
+      deviceSignature: ClientDeviceSignature(
+        credentialId: 'credential-1',
+        nonce: List.filled(32, 1),
+        signature: List.filled(64, 2),
+      ),
+      lease: lease,
+    );
+    port.resolveClarification(
+      commandId: 'clarification-command-1',
+      idempotencyKey: 'clarification-idempotency-1',
+      conversationId: 'conversation-1',
+      requestId: 'request-1',
+      clarificationId: 'clarification-1',
+      confirmedText: 'Explicit answer',
+      lease: lease,
+    );
 
     expect(connection.commands.map((command) => command.whichCommand()), [
       ClientCommand_Command.listDirectory,
       ClientCommand_Command.createConversation,
       ClientCommand_Command.acquireLease,
       ClientCommand_Command.send,
+      ClientCommand_Command.interrupt,
+      ClientCommand_Command.resolveApproval,
+      ClientCommand_Command.resolveClarification,
     ]);
     expect(connection.commands[1].createConversation.title, 'Codex work');
     expect(connection.commands[2].acquireLease.explicitTakeover, isTrue);
     expect(connection.commands[3].leaseRevision.toString(), '2');
     expect(connection.commands[3].send.confirmedText, 'Confirmed text');
+    expect(
+      connection.commands[5].resolveApproval.decision,
+      ApprovalDecision.APPROVAL_DECISION_DENY,
+    );
+    expect(
+      connection.commands[5].resolveApproval.deviceSignature.signature,
+      hasLength(64),
+    );
+    expect(
+      connection.commands[6].resolveClarification.confirmedText,
+      'Explicit answer',
+    );
   });
 }

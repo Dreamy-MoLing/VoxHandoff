@@ -129,6 +129,7 @@ class ClientNodeDirectoryEntry {
 class ClientAgentDirectoryEntry {
   const ClientAgentDirectoryEntry({
     required this.agentId,
+    required this.nodeId,
     required this.displayName,
     required this.adapter,
     required this.version,
@@ -139,6 +140,7 @@ class ClientAgentDirectoryEntry {
   });
 
   final String agentId;
+  final String nodeId;
   final String displayName;
   final String adapter;
   final String version;
@@ -243,6 +245,21 @@ class ClientGatewayAcknowledgement {
   final String eventId;
 }
 
+enum ClientApprovalDecision { approve, deny }
+
+class ClientDeviceSignature {
+  ClientDeviceSignature({
+    required this.credentialId,
+    required Iterable<int> nonce,
+    required Iterable<int> signature,
+  }) : nonce = List.unmodifiable(nonce),
+       signature = List.unmodifiable(signature);
+
+  final String credentialId;
+  final List<int> nonce;
+  final List<int> signature;
+}
+
 abstract interface class ClientGatewayCommandPort {
   void acknowledge(ClientGatewayAcknowledgement acknowledgement);
 
@@ -288,6 +305,36 @@ abstract interface class ClientGatewayCommandPort {
     required ClientConversationDirectoryEntry conversation,
     required ClientControlLeaseSnapshot lease,
     required String confirmedText,
+  });
+
+  void interruptRequest({
+    required String commandId,
+    required String idempotencyKey,
+    required String conversationId,
+    required String requestId,
+    required ClientControlLeaseSnapshot lease,
+  });
+
+  void resolveApproval({
+    required String commandId,
+    required String idempotencyKey,
+    required String conversationId,
+    required String requestId,
+    required String approvalId,
+    required String operationSummarySha256,
+    required ClientApprovalDecision decision,
+    required ClientDeviceSignature deviceSignature,
+    required ClientControlLeaseSnapshot lease,
+  });
+
+  void resolveClarification({
+    required String commandId,
+    required String idempotencyKey,
+    required String conversationId,
+    required String requestId,
+    required String clarificationId,
+    required String confirmedText,
+    required ClientControlLeaseSnapshot lease,
   });
 
   Future<void> close();

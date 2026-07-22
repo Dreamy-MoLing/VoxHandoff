@@ -5,8 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/client_session_controller.dart';
 import '../application/device_pairing_controller.dart';
+import '../application/gateway_workspace_controller.dart';
+import '../domain/client_event.dart';
 import '../domain/client_session.dart';
 import '../domain/device_pairing.dart';
+import '../domain/gateway_sync.dart';
+import '../domain/gateway_workspace.dart';
 import 'design/agent_talk_theme.dart';
 import 'pairing_dialog.dart';
 
@@ -24,6 +28,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     _composer = TextEditingController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(devicePairingProvider.notifier).restore();
+    });
   }
 
   @override
@@ -43,11 +50,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _openPairing() => showDevicePairingDialog(context);
 
+  Future<void> _send() async {
+    final text = ref.read(clientSessionProvider).draftText;
+    await ref.read(gatewayWorkspaceProvider.notifier).sendConfirmedText(text);
+  }
+
+  void _startNextDraft() {
+    ref.read(clientSessionProvider.notifier).startNextDraft();
+    _composer.clear();
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(clientSessionProvider);
     final controller = ref.read(clientSessionProvider.notifier);
     final pairing = ref.watch(devicePairingProvider);
+    final workspace = ref.watch(gatewayWorkspaceProvider);
+    final workspaceController = ref.read(gatewayWorkspaceProvider.notifier);
+    final ownsLease = workspace.ownsSelectedLease(
+      workspaceController.deviceId,
+      DateTime.now(),
+    );
     final compactAppBar = MediaQuery.sizeOf(context).width < 480;
     return Scaffold(
       appBar: AppBar(
@@ -73,21 +96,62 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           final showNavigation = constraints.maxWidth >= 900;
           return Row(
             children: [
-              if (showNavigation) const _NavigationPane(),
+              if (showNavigation)
+                _NavigationPane(
+                  workspace: workspace,
+                  onSelect: workspaceController.selectConversation,
+                  onCreate: () => _showCreateConversationDialog(
+                    context,
+                    workspace,
+                    workspaceController,
+                  ),
+                ),
               Expanded(
                 child: Column(
                   children: [
                     _LocalOnlyBanner(
                       pairing: pairing,
+                      workspace: workspace,
                       onOpenPairing: _openPairing,
+                      onConnect: workspaceController.connect,
+                      onDisconnect: workspaceController.disconnect,
                     ),
-                    const Expanded(child: _EmptyConversation()),
+                    if (!showNavigation && workspace.directory != null)
+                      _ConversationPicker(
+                        workspace: workspace,
+                        onSelect: workspaceController.selectConversation,
+                        onCreate: () => _showCreateConversationDialog(
+                          context,
+                          workspace,
+                          workspaceController,
+                        ),
+                      ),
+                    Expanded(
+                      child: workspace.selectedConversation == null
+                          ? const _EmptyConversation()
+                          : _ConversationView(
+                              workspace: workspace,
+                              ownsLease: ownsLease,
+                              onAcquire: () =>
+                                  workspaceController.acquireSelectedControl(
+                                    explicitTakeover:
+                                        workspace.selectedLease != null,
+                                  ),
+                              onApproval: workspaceController.resolveApproval,
+                              onClarification:
+                                  workspaceController.resolveClarification,
+                              onInterrupt: workspaceController.interrupt,
+                            ),
+                    ),
                     _Composer(
                       textController: _composer,
                       session: session,
                       onChanged: controller.editDraft,
                       onConfirm: _confirmDraft,
                       onReopen: controller.reopenDraft,
+                      onSend: _send,
+                      onNextDraft: _startNextDraft,
+                      sendEnabled: ownsLease,
                     ),
                   ],
                 ),
@@ -152,48 +216,98 @@ class _ConnectionChip extends StatelessWidget {
 }
 
 class _NavigationPane extends StatelessWidget {
-  const _NavigationPane();
+  const _NavigationPane({
+    required this.workspace,
+    required this.onSelect,
+    required this.onCreate,
+  });
+
+  final GatewayWorkspaceState workspace;
+  final Future<void> Function(String conversationId) onSelect;
+  final VoidCallback onCreate;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: 280,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerLow,
-          border: Border(
-            right: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant,
+      child: Material(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(
+              right: BorderSide(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
             ),
           ),
-        ),
-        child: Padding(
-          padding: EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'AGENTS',
-                style: TextStyle(
-                  color: context.visualTokens.signal,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.8,
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'AGENTS',
+                  style: TextStyle(
+                    color: context.visualTokens.signal,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.8,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              const Text('No Agent available'),
-              const SizedBox(height: 28),
-              Text(
-                'CONVERSATIONS',
-                style: TextStyle(
-                  color: context.visualTokens.signal,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.8,
+                const SizedBox(height: 8),
+                if (workspace.directory?.agents.isEmpty ?? true)
+                  const Text('No Agent available')
+                else
+                  for (final agent in workspace.directory!.agents)
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.smart_toy_outlined),
+                      title: Text(agent.displayName),
+                      subtitle: Text('${agent.adapter} · ${agent.version}'),
+                    ),
+                const SizedBox(height: 28),
+                Text(
+                  'CONVERSATIONS',
+                  style: TextStyle(
+                    color: context.visualTokens.signal,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.8,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              const Text('No conversation selected'),
-            ],
+                const SizedBox(height: 8),
+                if (workspace.connectionPhase ==
+                        GatewayConnectionPhase.connected &&
+                    (workspace.directory?.agents.isNotEmpty ?? false))
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: onCreate,
+                      icon: const Icon(Icons.add),
+                      label: const Text('New conversation'),
+                    ),
+                  ),
+                if (workspace.directory?.conversations.isEmpty ?? true)
+                  const Text('No conversation selected')
+                else
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        for (final conversation
+                            in workspace.directory!.conversations)
+                          ListTile(
+                            selected:
+                                conversation.conversationId ==
+                                workspace.selectedConversationId,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(conversation.title),
+                            subtitle: Text(conversation.agentId),
+                            onTap: () => onSelect(conversation.conversationId),
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -202,10 +316,19 @@ class _NavigationPane extends StatelessWidget {
 }
 
 class _LocalOnlyBanner extends StatelessWidget {
-  const _LocalOnlyBanner({required this.pairing, required this.onOpenPairing});
+  const _LocalOnlyBanner({
+    required this.pairing,
+    required this.workspace,
+    required this.onOpenPairing,
+    required this.onConnect,
+    required this.onDisconnect,
+  });
 
   final PairingState pairing;
+  final GatewayWorkspaceState workspace;
   final VoidCallback onOpenPairing;
+  final Future<void> Function() onConnect;
+  final Future<void> Function() onDisconnect;
 
   @override
   Widget build(BuildContext context) {
@@ -230,16 +353,31 @@ class _LocalOnlyBanner extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    paired
-                        ? 'Device credential verified. Live Gateway connection is not started yet.'
-                        : 'Not paired. Draft text stays on this device and cannot be sent.',
+                    workspace.safeErrorMessage ??
+                        (workspace.connectionPhase ==
+                                GatewayConnectionPhase.connected
+                            ? 'Authenticated Gateway stream is active. Only explicitly confirmed text can be sent.'
+                            : paired
+                            ? 'Device credential verified. Connect explicitly to load Agents and conversations.'
+                            : 'Not paired. Draft text stays on this device and cannot be sent.'),
                   ),
                 ),
               ],
             );
             final pairButton = FilledButton(
-              onPressed: onOpenPairing,
-              child: Text(paired ? 'View pairing' : 'Pair Gateway'),
+              onPressed:
+                  workspace.connectionPhase == GatewayConnectionPhase.connected
+                  ? onDisconnect
+                  : paired
+                  ? onConnect
+                  : onOpenPairing,
+              child: Text(
+                workspace.connectionPhase == GatewayConnectionPhase.connected
+                    ? 'Disconnect'
+                    : paired
+                    ? 'Connect Gateway'
+                    : 'Pair Gateway',
+              ),
             );
             if (constraints.maxWidth < 560) {
               return Column(
@@ -262,6 +400,340 @@ class _LocalOnlyBanner extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _ConversationPicker extends StatelessWidget {
+  const _ConversationPicker({
+    required this.workspace,
+    required this.onSelect,
+    required this.onCreate,
+  });
+
+  final GatewayWorkspaceState workspace;
+  final Future<void> Function(String conversationId) onSelect;
+  final VoidCallback onCreate;
+
+  @override
+  Widget build(BuildContext context) {
+    final conversations = workspace.directory?.conversations ?? const [];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: DropdownButtonFormField<String>(
+              initialValue: workspace.selectedConversationId,
+              decoration: const InputDecoration(labelText: 'Conversation'),
+              items: [
+                for (final conversation in conversations)
+                  DropdownMenuItem(
+                    value: conversation.conversationId,
+                    child: Text(conversation.title),
+                  ),
+              ],
+              onChanged: (value) {
+                if (value != null) onSelect(value);
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton.filledTonal(
+            tooltip: 'New conversation',
+            onPressed: workspace.directory?.agents.isNotEmpty ?? false
+                ? onCreate
+                : null,
+            icon: const Icon(Icons.add),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _showCreateConversationDialog(
+  BuildContext context,
+  GatewayWorkspaceState workspace,
+  GatewayWorkspaceController controller,
+) async {
+  final agents = workspace.directory?.agents ?? const [];
+  if (agents.isEmpty) return;
+  final title = TextEditingController();
+  var selected = agents.first;
+  final accepted = await showDialog<bool>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text('New conversation'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<ClientAgentDirectoryEntry>(
+                initialValue: selected,
+                decoration: const InputDecoration(labelText: 'Agent'),
+                items: [
+                  for (final agent in agents)
+                    DropdownMenuItem(
+                      value: agent,
+                      child: Text(agent.displayName),
+                    ),
+                ],
+                onChanged: (agent) {
+                  if (agent != null) setState(() => selected = agent);
+                },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: title,
+                autofocus: true,
+                maxLength: 128,
+                decoration: const InputDecoration(labelText: 'Title'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (accepted == true && title.text.trim().isNotEmpty) {
+    controller.createConversation(
+      conversationId: _newOpaqueId('conversation'),
+      title: title.text,
+      agent: selected,
+    );
+  }
+  title.dispose();
+}
+
+String _newOpaqueId(String purpose) {
+  final random = math.Random.secure();
+  final suffix = List<int>.generate(
+    16,
+    (_) => random.nextInt(256),
+  ).map((value) => value.toRadixString(16).padLeft(2, '0')).join();
+  return '$purpose-$suffix';
+}
+
+class _ConversationView extends StatelessWidget {
+  const _ConversationView({
+    required this.workspace,
+    required this.ownsLease,
+    required this.onAcquire,
+    required this.onApproval,
+    required this.onClarification,
+    required this.onInterrupt,
+  });
+
+  final GatewayWorkspaceState workspace;
+  final bool ownsLease;
+  final VoidCallback onAcquire;
+  final Future<void> Function(ClientEventRecord, ClientApprovalDecision)
+  onApproval;
+  final void Function(ClientEventRecord, String) onClarification;
+  final void Function(ClientEventRecord) onInterrupt;
+
+  @override
+  Widget build(BuildContext context) {
+    final conversation = workspace.selectedConversation!;
+    final activeRequest = workspace.events.reversed
+        .where((event) => !_terminalKinds.contains(event.kind))
+        .firstOrNull;
+    return Column(
+      children: [
+        Material(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        conversation.title,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Text(
+                        ownsLease
+                            ? 'Control held by this device'
+                            : workspace.selectedLease == null
+                            ? 'Observe only · no control lease'
+                            : 'Observe only · controlled by another device',
+                        style: TextStyle(color: context.visualTokens.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+                if (ownsLease && activeRequest != null)
+                  TextButton.icon(
+                    onPressed: () => onInterrupt(activeRequest),
+                    icon: const Icon(Icons.stop_circle_outlined),
+                    label: const Text('Interrupt'),
+                  )
+                else if (!ownsLease)
+                  FilledButton.tonalIcon(
+                    onPressed: onAcquire,
+                    icon: const Icon(Icons.control_point_duplicate),
+                    label: Text(
+                      workspace.selectedLease == null
+                          ? 'Take control'
+                          : 'Take over explicitly',
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+          child: workspace.events.isEmpty
+              ? const Center(child: Text('No durable events yet'))
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: workspace.events.length,
+                  itemBuilder: (context, index) => _EventCard(
+                    event: workspace.events[index],
+                    ownsLease: ownsLease,
+                    onApproval: onApproval,
+                    onClarification: onClarification,
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+const _terminalKinds = {
+  ClientEventKind.requestCompleted,
+  ClientEventKind.requestFailed,
+  ClientEventKind.requestCancelled,
+  ClientEventKind.requestInterrupted,
+};
+
+class _EventCard extends StatelessWidget {
+  const _EventCard({
+    required this.event,
+    required this.ownsLease,
+    required this.onApproval,
+    required this.onClarification,
+  });
+
+  final ClientEventRecord event;
+  final bool ownsLease;
+  final Future<void> Function(ClientEventRecord, ClientApprovalDecision)
+  onApproval;
+  final void Function(ClientEventRecord, String) onClarification;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = event.content;
+    final title = event.kind.name;
+    final text = switch (content) {
+      MessageClientEventContent() => content.text,
+      SafeMessageClientEventContent() => content.safeMessage,
+      ToolClientEventContent() =>
+        '${content.toolName} · ${content.stage}\n${content.safeSummary}',
+      ApprovalClientEventContent() => content.safeSummary,
+      ClarificationClientEventContent() => content.safePrompt,
+      TerminalClientEventContent() =>
+        content.failure?.safeMessage ?? 'Request finished.',
+      UnsupportedClientEventContent() => content.safeMessage,
+      EmptyClientEventContent() => '',
+    };
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.labelMedium),
+            if (text.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              SelectableText(text),
+            ],
+            if (event.kind == ClientEventKind.approvalRequired &&
+                content is ApprovalClientEventContent) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                children: [
+                  FilledButton(
+                    onPressed: ownsLease
+                        ? () =>
+                              onApproval(event, ClientApprovalDecision.approve)
+                        : null,
+                    child: const Text('Approve'),
+                  ),
+                  OutlinedButton(
+                    onPressed: ownsLease
+                        ? () => onApproval(event, ClientApprovalDecision.deny)
+                        : null,
+                    child: const Text('Deny'),
+                  ),
+                ],
+              ),
+            ],
+            if (event.kind == ClientEventKind.clarificationRequired &&
+                content is ClarificationClientEventContent) ...[
+              const SizedBox(height: 12),
+              FilledButton.tonal(
+                onPressed: ownsLease
+                    ? () => _showClarificationDialog(context)
+                    : null,
+                child: const Text('Answer explicitly'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showClarificationDialog(BuildContext context) async {
+    final answer = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clarification response'),
+        content: TextField(
+          controller: answer,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 6,
+          decoration: const InputDecoration(
+            labelText: 'Review this response before sending',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Confirm and send'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && answer.text.trim().isNotEmpty) {
+      onClarification(event, answer.text);
+    }
+    answer.dispose();
   }
 }
 
@@ -407,6 +879,9 @@ class _Composer extends StatelessWidget {
     required this.onChanged,
     required this.onConfirm,
     required this.onReopen,
+    required this.onSend,
+    required this.onNextDraft,
+    required this.sendEnabled,
   });
 
   final TextEditingController textController;
@@ -414,10 +889,15 @@ class _Composer extends StatelessWidget {
   final ValueChanged<String> onChanged;
   final VoidCallback onConfirm;
   final VoidCallback onReopen;
+  final Future<void> Function() onSend;
+  final VoidCallback onNextDraft;
+  final bool sendEnabled;
 
   @override
   Widget build(BuildContext context) {
     final confirmed = session.draftPhase == DraftPhase.confirmed;
+    final accepted = session.draftPhase == DraftPhase.accepted;
+    final uncertain = session.draftPhase == DraftPhase.uncertain;
     return SafeArea(
       top: false,
       child: Padding(
@@ -437,7 +917,12 @@ class _Composer extends StatelessWidget {
                   hintText: 'Type text to review before sending',
                 ),
               );
-              final primaryAction = confirmed
+              final primaryAction = accepted
+                  ? OutlinedButton(
+                      onPressed: onNextDraft,
+                      child: const Text('New draft'),
+                    )
+                  : confirmed
                   ? OutlinedButton(
                       onPressed: onReopen,
                       child: const Text('Edit'),
@@ -446,9 +931,18 @@ class _Composer extends StatelessWidget {
                       onPressed: session.canConfirmDraft ? onConfirm : null,
                       child: const Text('Confirm'),
                     );
-              const sendAction = FilledButton.tonal(
-                onPressed: null,
-                child: Text('Send unavailable'),
+              final canSend = confirmed && session.canSubmit && sendEnabled;
+              final sendAction = FilledButton.tonal(
+                onPressed: canSend ? onSend : null,
+                child: Text(
+                  uncertain
+                      ? 'Outcome uncertain'
+                      : session.draftPhase == DraftPhase.submitting
+                      ? 'Awaiting acceptance'
+                      : canSend
+                      ? 'Send confirmed text'
+                      : 'Send unavailable',
+                ),
               );
               if (constraints.maxWidth < 640) {
                 return Column(

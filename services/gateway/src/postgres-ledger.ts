@@ -820,19 +820,8 @@ export class PostgresGatewayLedger implements
   }
 
   async createConversation(input: CreateConversationInput): Promise<DirectoryConversationRecord> {
-    return this.runTransaction(async ({ client }) => {
-      const existing = await client.query<UnknownRow>(
-        `SELECT conversation_id, title, node_id, agent_id, capability_revision,
-                session_id, revision, last_sequence, created_by_device_id,
-                created_command_id, created_idempotency_key
-         FROM agent_talk.conversations
-         WHERE conversation_id = $1
-            OR (created_by_device_id = $2 AND created_command_id = $3)
-            OR (created_by_device_id = $2 AND created_idempotency_key = $4)
-         FOR UPDATE`,
-        [input.conversationId, input.deviceId, input.commandId, input.idempotencyKey],
-      );
-      for (const value of existing.rows) {
+    const reconcileExisting = (values: readonly UnknownRow[]): DirectoryConversationRecord | undefined => {
+      for (const value of values) {
         const data = row(value);
         const same =
           stringAt(data, "conversation_id") === input.conversationId &&
@@ -853,6 +842,22 @@ export class PostgresGatewayLedger implements
         }
         throw new DirectoryLedgerError("idempotency_conflict", "The idempotency identity is already bound.");
       }
+      return undefined;
+    };
+    return this.runTransaction(async ({ client }) => {
+      const existing = await client.query<UnknownRow>(
+        `SELECT conversation_id, title, node_id, agent_id, capability_revision,
+                session_id, revision, last_sequence, created_by_device_id,
+                created_command_id, created_idempotency_key
+         FROM agent_talk.conversations
+         WHERE conversation_id = $1
+            OR (created_by_device_id = $2 AND created_command_id = $3)
+            OR (created_by_device_id = $2 AND created_idempotency_key = $4)
+         FOR UPDATE`,
+        [input.conversationId, input.deviceId, input.commandId, input.idempotencyKey],
+      );
+      const reconciled = reconcileExisting(existing.rows);
+      if (reconciled !== undefined) return reconciled;
 
       const target = await client.query<UnknownRow>(
         `SELECT a.capability_revision
@@ -876,13 +881,30 @@ export class PostgresGatewayLedger implements
            capability_revision, session_id, created_command_id,
            created_idempotency_key
          ) VALUES ($1, $2, 0, 1, $3, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT DO NOTHING
          RETURNING conversation_id, title, node_id, agent_id,
                    capability_revision, session_id, revision, last_sequence`,
         [input.conversationId, input.deviceId, input.now, input.title,
          input.nodeId, input.agentId, input.capabilityRevision, input.sessionId,
          input.commandId, input.idempotencyKey],
       );
-      return parseDirectoryConversation(row(inserted.rows[0]));
+      if (inserted.rows[0] !== undefined) {
+        return parseDirectoryConversation(row(inserted.rows[0]));
+      }
+      const raced = await client.query<UnknownRow>(
+        `SELECT conversation_id, title, node_id, agent_id, capability_revision,
+                session_id, revision, last_sequence, created_by_device_id,
+                created_command_id, created_idempotency_key
+         FROM agent_talk.conversations
+         WHERE conversation_id = $1
+            OR (created_by_device_id = $2 AND created_command_id = $3)
+            OR (created_by_device_id = $2 AND created_idempotency_key = $4)
+         FOR UPDATE`,
+        [input.conversationId, input.deviceId, input.commandId, input.idempotencyKey],
+      );
+      const racedResult = reconcileExisting(raced.rows);
+      if (racedResult !== undefined) return racedResult;
+      throw new DirectoryLedgerError("idempotency_conflict", "The conversation identity could not be reconciled.");
     });
   }
 

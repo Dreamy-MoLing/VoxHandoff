@@ -180,6 +180,7 @@ class GatewayFrameMapper {
           }
           return ClientAgentDirectoryEntry(
             agentId: agent.agentId,
+            nodeId: agent.nodeId,
             displayName: agent.displayName,
             adapter: agent.adapter,
             version: agent.version,

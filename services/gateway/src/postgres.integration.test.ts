@@ -63,6 +63,7 @@ test(
         "0005_interaction_commands.sql",
         "0006_device_pairing.sql",
         "0007_credential_rotation.sql",
+        "0008_conversation_directory.sql",
       ]);
       assert.deepEqual(await runMigrations(pool, migrationDirectory), []);
 
@@ -360,6 +361,41 @@ test(
         durationMs: 30_000,
       };
       const ledger = new PostgresGatewayLedger(pool);
+      const directoryConversationId = `directory-conversation-${suffix}`;
+      const createDirectoryInput = {
+        conversationId: directoryConversationId,
+        commandId: `directory-command-${suffix}`,
+        idempotencyKey: `directory-idempotency-${suffix}`,
+        deviceId,
+        title: "M2 integration",
+        nodeId,
+        agentId,
+        capabilityRevision: "cap-1",
+        sessionId: null,
+        now: pairedAt,
+      };
+      const [createdDirectoryConversation, concurrentDirectoryConversation] = await Promise.all([
+        ledger.createConversation(createDirectoryInput),
+        ledger.createConversation(createDirectoryInput),
+      ]);
+      assert.equal(createdDirectoryConversation.conversationId, directoryConversationId);
+      assert.deepEqual(concurrentDirectoryConversation, createdDirectoryConversation);
+      assert.deepEqual(await ledger.createConversation(createDirectoryInput), createdDirectoryConversation);
+      const directory = await ledger.listDirectory();
+      assert.equal(directory.nodes.some((node) => node.nodeId === nodeId), true);
+      assert.equal(directory.agents.some((agent) => agent.agentId === agentId), true);
+      assert.equal(
+        directory.conversations.some(
+          (conversation) => conversation.conversationId === directoryConversationId,
+        ),
+        true,
+      );
+      await assert.rejects(
+        ledger.createConversation({
+          ...createDirectoryInput,
+          conversationId: `${directoryConversationId}-conflict`,
+        }),
+      );
       const acquired = await acquireControlLease(
         ledger,
         { deviceId, conversationId, explicitTakeover: false },
