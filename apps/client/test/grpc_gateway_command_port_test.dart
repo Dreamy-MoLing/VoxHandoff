@@ -67,4 +67,61 @@ void main() {
       isFalse,
     );
   });
+
+  test('maps explicit directory, conversation, lease, and send commands', () {
+    final connection = FakeLiveConnection();
+    final port = GrpcGatewayCommandPort(connection);
+    final conversation = ClientConversationDirectoryEntry(
+      conversationId: 'conversation-1',
+      title: 'Codex work',
+      nodeId: 'node-1',
+      agentId: 'agent-1',
+      capabilityRevision: 'capability-1',
+      sessionId: 'session-1',
+      revision: BigInt.one,
+      lastSequence: BigInt.zero,
+    );
+    final lease = ClientControlLeaseSnapshot(
+      leaseId: 'lease-1',
+      conversationId: 'conversation-1',
+      deviceId: 'device-1',
+      revision: BigInt.from(2),
+      expiresAt: DateTime.utc(2030),
+    );
+
+    port.requestDirectory(
+      commandId: 'directory-command-1',
+      idempotencyKey: 'directory-idempotency-1',
+    );
+    port.createConversation(
+      commandId: 'create-command-1',
+      idempotencyKey: 'create-idempotency-1',
+      conversation: conversation,
+    );
+    port.acquireControl(
+      commandId: 'lease-command-1',
+      idempotencyKey: 'lease-idempotency-1',
+      conversationId: 'conversation-1',
+      explicitTakeover: true,
+    );
+    port.sendConfirmedText(
+      commandId: 'send-command-1',
+      idempotencyKey: 'send-idempotency-1',
+      requestId: 'request-1',
+      conversation: conversation,
+      lease: lease,
+      confirmedText: 'Confirmed text',
+    );
+
+    expect(connection.commands.map((command) => command.whichCommand()), [
+      ClientCommand_Command.listDirectory,
+      ClientCommand_Command.createConversation,
+      ClientCommand_Command.acquireLease,
+      ClientCommand_Command.send,
+    ]);
+    expect(connection.commands[1].createConversation.title, 'Codex work');
+    expect(connection.commands[2].acquireLease.explicitTakeover, isTrue);
+    expect(connection.commands[3].leaseRevision.toString(), '2');
+    expect(connection.commands[3].send.confirmedText, 'Confirmed text');
+  });
 }

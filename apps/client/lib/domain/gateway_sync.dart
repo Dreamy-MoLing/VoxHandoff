@@ -112,6 +112,88 @@ class ClientGatewayReplayCompletedFrame extends ClientGatewayFrame {
   final ClientReplayCompletion completion;
 }
 
+class ClientNodeDirectoryEntry {
+  const ClientNodeDirectoryEntry({
+    required this.nodeId,
+    required this.displayName,
+    required this.platform,
+    required this.version,
+  });
+
+  final String nodeId;
+  final String displayName;
+  final String platform;
+  final String version;
+}
+
+class ClientAgentDirectoryEntry {
+  const ClientAgentDirectoryEntry({
+    required this.agentId,
+    required this.displayName,
+    required this.adapter,
+    required this.version,
+    required this.capabilityRevision,
+    required this.supportsInterrupt,
+    required this.supportsApprovals,
+    required this.supportsClarifications,
+  });
+
+  final String agentId;
+  final String displayName;
+  final String adapter;
+  final String version;
+  final String capabilityRevision;
+  final bool supportsInterrupt;
+  final bool supportsApprovals;
+  final bool supportsClarifications;
+}
+
+class ClientConversationDirectoryEntry {
+  const ClientConversationDirectoryEntry({
+    required this.conversationId,
+    required this.title,
+    required this.nodeId,
+    required this.agentId,
+    required this.capabilityRevision,
+    required this.revision,
+    required this.lastSequence,
+    this.sessionId,
+  });
+
+  final String conversationId;
+  final String title;
+  final String nodeId;
+  final String agentId;
+  final String capabilityRevision;
+  final String? sessionId;
+  final BigInt revision;
+  final BigInt lastSequence;
+}
+
+class ClientGatewayDirectory {
+  const ClientGatewayDirectory({
+    required this.commandId,
+    required this.nodes,
+    required this.agents,
+    required this.conversations,
+  });
+
+  final String commandId;
+  final List<ClientNodeDirectoryEntry> nodes;
+  final List<ClientAgentDirectoryEntry> agents;
+  final List<ClientConversationDirectoryEntry> conversations;
+}
+
+class ClientGatewayDirectoryFrame extends ClientGatewayFrame {
+  const ClientGatewayDirectoryFrame(this.directory);
+  final ClientGatewayDirectory directory;
+}
+
+class ClientGatewayConversationFrame extends ClientGatewayFrame {
+  const ClientGatewayConversationFrame(this.conversation);
+  final ClientConversationDirectoryEntry conversation;
+}
+
 class ClientGatewayHeartbeatFrame extends ClientGatewayFrame {
   const ClientGatewayHeartbeatFrame(this.lastReceivedSequence);
 
@@ -177,6 +259,35 @@ abstract interface class ClientGatewayCommandPort {
     required String idempotencyKey,
     required String conversationId,
     required String requestId,
+  });
+
+  void requestDirectory({
+    required String commandId,
+    required String idempotencyKey,
+  });
+
+  void createConversation({
+    required String commandId,
+    required String idempotencyKey,
+    required ClientConversationDirectoryEntry conversation,
+  });
+
+  void acquireControl({
+    required String commandId,
+    required String idempotencyKey,
+    required String conversationId,
+    String? expectedLeaseId,
+    BigInt? expectedRevision,
+    required bool explicitTakeover,
+  });
+
+  void sendConfirmedText({
+    required String commandId,
+    required String idempotencyKey,
+    required String requestId,
+    required ClientConversationDirectoryEntry conversation,
+    required ClientControlLeaseSnapshot lease,
+    required String confirmedText,
   });
 
   Future<void> close();

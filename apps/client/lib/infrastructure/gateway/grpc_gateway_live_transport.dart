@@ -42,7 +42,7 @@ class GrpcGatewayLiveTransport {
 
   static const schemaBuild = 'agent-talk-proto-v1.0';
   static const schemaSha256 =
-      'bc185f8af65588f5ef56c45de1530e50ddc07bc5a894ac29f4864bf20f44ee30';
+      '525da3ef16b7c856991ac905208a4d9ca3978ceb8ed67879053724b16a719a02';
   static const componentVersion = '0.1.0';
   static const capabilityRevision = 'client-m2-live-v1';
 
@@ -255,6 +255,12 @@ class GrpcGatewayLiveTransport {
         ),
         ConnectClientResponse_Body.replayCompleted =>
           GatewayReplayCompletedFrame(response.replayCompleted.deepCopy()),
+        ConnectClientResponse_Body.directory => GatewayDirectoryFrame(
+          response.directory.deepCopy(),
+        ),
+        ConnectClientResponse_Body.conversation => GatewayConversationFrame(
+          response.conversation.deepCopy(),
+        ),
         ConnectClientResponse_Body.protocolError =>
           throw const GatewayLiveTransportException(
             code: 'remote_protocol_error',
@@ -394,6 +400,16 @@ class GatewayControlLeaseFrame extends GatewayLiveFrame {
 class GatewayReplayCompletedFrame extends GatewayLiveFrame {
   const GatewayReplayCompletedFrame(this.completion);
   final ReplayCompleted completion;
+}
+
+class GatewayDirectoryFrame extends GatewayLiveFrame {
+  const GatewayDirectoryFrame(this.directory);
+  final GatewayDirectory directory;
+}
+
+class GatewayConversationFrame extends GatewayLiveFrame {
+  const GatewayConversationFrame(this.conversation);
+  final ConversationDescriptor conversation;
 }
 
 class GatewayLiveTransportException implements Exception {

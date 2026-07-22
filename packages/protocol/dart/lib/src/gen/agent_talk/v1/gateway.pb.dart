@@ -178,6 +178,8 @@ enum ConnectClientResponse_Body {
   controlLease,
   protocolError,
   replayCompleted,
+  directory,
+  conversation,
   notSet
 }
 
@@ -190,6 +192,8 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
     $1.ControlLease? controlLease,
     $1.ProtocolError? protocolError,
     $1.ReplayCompleted? replayCompleted,
+    GatewayDirectory? directory,
+    ConversationDescriptor? conversation,
   }) {
     final result = create();
     if (handshake != null) result.handshake = handshake;
@@ -199,6 +203,8 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
     if (controlLease != null) result.controlLease = controlLease;
     if (protocolError != null) result.protocolError = protocolError;
     if (replayCompleted != null) result.replayCompleted = replayCompleted;
+    if (directory != null) result.directory = directory;
+    if (conversation != null) result.conversation = conversation;
     return result;
   }
 
@@ -220,13 +226,15 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
     5: ConnectClientResponse_Body.controlLease,
     6: ConnectClientResponse_Body.protocolError,
     7: ConnectClientResponse_Body.replayCompleted,
+    8: ConnectClientResponse_Body.directory,
+    9: ConnectClientResponse_Body.conversation,
     0: ConnectClientResponse_Body.notSet
   };
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ConnectClientResponse',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
       createEmptyInstance: create)
-    ..oo(0, [1, 2, 3, 4, 5, 6, 7])
+    ..oo(0, [1, 2, 3, 4, 5, 6, 7, 8, 9])
     ..aOM<$1.HandshakeAccepted>(1, _omitFieldNames ? '' : 'handshake',
         subBuilder: $1.HandshakeAccepted.create)
     ..aOM<$1.Heartbeat>(2, _omitFieldNames ? '' : 'heartbeat',
@@ -241,6 +249,10 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
         subBuilder: $1.ProtocolError.create)
     ..aOM<$1.ReplayCompleted>(7, _omitFieldNames ? '' : 'replayCompleted',
         subBuilder: $1.ReplayCompleted.create)
+    ..aOM<GatewayDirectory>(8, _omitFieldNames ? '' : 'directory',
+        subBuilder: GatewayDirectory.create)
+    ..aOM<ConversationDescriptor>(9, _omitFieldNames ? '' : 'conversation',
+        subBuilder: ConversationDescriptor.create)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -270,6 +282,8 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
   @$pb.TagNumber(5)
   @$pb.TagNumber(6)
   @$pb.TagNumber(7)
+  @$pb.TagNumber(8)
+  @$pb.TagNumber(9)
   ConnectClientResponse_Body whichBody() =>
       _ConnectClientResponse_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(1)
@@ -279,6 +293,8 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
   @$pb.TagNumber(5)
   @$pb.TagNumber(6)
   @$pb.TagNumber(7)
+  @$pb.TagNumber(8)
+  @$pb.TagNumber(9)
   void clearBody() => $_clearField($_whichOneof(0));
 
   @$pb.TagNumber(1)
@@ -357,6 +373,28 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
   void clearReplayCompleted() => $_clearField(7);
   @$pb.TagNumber(7)
   $1.ReplayCompleted ensureReplayCompleted() => $_ensure(6);
+
+  @$pb.TagNumber(8)
+  GatewayDirectory get directory => $_getN(7);
+  @$pb.TagNumber(8)
+  set directory(GatewayDirectory value) => $_setField(8, value);
+  @$pb.TagNumber(8)
+  $core.bool hasDirectory() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearDirectory() => $_clearField(8);
+  @$pb.TagNumber(8)
+  GatewayDirectory ensureDirectory() => $_ensure(7);
+
+  @$pb.TagNumber(9)
+  ConversationDescriptor get conversation => $_getN(8);
+  @$pb.TagNumber(9)
+  set conversation(ConversationDescriptor value) => $_setField(9, value);
+  @$pb.TagNumber(9)
+  $core.bool hasConversation() => $_has(8);
+  @$pb.TagNumber(9)
+  void clearConversation() => $_clearField(9);
+  @$pb.TagNumber(9)
+  ConversationDescriptor ensureConversation() => $_ensure(8);
 }
 
 class NodeDescriptor extends $pb.GeneratedMessage {
@@ -457,6 +495,7 @@ class AgentDescriptor extends $pb.GeneratedMessage {
     $core.String? version,
     $core.String? capabilityRevision,
     $3.AgentCapabilities? capabilities,
+    $core.String? nodeId,
   }) {
     final result = create();
     if (agentId != null) result.agentId = agentId;
@@ -466,6 +505,7 @@ class AgentDescriptor extends $pb.GeneratedMessage {
     if (capabilityRevision != null)
       result.capabilityRevision = capabilityRevision;
     if (capabilities != null) result.capabilities = capabilities;
+    if (nodeId != null) result.nodeId = nodeId;
     return result;
   }
 
@@ -489,6 +529,7 @@ class AgentDescriptor extends $pb.GeneratedMessage {
     ..aOS(5, _omitFieldNames ? '' : 'capabilityRevision')
     ..aOM<$3.AgentCapabilities>(6, _omitFieldNames ? '' : 'capabilities',
         subBuilder: $3.AgentCapabilities.create)
+    ..aOS(7, _omitFieldNames ? '' : 'nodeId')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -565,6 +606,234 @@ class AgentDescriptor extends $pb.GeneratedMessage {
   void clearCapabilities() => $_clearField(6);
   @$pb.TagNumber(6)
   $3.AgentCapabilities ensureCapabilities() => $_ensure(5);
+
+  @$pb.TagNumber(7)
+  $core.String get nodeId => $_getSZ(6);
+  @$pb.TagNumber(7)
+  set nodeId($core.String value) => $_setString(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasNodeId() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearNodeId() => $_clearField(7);
+}
+
+class ConversationDescriptor extends $pb.GeneratedMessage {
+  factory ConversationDescriptor({
+    $core.String? conversationId,
+    $core.String? title,
+    $core.String? nodeId,
+    $core.String? agentId,
+    $core.String? capabilityRevision,
+    $core.String? sessionId,
+    $fixnum.Int64? revision,
+    $fixnum.Int64? lastSequence,
+  }) {
+    final result = create();
+    if (conversationId != null) result.conversationId = conversationId;
+    if (title != null) result.title = title;
+    if (nodeId != null) result.nodeId = nodeId;
+    if (agentId != null) result.agentId = agentId;
+    if (capabilityRevision != null)
+      result.capabilityRevision = capabilityRevision;
+    if (sessionId != null) result.sessionId = sessionId;
+    if (revision != null) result.revision = revision;
+    if (lastSequence != null) result.lastSequence = lastSequence;
+    return result;
+  }
+
+  ConversationDescriptor._();
+
+  factory ConversationDescriptor.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ConversationDescriptor.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ConversationDescriptor',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'conversationId')
+    ..aOS(2, _omitFieldNames ? '' : 'title')
+    ..aOS(3, _omitFieldNames ? '' : 'nodeId')
+    ..aOS(4, _omitFieldNames ? '' : 'agentId')
+    ..aOS(5, _omitFieldNames ? '' : 'capabilityRevision')
+    ..aOS(6, _omitFieldNames ? '' : 'sessionId')
+    ..a<$fixnum.Int64>(
+        7, _omitFieldNames ? '' : 'revision', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(
+        8, _omitFieldNames ? '' : 'lastSequence', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ConversationDescriptor clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ConversationDescriptor copyWith(
+          void Function(ConversationDescriptor) updates) =>
+      super.copyWith((message) => updates(message as ConversationDescriptor))
+          as ConversationDescriptor;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ConversationDescriptor create() => ConversationDescriptor._();
+  @$core.override
+  ConversationDescriptor createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ConversationDescriptor getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ConversationDescriptor>(create);
+  static ConversationDescriptor? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get conversationId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set conversationId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasConversationId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearConversationId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get title => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set title($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasTitle() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearTitle() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get nodeId => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set nodeId($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasNodeId() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearNodeId() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get agentId => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set agentId($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasAgentId() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearAgentId() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.String get capabilityRevision => $_getSZ(4);
+  @$pb.TagNumber(5)
+  set capabilityRevision($core.String value) => $_setString(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasCapabilityRevision() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearCapabilityRevision() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $core.String get sessionId => $_getSZ(5);
+  @$pb.TagNumber(6)
+  set sessionId($core.String value) => $_setString(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasSessionId() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearSessionId() => $_clearField(6);
+
+  @$pb.TagNumber(7)
+  $fixnum.Int64 get revision => $_getI64(6);
+  @$pb.TagNumber(7)
+  set revision($fixnum.Int64 value) => $_setInt64(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasRevision() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearRevision() => $_clearField(7);
+
+  @$pb.TagNumber(8)
+  $fixnum.Int64 get lastSequence => $_getI64(7);
+  @$pb.TagNumber(8)
+  set lastSequence($fixnum.Int64 value) => $_setInt64(7, value);
+  @$pb.TagNumber(8)
+  $core.bool hasLastSequence() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearLastSequence() => $_clearField(8);
+}
+
+class GatewayDirectory extends $pb.GeneratedMessage {
+  factory GatewayDirectory({
+    $core.String? commandId,
+    $core.Iterable<NodeDescriptor>? nodes,
+    $core.Iterable<AgentDescriptor>? agents,
+    $core.Iterable<ConversationDescriptor>? conversations,
+  }) {
+    final result = create();
+    if (commandId != null) result.commandId = commandId;
+    if (nodes != null) result.nodes.addAll(nodes);
+    if (agents != null) result.agents.addAll(agents);
+    if (conversations != null) result.conversations.addAll(conversations);
+    return result;
+  }
+
+  GatewayDirectory._();
+
+  factory GatewayDirectory.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory GatewayDirectory.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GatewayDirectory',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'commandId')
+    ..pPM<NodeDescriptor>(2, _omitFieldNames ? '' : 'nodes',
+        subBuilder: NodeDescriptor.create)
+    ..pPM<AgentDescriptor>(3, _omitFieldNames ? '' : 'agents',
+        subBuilder: AgentDescriptor.create)
+    ..pPM<ConversationDescriptor>(4, _omitFieldNames ? '' : 'conversations',
+        subBuilder: ConversationDescriptor.create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GatewayDirectory clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GatewayDirectory copyWith(void Function(GatewayDirectory) updates) =>
+      super.copyWith((message) => updates(message as GatewayDirectory))
+          as GatewayDirectory;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static GatewayDirectory create() => GatewayDirectory._();
+  @$core.override
+  GatewayDirectory createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static GatewayDirectory getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GatewayDirectory>(create);
+  static GatewayDirectory? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get commandId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set commandId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasCommandId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearCommandId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $pb.PbList<NodeDescriptor> get nodes => $_getList(1);
+
+  @$pb.TagNumber(3)
+  $pb.PbList<AgentDescriptor> get agents => $_getList(2);
+
+  @$pb.TagNumber(4)
+  $pb.PbList<ConversationDescriptor> get conversations => $_getList(3);
 }
 
 class NodeRegistration extends $pb.GeneratedMessage {

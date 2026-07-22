@@ -116,6 +116,39 @@ class FakeCommandPort implements ClientGatewayCommandPort {
   var closed = false;
 
   @override
+  void acquireControl({
+    required String commandId,
+    required String idempotencyKey,
+    required String conversationId,
+    String? expectedLeaseId,
+    BigInt? expectedRevision,
+    required bool explicitTakeover,
+  }) {}
+
+  @override
+  void createConversation({
+    required String commandId,
+    required String idempotencyKey,
+    required ClientConversationDirectoryEntry conversation,
+  }) {}
+
+  @override
+  void requestDirectory({
+    required String commandId,
+    required String idempotencyKey,
+  }) {}
+
+  @override
+  void sendConfirmedText({
+    required String commandId,
+    required String idempotencyKey,
+    required String requestId,
+    required ClientConversationDirectoryEntry conversation,
+    required ClientControlLeaseSnapshot lease,
+    required String confirmedText,
+  }) {}
+
+  @override
   void acknowledge(ClientGatewayAcknowledgement acknowledgement) {
     acknowledgements.add(acknowledgement);
   }

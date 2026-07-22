@@ -25,6 +25,8 @@ message ConnectClientResponse {
     ControlLease control_lease = 5;
     ProtocolError protocol_error = 6;
     ReplayCompleted replay_completed = 7;
+    GatewayDirectory directory = 8;
+    ConversationDescriptor conversation = 9;
   }
 }
 
@@ -42,6 +44,25 @@ message AgentDescriptor {
   string version = 4;
   string capability_revision = 5;
   AgentCapabilities capabilities = 6;
+  string node_id = 7;
+}
+
+message ConversationDescriptor {
+  string conversation_id = 1;
+  string title = 2;
+  string node_id = 3;
+  string agent_id = 4;
+  string capability_revision = 5;
+  string session_id = 6;
+  uint64 revision = 7;
+  uint64 last_sequence = 8;
+}
+
+message GatewayDirectory {
+  string command_id = 1;
+  repeated NodeDescriptor nodes = 2;
+  repeated AgentDescriptor agents = 3;
+  repeated ConversationDescriptor conversations = 4;
 }
 
 message NodeRegistration {

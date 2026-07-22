@@ -13,6 +13,10 @@ typedef GatewayRequestStatusCallback =
 typedef GatewayControlLeaseCallback =
     FutureOr<void> Function(ClientControlLeaseSnapshot lease);
 typedef GatewayHeartbeatCallback = FutureOr<void> Function(BigInt sequence);
+typedef GatewayDirectoryCallback =
+    FutureOr<void> Function(ClientGatewayDirectory directory);
+typedef GatewayConversationCallback =
+    FutureOr<void> Function(ClientConversationDirectoryEntry conversation);
 
 class GatewayFrameRouterException implements Exception {
   const GatewayFrameRouterException({
@@ -40,6 +44,8 @@ class GatewayFrameRouter {
     GatewayRequestStatusCallback? onRequestStatus,
     GatewayControlLeaseCallback? onControlLease,
     GatewayHeartbeatCallback? onHeartbeat,
+    GatewayDirectoryCallback? onDirectory,
+    GatewayConversationCallback? onConversation,
   }) => GatewayFrameRouter._(
     ledger,
     convergence,
@@ -48,6 +54,8 @@ class GatewayFrameRouter {
     onRequestStatus,
     onControlLease,
     onHeartbeat,
+    onDirectory,
+    onConversation,
   );
 
   GatewayFrameRouter._(
@@ -58,6 +66,8 @@ class GatewayFrameRouter {
     this._onRequestStatus,
     this._onControlLease,
     this._onHeartbeat,
+    this._onDirectory,
+    this._onConversation,
   );
 
   static const maximumReplayEvents = 500;
@@ -70,6 +80,8 @@ class GatewayFrameRouter {
   final GatewayRequestStatusCallback? _onRequestStatus;
   final GatewayControlLeaseCallback? _onControlLease;
   final GatewayHeartbeatCallback? _onHeartbeat;
+  final GatewayDirectoryCallback? _onDirectory;
+  final GatewayConversationCallback? _onConversation;
   final Map<String, _PendingReplay> _pendingReplays = {};
   final Map<String, _PendingUnknownRequest> _pendingUnknownRequests = {};
   var _pendingUnknownEventCount = 0;
@@ -124,6 +136,10 @@ class GatewayFrameRouter {
         await _onControlLease?.call(frame.lease);
       case ClientGatewayHeartbeatFrame():
         await _onHeartbeat?.call(frame.lastReceivedSequence);
+      case ClientGatewayDirectoryFrame():
+        await _onDirectory?.call(frame.directory);
+      case ClientGatewayConversationFrame():
+        await _onConversation?.call(frame.conversation);
     }
   }
 

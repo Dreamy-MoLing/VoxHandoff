@@ -1202,6 +1202,147 @@ class GetRequest extends $pb.GeneratedMessage {
   void clearRequestId() => $_clearField(1);
 }
 
+class ListDirectory extends $pb.GeneratedMessage {
+  factory ListDirectory() => create();
+
+  ListDirectory._();
+
+  factory ListDirectory.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ListDirectory.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ListDirectory',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListDirectory clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListDirectory copyWith(void Function(ListDirectory) updates) =>
+      super.copyWith((message) => updates(message as ListDirectory))
+          as ListDirectory;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ListDirectory create() => ListDirectory._();
+  @$core.override
+  ListDirectory createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ListDirectory getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ListDirectory>(create);
+  static ListDirectory? _defaultInstance;
+}
+
+class CreateConversation extends $pb.GeneratedMessage {
+  factory CreateConversation({
+    $core.String? nodeId,
+    $core.String? agentId,
+    $core.String? capabilityRevision,
+    $core.String? sessionId,
+    $core.String? title,
+  }) {
+    final result = create();
+    if (nodeId != null) result.nodeId = nodeId;
+    if (agentId != null) result.agentId = agentId;
+    if (capabilityRevision != null)
+      result.capabilityRevision = capabilityRevision;
+    if (sessionId != null) result.sessionId = sessionId;
+    if (title != null) result.title = title;
+    return result;
+  }
+
+  CreateConversation._();
+
+  factory CreateConversation.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory CreateConversation.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'CreateConversation',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'nodeId')
+    ..aOS(2, _omitFieldNames ? '' : 'agentId')
+    ..aOS(3, _omitFieldNames ? '' : 'capabilityRevision')
+    ..aOS(4, _omitFieldNames ? '' : 'sessionId')
+    ..aOS(5, _omitFieldNames ? '' : 'title')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CreateConversation clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CreateConversation copyWith(void Function(CreateConversation) updates) =>
+      super.copyWith((message) => updates(message as CreateConversation))
+          as CreateConversation;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static CreateConversation create() => CreateConversation._();
+  @$core.override
+  CreateConversation createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static CreateConversation getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<CreateConversation>(create);
+  static CreateConversation? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get nodeId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set nodeId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasNodeId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearNodeId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get agentId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set agentId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasAgentId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearAgentId() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get capabilityRevision => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set capabilityRevision($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasCapabilityRevision() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearCapabilityRevision() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get sessionId => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set sessionId($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasSessionId() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearSessionId() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.String get title => $_getSZ(4);
+  @$pb.TagNumber(5)
+  set title($core.String value) => $_setString(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasTitle() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearTitle() => $_clearField(5);
+}
+
 enum ClientCommand_Command {
   send,
   interrupt,
@@ -1211,6 +1352,8 @@ enum ClientCommand_Command {
   renewLease,
   replay,
   getRequest,
+  listDirectory,
+  createConversation,
   notSet
 }
 
@@ -1230,6 +1373,8 @@ class ClientCommand extends $pb.GeneratedMessage {
     RenewControlLease? renewLease,
     ReplayEvents? replay,
     GetRequest? getRequest,
+    ListDirectory? listDirectory,
+    CreateConversation? createConversation,
   }) {
     final result = create();
     if (commandId != null) result.commandId = commandId;
@@ -1247,6 +1392,9 @@ class ClientCommand extends $pb.GeneratedMessage {
     if (renewLease != null) result.renewLease = renewLease;
     if (replay != null) result.replay = replay;
     if (getRequest != null) result.getRequest = getRequest;
+    if (listDirectory != null) result.listDirectory = listDirectory;
+    if (createConversation != null)
+      result.createConversation = createConversation;
     return result;
   }
 
@@ -1269,13 +1417,15 @@ class ClientCommand extends $pb.GeneratedMessage {
     15: ClientCommand_Command.renewLease,
     16: ClientCommand_Command.replay,
     17: ClientCommand_Command.getRequest,
+    18: ClientCommand_Command.listDirectory,
+    19: ClientCommand_Command.createConversation,
     0: ClientCommand_Command.notSet
   };
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ClientCommand',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
       createEmptyInstance: create)
-    ..oo(0, [10, 11, 12, 13, 14, 15, 16, 17])
+    ..oo(0, [10, 11, 12, 13, 14, 15, 16, 17, 18, 19])
     ..aOS(1, _omitFieldNames ? '' : 'commandId')
     ..aOS(2, _omitFieldNames ? '' : 'idempotencyKey')
     ..aOS(3, _omitFieldNames ? '' : 'conversationId')
@@ -1301,6 +1451,10 @@ class ClientCommand extends $pb.GeneratedMessage {
         subBuilder: ReplayEvents.create)
     ..aOM<GetRequest>(17, _omitFieldNames ? '' : 'getRequest',
         subBuilder: GetRequest.create)
+    ..aOM<ListDirectory>(18, _omitFieldNames ? '' : 'listDirectory',
+        subBuilder: ListDirectory.create)
+    ..aOM<CreateConversation>(19, _omitFieldNames ? '' : 'createConversation',
+        subBuilder: CreateConversation.create)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1330,6 +1484,8 @@ class ClientCommand extends $pb.GeneratedMessage {
   @$pb.TagNumber(15)
   @$pb.TagNumber(16)
   @$pb.TagNumber(17)
+  @$pb.TagNumber(18)
+  @$pb.TagNumber(19)
   ClientCommand_Command whichCommand() =>
       _ClientCommand_CommandByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(10)
@@ -1340,6 +1496,8 @@ class ClientCommand extends $pb.GeneratedMessage {
   @$pb.TagNumber(15)
   @$pb.TagNumber(16)
   @$pb.TagNumber(17)
+  @$pb.TagNumber(18)
+  @$pb.TagNumber(19)
   void clearCommand() => $_clearField($_whichOneof(0));
 
   @$pb.TagNumber(1)
@@ -1483,6 +1641,28 @@ class ClientCommand extends $pb.GeneratedMessage {
   void clearGetRequest() => $_clearField(17);
   @$pb.TagNumber(17)
   GetRequest ensureGetRequest() => $_ensure(13);
+
+  @$pb.TagNumber(18)
+  ListDirectory get listDirectory => $_getN(14);
+  @$pb.TagNumber(18)
+  set listDirectory(ListDirectory value) => $_setField(18, value);
+  @$pb.TagNumber(18)
+  $core.bool hasListDirectory() => $_has(14);
+  @$pb.TagNumber(18)
+  void clearListDirectory() => $_clearField(18);
+  @$pb.TagNumber(18)
+  ListDirectory ensureListDirectory() => $_ensure(14);
+
+  @$pb.TagNumber(19)
+  CreateConversation get createConversation => $_getN(15);
+  @$pb.TagNumber(19)
+  set createConversation(CreateConversation value) => $_setField(19, value);
+  @$pb.TagNumber(19)
+  $core.bool hasCreateConversation() => $_has(15);
+  @$pb.TagNumber(19)
+  void clearCreateConversation() => $_clearField(19);
+  @$pb.TagNumber(19)
+  CreateConversation ensureCreateConversation() => $_ensure(15);
 }
 
 class RequestStatus extends $pb.GeneratedMessage {

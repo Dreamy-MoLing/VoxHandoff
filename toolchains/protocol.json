@@ -2,7 +2,7 @@
   "protocolMajor": 1,
   "protocolMinor": 0,
   "schemaBuild": "agent-talk-proto-v1.0",
-  "schemaSha256": "bc185f8af65588f5ef56c45de1530e50ddc07bc5a894ac29f4864bf20f44ee30",
+  "schemaSha256": "525da3ef16b7c856991ac905208a4d9ca3978ceb8ed67879053724b16a719a02",
   "sources": [
     "packages/protocol/proto/agent_talk/v1/common.proto",
     "packages/protocol/proto/agent_talk/v1/control.proto",

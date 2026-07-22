@@ -43,6 +43,12 @@ class GatewayFrameMapper {
         GatewayControlLeaseFrame() => ClientGatewayControlLeaseFrame(
           _controlLease(frame.lease),
         ),
+        GatewayDirectoryFrame() => ClientGatewayDirectoryFrame(
+          _directory(frame.directory),
+        ),
+        GatewayConversationFrame() => ClientGatewayConversationFrame(
+          _conversation(frame.conversation),
+        ),
       };
     } on GatewayEventMappingException {
       rethrow;
@@ -131,6 +137,98 @@ class GatewayFrameMapper {
     }
   }
 
+  ClientGatewayDirectory _directory(GatewayDirectory directory) {
+    if (!_opaque(directory.commandId)) {
+      throw const GatewayFrameMappingException(
+        code: 'directory_invalid',
+        safeMessage: 'The Gateway directory identity is invalid.',
+      );
+    }
+    final nodes = directory.nodes
+        .map((node) {
+          if (!_opaque(node.nodeId) ||
+              !_display(node.displayName) ||
+              !_display(node.platform) ||
+              !_display(node.version)) {
+            throw const GatewayFrameMappingException(
+              code: 'directory_invalid',
+              safeMessage: 'A Gateway Node directory entry is invalid.',
+            );
+          }
+          return ClientNodeDirectoryEntry(
+            nodeId: node.nodeId,
+            displayName: node.displayName,
+            platform: node.platform,
+            version: node.version,
+          );
+        })
+        .toList(growable: false);
+    final agents = directory.agents
+        .map((agent) {
+          if (!_opaque(agent.agentId) ||
+              !_opaque(agent.nodeId) ||
+              !_opaque(agent.capabilityRevision) ||
+              !_display(agent.displayName) ||
+              !_display(agent.adapter) ||
+              !_display(agent.version) ||
+              !agent.hasCapabilities() ||
+              agent.capabilities.attachments) {
+            throw const GatewayFrameMappingException(
+              code: 'directory_invalid',
+              safeMessage: 'A Gateway Agent directory entry is invalid.',
+            );
+          }
+          return ClientAgentDirectoryEntry(
+            agentId: agent.agentId,
+            displayName: agent.displayName,
+            adapter: agent.adapter,
+            version: agent.version,
+            capabilityRevision: agent.capabilityRevision,
+            supportsInterrupt: agent.capabilities.interrupt,
+            supportsApprovals: agent.capabilities.approval,
+            supportsClarifications: agent.capabilities.clarification,
+          );
+        })
+        .toList(growable: false);
+    return ClientGatewayDirectory(
+      commandId: directory.commandId,
+      nodes: nodes,
+      agents: agents,
+      conversations: directory.conversations
+          .map(_conversation)
+          .toList(growable: false),
+    );
+  }
+
+  ClientConversationDirectoryEntry _conversation(
+    ConversationDescriptor conversation,
+  ) {
+    if (!_opaque(conversation.conversationId) ||
+        !_display(conversation.title) ||
+        !_opaque(conversation.nodeId) ||
+        !_opaque(conversation.agentId) ||
+        !_opaque(conversation.capabilityRevision) ||
+        (conversation.sessionId.isNotEmpty &&
+            !_opaque(conversation.sessionId)) ||
+        conversation.revision <= Int64.ZERO ||
+        conversation.lastSequence.isNegative) {
+      throw const GatewayFrameMappingException(
+        code: 'conversation_invalid',
+        safeMessage: 'The Gateway conversation entry is invalid.',
+      );
+    }
+    return ClientConversationDirectoryEntry(
+      conversationId: conversation.conversationId,
+      title: conversation.title,
+      nodeId: conversation.nodeId,
+      agentId: conversation.agentId,
+      capabilityRevision: conversation.capabilityRevision,
+      sessionId: conversation.sessionId.isEmpty ? null : conversation.sessionId,
+      revision: _uint64Required(conversation.revision),
+      lastSequence: _uint64(conversation.lastSequence),
+    );
+  }
+
   ClientStageFailure _failure(StageFailure failure) => ClientStageFailure(
     stage: switch (failure.stage.value) {
       0 => ClientFailureStage.unspecified,
@@ -202,4 +300,14 @@ class GatewayFrameMapper {
       isUtc: true,
     );
   }
+
+  bool _opaque(String value) =>
+      value.isNotEmpty &&
+      value.length <= 256 &&
+      !value.contains(RegExp(r'[\u0000-\u001f\u007f\s]'));
+
+  bool _display(String value) =>
+      value.isNotEmpty &&
+      value.length <= 256 &&
+      !value.contains(RegExp(r'[\u0000-\u001f\u007f]'));
 }
