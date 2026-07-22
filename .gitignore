@@ -2,6 +2,8 @@ node_modules/
 .dart_tool/
 dist/
 coverage/
+__pycache__/
+*.py[cod]
 .env
 .env.*
 !.env.example
@@ -11,6 +13,7 @@ coverage/
 .vscode/
 tmp/
 artifacts/live/
+apps/client/test/failures/
 packages/adapters/src/generated/
 packages/protocol/dart/pubspec.lock
 
