@@ -73,10 +73,10 @@
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
-M2 之后未完成或未实测：
+M3 之后未完成或未实测：
 
 - OpenClaw adapter；
-- STT、GPT-SoVITS 和音频播放真链路；
+- 具名真人麦克风语料、10 次冷启动，以及达到推荐延迟/成功率的加速 TTS + 更强中文 STT release profile；当前 Fedora CPU/base profile 已实测并明确降级，不允许默认自动播报；
 - 实体手机/桌面的远程网络、非 Linux keyring 真读写、签名打包、安装/升级/卸载与发布测试；这些仍是 M5 发行门，不得从 CI 编译结果推断通过。
 
 Hermes 默认 gateway 当前由 user systemd service 运行并关联 QQBot；它不是 VoxHandoff 测试资源。Live PoC 必须使用不同 HERMES_HOME、端口、PID/state 目录和只含所需 provider key 的干净子进程环境，不得停止、重启或复用默认 gateway。
@@ -91,11 +91,11 @@ packages/
   core/                 # 无外部依赖的领域模型和状态机
   adapters/             # Agent 原生协议适配器
   protocol/             # Protobuf/Buf schema、TS/Dart binding 与协商测试
-  sidecar/              # desktop stdio host（待建）
+  sidecar/              # desktop stdio host（后续统一打包 supervisor）
 services/
   gateway/              # 耐久控制面、gRPC/HTTPS、配对、凭据与 PostgreSQL adapter
   node/                 # Agent 主机 Connector（待建）
-  stt/                  # Python STT sidecar（待建）
+  stt/                  # Python streaming STT sidecar、uv lock 与离线协议测试
 infra/
   postgres/             # forward-only migrations；backup/restore tests 待建
   powersync/            # service/sync config（待建）
@@ -175,6 +175,10 @@ scripts/                # 协议、质量与构建脚本
 | `flutter_secure_storage` | 10.3.1，Flutter lockfile | BSD-3-Clause | 发布者验证、五平台 federated plugin；Android RSA-OAEP/AES-GCM、Apple Keychain、Linux libsecret、Windows 平台实现；完整 Dart analyze/test 已通过 | 所有调用隔离在 `SecureValueStore`，可逐平台替换原生 signer/store；普通数据库只保留 opaque 引用 |
 | `drift` / `path_provider` / `sqlite3` | 2.34.2 / 2.1.6 / 3.5.0，Flutter lockfile | MIT / BSD-3-Clause / MIT | Drift Native background executor + Application Support 固定路径覆盖五个目标平台；内存事务、SQLite 约束与真实文件重启测试已通过；未保留无实际调用的 `drift_flutter` | `ClientEventLedger`/storage adapter 隔离 schema、路径与 executor；可替换 SQLite driver 或历史同步 transport，不改变完整事件、cursor、replay/Ack 契约 |
 | `drift_dev` / `build_runner` | 2.34.0 / 2.15.1，Flutter lockfile | MIT / BSD-3-Clause | 仅开发期生成；真实 pub solver 证明 `drift_dev >=2.34.1+1` 的 Analyzer 13 与 Flutter 3.44.6 固定测试栈冲突，因此精确固定最后兼容版本而不使用 override | 提交生成的 Dart 文件并做一致性门；升级 Flutter 后单独重跑 solver/generator，也可改为 `.drift`/手写 SQL adapter 而不改变领域接口 |
+| Flutter `record` | 7.1.1，Flutter lockfile | BSD-3-Clause | [官方平台矩阵](https://pub.dev/packages/record)覆盖 Android/iOS/Linux/macOS/Windows；只使用内存 PCM16 stream、权限/encoder runtime probe，并提供 `VOXHANDOFF_AUDIO_CAPTURE_SELF_TEST=1`；Linux 还要求 `parecord/pactl`，CI 已安装 `pulseaudio-utils` | `AudioCapturePort` 隔离插件；单平台可替换原生 capture 而不改变 STT/确认状态机 |
+| `media_kit` / `media_kit_libs_audio` | 1.2.6 / 1.0.7，Flutter lockfile | MIT / MIT | [官方仓库](https://github.com/media-kit/media-kit)覆盖五目标平台；adapter 只接收有界内存音频并暴露 play/stop，队列和 stale identity 留在 application 层 | `AudioPlaybackPort` 隔离播放器；可换平台播放器而不改变 segment identity/TTS 队列 |
+| `faster-whisper` | 1.2.1，`services/stt/uv.lock` | MIT | [SYSTRAN 官方仓库](https://github.com/SYSTRAN/faster-whisper)；Python 3.11 本机 base 模型已通过 JSONL sidecar、临时文件权限/清理和真实中文音频链路 | `SttBackend` 与 1.0 sidecar protocol 隔离引擎；30 条中文门不达标时换模型/后端而不改变 Flutter domain |
+| GPT-SoVITS | 本机 `api_v2.py` `/tts` 契约；不纳入应用依赖 | MIT（发布时连同模型/权重另审） | [官方仓库](https://github.com/RVC-Boss/GPT-SoVITS)契约已真合成 WAV；Client 仅允许 loopback HTTP build config | `TtsPort` 隔离 HTTP 服务和音色；可换其他本地/经同意的远程 TTS，不改变完整回复或播报摘要 |
 | `pg` / `@types/pg` | 8.22.0 / 8.20.0，npm lockfile | MIT | node-postgres 长期维护；使用底层 Pool/transaction API，不引入 ORM | `GatewayLedger` 隔离 SQL；可替换其他 PostgreSQL driver 而不改变 acceptance 语义 |
 | PostgreSQL test image | 17 Alpine，固定 manifest digest | PostgreSQL License；镜像含各组件许可证 | 官方镜像；本地隔离测试和 CI 使用同一 digest | 生产部署独立；测试可换受支持 PostgreSQL 版本并先跑 migration/fixture gate |
 | `@connectrpc/connect` / `@connectrpc/connect-node` | 2.1.2，npm lockfile | Apache-2.0 | Buf/CNCF Connect 官方 TypeScript 实现；支持 Node、gRPC 与 streaming，真实 HTTP/2 测试通过 | service 只依赖生成的标准 Protobuf descriptor；可换 `grpc-js` 而不改变 wire schema/账本 |
@@ -244,7 +248,7 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 
 完成证据：Gateway directory/conversation 的追加协议、expand-first PostgreSQL migration、并发幂等创建和生产 Flutter workspace 已接通；两个独立 Client 账本/router 对共同事件、显式接管、断线与 cursor 续播收敛且没有生成 Send；完整回复、工具/审批/澄清/终态、签名审批、lease 定时续租和 uncertain 不重提均有离线门。固定 PostgreSQL 17 的 migration/并发/恢复门与真实 HTTP/2 TLS loopback 已在 Fedora 44 复验；Linux release 与 Secret Service 写/读/删真链路通过。[GitHub Actions run 29899751800](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/29899751800) 进一步通过 Node/PostgreSQL、Linux quality/keyring、Android、macOS/iOS 与 Windows 全部门；实体设备与签名发行仍按 M5 单独验收。
 
-### M3 — 语音闭环
+### M3 — 语音闭环（完成：2026-07-22）
 
 目标：实现虚拟主播式可打断分轮对话。
 
@@ -256,6 +260,12 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 - 30 条中文技术 STT、30 条 TTS、50 次端到端基准。
 
 退出条件：达到 `PRODUCT.md` 延迟/成功率目标，或以实测经评审修订指标；语音失败不损伤文字链路。
+
+完成证据：Flutter 领域/application 层已把录音、STT、终稿确认、短播报、TTS、播放和本地存储拆成独立 failure stage；`record 7.1.1` 只输出内存 PCM，终稿进入现有可编辑草稿而不自动确认/发送，原文由独立 Drift 库保留 7 天。Python 1.0 JSONL sidecar 固定 frame/chunk/duration/sequence，临时 WAV 为 `0600` 并在 final/cancel/启动清理；远程 STT 默认无生产 provider，只有 origin/TLS/retention/streaming/revision 与用户同意完全一致才可构造上传 adapter。完整 `message.completed` 只在 `request.completed` 后进入确定性脱敏摘要，segment identity 绑定 conversation/request/revision/index，播放 N 时预生成 N+1；录音开始只调用 `speech.stop`，不生成 Agent interrupt。
+
+离线门通过 Python sidecar 5 项测试和 Flutter 119 项完整测试，覆盖取消、权限拒绝、STT/存储失败、确认隔离、远程 provider 事实变化重同意、分段预取、stale stop、Drift 关闭重开/清理、桌面/手机 golden 与 accessibility。Linux release 已带 `record`/`media_kit` 原生插件构建成功；默认 PipeWire source 另以 `pw-record` 真采集 2 秒 16 kHz mono PCM（64,000 bytes，mean -24.4 dB/max -5.7 dB）后立即删除。release 内置的 `VOXHANDOFF_AUDIO_CAPTURE_SELF_TEST=1` 正确暴露宿主缺少 `parecord/pactl`，本轮 `pkexec` 未获管理员授权，故 record plugin 的 Fedora 真采集仍作为明确环境门，不得写成已通过；CI 已安装 `pulseaudio-utils`。本机 GPT-SoVITS WAV → PCM → sidecar 真链路返回中文终稿，证明进程和格式契约。
+
+脱敏基准位于 `artifacts/benchmarks/m3-fedora44-20260722/`：5 次 warmup 后 30 条合成中文技术语料的 faster-whisper base 非空 final 为 27/30，成功样本 P50 500.04 ms/P95 1953.18 ms，平均 CER 0.678；GPT-SoVITS 30/30 返回 WAV，但 CPU P50 3723.92 ms/P95 5428.33 ms；50 次 STT→确定性回复→TTS 为 44/50（88%）。失败全部保留在分母，因此该 Intel i5-1155G7 CPU/base profile 被拒绝自动语音并按 `PRODUCT.md` 标为 `text-first degraded`，不下调推荐目标。M3 接受的是可替换实现、失败隔离和经评审的降级口径；M5 启用推荐 voice release profile 前仍须以更强中文模型/加速 TTS 通过 ≥95%、10 次 cold start 和具名真人设备语料。
 
 ### M4 — Fairy 动效与桌面能力
 

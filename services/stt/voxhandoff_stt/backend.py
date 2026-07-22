@@ -65,17 +65,26 @@ class FasterWhisperBackend:
     def transcribe(self, audio_path: Path, *, language: str | None) -> Transcript:
         model = self._load()
         with self._lock:
-            segments, info = model.transcribe(
-                str(audio_path),
-                language=language,
-                beam_size=5,
-                vad_filter=True,
-                vad_parameters={"min_silence_duration_ms": 500},
-                condition_on_previous_text=False,
-            )
-            text = "".join(segment.text for segment in segments).strip()
+            text, info = self._run(model, audio_path, language=language, vad_filter=True)
+            # The service has already rejected silent/near-silent PCM by RMS.
+            # Silero VAD can still discard a short technical utterance in full;
+            # retrying only that empty result avoids a false "no speech" while
+            # retaining VAD for normal recordings.
+            if not text:
+                text, info = self._run(model, audio_path, language=language, vad_filter=False)
         probability = getattr(info, "language_probability", None)
         confidence = float(probability) if probability is not None else None
         detected = getattr(info, "language", None)
         return Transcript(text=text, language=detected, confidence=confidence)
 
+    @staticmethod
+    def _run(model, audio_path: Path, *, language: str | None, vad_filter: bool):
+        segments, info = model.transcribe(
+            str(audio_path),
+            language=language,
+            beam_size=5,
+            vad_filter=vad_filter,
+            vad_parameters={"min_silence_duration_ms": 500} if vad_filter else None,
+            condition_on_previous_text=False,
+        )
+        return "".join(segment.text for segment in segments).strip(), info

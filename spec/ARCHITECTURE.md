@@ -473,11 +473,13 @@ shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值�
 
 ## 14. 选型依据
 
-以下资料是 2026-07-19 基线的复核入口；依赖升级时重新检查，不把链接当作永久兼容保证：
+以下资料是 2026-07-22 基线的复核入口；依赖升级时重新检查，不把链接当作永久兼容保证：
 
 - [Flutter 支持平台](https://docs.flutter.dev/reference/supported-platforms)
 - [record 平台能力矩阵](https://pub.dev/packages/record)
 - [media_kit](https://github.com/media-kit/media-kit)
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+- [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)
 - [flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage)
 - [Riverpod](https://pub.dev/packages/riverpod)
 - [gRPC Dart basics](https://grpc.io/docs/languages/dart/basics/)

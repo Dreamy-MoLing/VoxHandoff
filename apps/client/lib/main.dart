@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +26,10 @@ Future<void> main() async {
     await _runSecureStorageSelfTest();
     exit(exitCode);
   }
+  if (Platform.environment['VOXHANDOFF_AUDIO_CAPTURE_SELF_TEST'] == '1') {
+    await _runAudioCaptureSelfTest();
+    exit(exitCode);
+  }
   MediaKit.ensureInitialized();
   final transcriptStore = await DriftLocalTranscriptStore.forApplication();
   final stt = _productionSttPort();
@@ -45,6 +51,40 @@ Future<void> main() async {
       child: const AgentTalkApp(),
     ),
   );
+}
+
+Future<void> _runAudioCaptureSelfTest() async {
+  final capture = RecordAudioCapture();
+  var bytes = 0;
+  final done = Completer<void>();
+  StreamSubscription<Uint8List>? subscription;
+  try {
+    final session = await capture.start(const AudioCaptureConfig());
+    subscription = session.audioChunks.listen(
+      (chunk) => bytes += chunk.length,
+      onError: (Object _) {
+        if (!done.isCompleted) done.complete();
+      },
+      onDone: () {
+        if (!done.isCompleted) done.complete();
+      },
+    );
+    await Future<void>.delayed(const Duration(seconds: 2));
+    await session.stop();
+    await done.future.timeout(const Duration(seconds: 5));
+    if (bytes < 3200) {
+      stderr.writeln('audio capture self-test failed: insufficient PCM');
+      exitCode = 1;
+      return;
+    }
+    stdout.writeln('audio capture self-test passed: PCM stream received');
+  } on Object {
+    stderr.writeln('audio capture self-test failed: microphone unavailable');
+    exitCode = 1;
+  } finally {
+    await subscription?.cancel();
+    await capture.close();
+  }
 }
 
 TtsPort? _productionTtsPort() {
