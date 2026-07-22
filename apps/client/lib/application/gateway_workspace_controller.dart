@@ -8,6 +8,7 @@ import '../domain/gateway_sync.dart';
 import '../domain/gateway_workspace.dart';
 import '../infrastructure/gateway/secure_grpc_gateway_workspace_factory.dart';
 import 'client_session_controller.dart';
+import 'speech_playback_controller.dart';
 
 typedef WorkspaceDirectoryCallback =
     FutureOr<void> Function(ClientGatewayDirectory directory);
@@ -312,6 +313,30 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
   Future<void> _acceptEvent(ClientEventRecord event) async {
     if (event.conversationId == state.selectedConversationId) {
       await _reloadEvents(event.conversationId);
+      if (event.kind == ClientEventKind.requestCompleted) {
+        final completedMessages = state.events.where(
+          (candidate) =>
+              candidate.requestId == event.requestId &&
+              candidate.kind == ClientEventKind.messageCompleted &&
+              candidate.content is MessageClientEventContent,
+        );
+        if (completedMessages.isNotEmpty) {
+          final latest = completedMessages.reduce((left, right) {
+            final leftMessage = left.content as MessageClientEventContent;
+            final rightMessage = right.content as MessageClientEventContent;
+            return rightMessage.revision > leftMessage.revision ? right : left;
+          });
+          final message = latest.content as MessageClientEventContent;
+          await ref
+              .read(speechPlaybackProvider.notifier)
+              .speakCompletedReply(
+                conversationId: event.conversationId,
+                requestId: event.requestId,
+                messageRevision: message.revision,
+                fullReply: message.text,
+              );
+        }
+      }
     }
   }
 

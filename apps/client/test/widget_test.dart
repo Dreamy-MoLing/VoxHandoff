@@ -15,6 +15,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Send unavailable'), findsOneWidget);
+    expect(find.byTooltip('Record voice draft'), findsOneWidget);
     final sendButton = tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'Send unavailable'),
     );

@@ -1,0 +1,126 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import '../../domain/speech.dart';
+import '../../domain/voice.dart';
+
+class GptSoVitsConfig {
+  GptSoVitsConfig({
+    required this.baseUri,
+    required this.referenceAudioPath,
+    required this.promptText,
+    this.textLanguage = 'zh',
+    this.promptLanguage = 'zh',
+    this.timeout = const Duration(seconds: 30),
+  }) {
+    final loopbackHttp = baseUri.scheme == 'http' && _isLoopback(baseUri.host);
+    if ((!loopbackHttp && baseUri.scheme != 'https') ||
+        baseUri.host.isEmpty ||
+        baseUri.userInfo.isNotEmpty ||
+        referenceAudioPath.isEmpty) {
+      throw const FormatException('The GPT-SoVITS configuration is unsafe.');
+    }
+  }
+
+  final Uri baseUri;
+  final String referenceAudioPath;
+  final String promptText;
+  final String textLanguage;
+  final String promptLanguage;
+  final Duration timeout;
+}
+
+class GptSoVitsTtsPort implements TtsPort {
+  GptSoVitsTtsPort({required this.config, HttpClient? client})
+    : _client = client ?? HttpClient();
+
+  final GptSoVitsConfig config;
+  final HttpClient _client;
+  bool _closed = false;
+
+  @override
+  Future<void> warmUp() async {
+    final segment = SpeechSegment(
+      conversationId: 'tts-warmup',
+      requestId: 'tts-warmup',
+      messageRevision: BigInt.one,
+      index: 0,
+      text: '语音已准备。',
+    );
+    await synthesize(segment);
+  }
+
+  @override
+  Future<SynthesizedSpeech> synthesize(SpeechSegment segment) async {
+    if (_closed) throw StateError('The TTS adapter is closed.');
+    final stopwatch = Stopwatch()..start();
+    try {
+      final endpoint = config.baseUri.resolve('/tts');
+      final request = await _client.postUrl(endpoint).timeout(config.timeout);
+      request.headers.contentType = ContentType.json;
+      request.add(
+        utf8.encode(
+          jsonEncode({
+            'text': segment.text,
+            'text_lang': config.textLanguage,
+            'ref_audio_path': config.referenceAudioPath,
+            'prompt_text': config.promptText,
+            'prompt_lang': config.promptLanguage,
+            'media_type': 'wav',
+            'streaming_mode': false,
+          }),
+        ),
+      );
+      final response = await request.close().timeout(config.timeout);
+      if (response.statusCode != HttpStatus.ok) {
+        await response.drain<void>();
+        throw const HttpException('GPT-SoVITS rejected synthesis.');
+      }
+      final builder = BytesBuilder(copy: false);
+      await for (final chunk in response.timeout(config.timeout)) {
+        if (builder.length + chunk.length > 16 * 1024 * 1024) {
+          throw const HttpException('GPT-SoVITS response exceeded limit.');
+        }
+        builder.add(chunk);
+      }
+      final bytes = builder.takeBytes();
+      if (bytes.length < 44) {
+        throw const HttpException('GPT-SoVITS returned invalid audio.');
+      }
+      stopwatch.stop();
+      return SynthesizedSpeech(
+        segment: segment,
+        bytes: bytes,
+        mimeType: 'audio/wav',
+        synthesisDuration: stopwatch.elapsed,
+      );
+    } on VoicePortException {
+      rethrow;
+    } on Object {
+      throw const VoicePortException(
+        VoiceStageFailure(
+          stage: VoiceFailureStage.tts,
+          code: 'gpt_sovits_synthesis_failed',
+          safeMessage:
+              'Speech synthesis failed. The complete reply is still available.',
+          retryable: true,
+        ),
+      );
+    }
+  }
+
+  @override
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    _client.close(force: true);
+  }
+}
+
+bool _isLoopback(String host) {
+  final normalized = host.toLowerCase();
+  return normalized == 'localhost' ||
+      normalized == '127.0.0.1' ||
+      normalized == '::1';
+}

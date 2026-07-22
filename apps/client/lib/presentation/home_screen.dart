@@ -6,11 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/client_session_controller.dart';
 import '../application/device_pairing_controller.dart';
 import '../application/gateway_workspace_controller.dart';
+import '../application/voice_session_controller.dart';
 import '../domain/client_event.dart';
 import '../domain/client_session.dart';
 import '../domain/device_pairing.dart';
 import '../domain/gateway_sync.dart';
 import '../domain/gateway_workspace.dart';
+import '../domain/voice.dart';
 import 'design/agent_talk_theme.dart';
 import 'pairing_dialog.dart';
 
@@ -60,6 +62,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _composer.clear();
   }
 
+  Future<void> _startVoice() =>
+      ref.read(voiceSessionProvider.notifier).startRecording();
+
+  Future<void> _stopVoice() async {
+    await ref.read(voiceSessionProvider.notifier).stopRecording();
+    final draft = ref.read(clientSessionProvider).draftText;
+    _composer.value = TextEditingValue(
+      text: draft,
+      selection: TextSelection.collapsed(offset: draft.length),
+    );
+  }
+
+  Future<void> _cancelVoice() =>
+      ref.read(voiceSessionProvider.notifier).cancelRecording();
+
+  Future<void> _discardVoice() async {
+    await ref.read(voiceSessionProvider.notifier).discardTranscript();
+    _composer.clear();
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(clientSessionProvider);
@@ -67,6 +89,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final pairing = ref.watch(devicePairingProvider);
     final workspace = ref.watch(gatewayWorkspaceProvider);
     final workspaceController = ref.read(gatewayWorkspaceProvider.notifier);
+    final voice = ref.watch(voiceSessionProvider);
     final ownsLease = workspace.ownsSelectedLease(
       workspaceController.deviceId,
       DateTime.now(),
@@ -146,12 +169,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     _Composer(
                       textController: _composer,
                       session: session,
+                      voice: voice,
                       onChanged: controller.editDraft,
                       onConfirm: _confirmDraft,
                       onReopen: controller.reopenDraft,
                       onSend: _send,
                       onNextDraft: _startNextDraft,
                       sendEnabled: ownsLease,
+                      onStartVoice: _startVoice,
+                      onStopVoice: _stopVoice,
+                      onCancelVoice: _cancelVoice,
+                      onDiscardVoice: _discardVoice,
                     ),
                   ],
                 ),
@@ -876,22 +904,32 @@ class _Composer extends StatelessWidget {
   const _Composer({
     required this.textController,
     required this.session,
+    required this.voice,
     required this.onChanged,
     required this.onConfirm,
     required this.onReopen,
     required this.onSend,
     required this.onNextDraft,
     required this.sendEnabled,
+    required this.onStartVoice,
+    required this.onStopVoice,
+    required this.onCancelVoice,
+    required this.onDiscardVoice,
   });
 
   final TextEditingController textController;
   final ClientSessionState session;
+  final VoiceSessionState voice;
   final ValueChanged<String> onChanged;
   final VoidCallback onConfirm;
   final VoidCallback onReopen;
   final Future<void> Function() onSend;
   final VoidCallback onNextDraft;
   final bool sendEnabled;
+  final Future<void> Function() onStartVoice;
+  final Future<void> Function() onStopVoice;
+  final Future<void> Function() onCancelVoice;
+  final Future<void> Function() onDiscardVoice;
 
   @override
   Widget build(BuildContext context) {
@@ -916,6 +954,25 @@ class _Composer extends StatelessWidget {
                   labelText: confirmed ? 'Confirmed locally' : 'Editable draft',
                   hintText: 'Type text to review before sending',
                 ),
+              );
+              final voiceAction = _VoiceAction(
+                voice: voice,
+                draftEditable: session.draftPhase == DraftPhase.editing,
+                onStart: onStartVoice,
+                onStop: onStopVoice,
+                onCancel: onCancelVoice,
+                onDiscard: onDiscardVoice,
+              );
+              final editorWithVoice = Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  editor,
+                  if (voice.phase != VoiceInputPhase.idle) ...[
+                    const SizedBox(height: 6),
+                    _VoiceStatus(voice: voice),
+                  ],
+                ],
               );
               final primaryAction = accepted
                   ? OutlinedButton(
@@ -949,13 +1006,13 @@ class _Composer extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    editor,
+                    editorWithVoice,
                     const SizedBox(height: 10),
                     Wrap(
                       alignment: WrapAlignment.end,
                       spacing: 8,
                       runSpacing: 8,
-                      children: [primaryAction, sendAction],
+                      children: [voiceAction, primaryAction, sendAction],
                     ),
                   ],
                 );
@@ -963,8 +1020,10 @@ class _Composer extends StatelessWidget {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Expanded(child: editor),
+                  Expanded(child: editorWithVoice),
                   const SizedBox(width: 12),
+                  voiceAction,
+                  const SizedBox(width: 8),
                   primaryAction,
                   const SizedBox(width: 8),
                   sendAction,
@@ -973,6 +1032,116 @@ class _Composer extends StatelessWidget {
             },
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _VoiceAction extends StatelessWidget {
+  const _VoiceAction({
+    required this.voice,
+    required this.draftEditable,
+    required this.onStart,
+    required this.onStop,
+    required this.onCancel,
+    required this.onDiscard,
+  });
+
+  final VoiceSessionState voice;
+  final bool draftEditable;
+  final Future<void> Function() onStart;
+  final Future<void> Function() onStop;
+  final Future<void> Function() onCancel;
+  final Future<void> Function() onDiscard;
+
+  @override
+  Widget build(BuildContext context) {
+    if (voice.phase == VoiceInputPhase.recording) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton.filledTonal(
+            onPressed: onStop,
+            tooltip: 'Stop and transcribe',
+            icon: const Icon(Icons.stop_rounded),
+          ),
+          IconButton(
+            onPressed: onCancel,
+            tooltip: 'Cancel recording',
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      );
+    }
+    if (voice.canCancel) {
+      return IconButton(
+        onPressed: onCancel,
+        tooltip: 'Cancel voice input',
+        icon: const Icon(Icons.close),
+      );
+    }
+    if (voice.phase == VoiceInputPhase.awaitingConfirmation) {
+      return IconButton(
+        onPressed: onDiscard,
+        tooltip: 'Discard transcript',
+        icon: const Icon(Icons.delete_outline),
+      );
+    }
+    return IconButton.filledTonal(
+      onPressed: draftEditable && voice.canStart ? onStart : null,
+      tooltip: 'Record voice draft',
+      icon: const Icon(Icons.mic_none),
+    );
+  }
+}
+
+class _VoiceStatus extends StatelessWidget {
+  const _VoiceStatus({required this.voice});
+
+  final VoiceSessionState voice;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = switch (voice.phase) {
+      VoiceInputPhase.requestingPermission => 'Requesting microphone access',
+      VoiceInputPhase.recording =>
+        voice.provisionalTranscript.isEmpty
+            ? 'Recording · speech remains editable before send'
+            : 'Live transcript: ${voice.provisionalTranscript}',
+      VoiceInputPhase.transcribing => 'Finalizing transcript',
+      VoiceInputPhase.awaitingConfirmation =>
+        'Transcript inserted · review and confirm before send',
+      VoiceInputPhase.cancelled => 'Voice input cancelled',
+      VoiceInputPhase.failed =>
+        voice.failure?.safeMessage ?? 'Voice input failed',
+      VoiceInputPhase.idle => '',
+    };
+    final progress = voice.phase == VoiceInputPhase.recording
+        ? voice.audioLevel.clamp(0.02, 1.0)
+        : null;
+    return Semantics(
+      liveRegion: true,
+      label: label,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 48,
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 3,
+              semanticsLabel: 'Microphone level',
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
       ),
     );
   }
