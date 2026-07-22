@@ -145,6 +145,8 @@ test("GetRequest returns durable acceptance status by known request identity", a
   if (statusBody?.case === "requestStatus") {
     assert.equal(statusBody.value?.requestId, "request-1");
     assert.equal(statusBody.value?.acceptedSequence, 4n);
+    assert.equal(statusBody.value?.originDeviceId, "device-1");
+    assert.equal(statusBody.value?.sessionId, "");
   }
 });
 
@@ -215,7 +217,7 @@ test("replay remains ordered and preserves unsupported events without inventing 
     responses.map((response) =>
       response.body?.case === "event" ? (response.body.value?.sequence ?? -1n) : -1n,
     ),
-    [1n, 2n, 3n, 4n],
+    [1n, 2n, 3n, 4n, -1n],
   );
   const firstEvent = responses[0]?.body;
   const secondEvent = responses[1]?.body;
@@ -228,6 +230,15 @@ test("replay remains ordered and preserves unsupported events without inventing 
   assert.equal(completeMessage?.case === "event" ? completeMessage.value.event?.payload?.case : undefined, "message");
   const malformedMessage = responses[3]?.body;
   assert.equal(malformedMessage?.case === "event" ? malformedMessage.value.event?.type : undefined, AgentEventType.UNSPECIFIED);
+  const completed = responses[4]?.body;
+  assert.equal(completed?.case, "replayCompleted");
+  if (completed?.case === "replayCompleted") {
+    assert.equal(completed.value.commandId, "replay-command");
+    assert.equal(completed.value.afterSequence, 0n);
+    assert.equal(completed.value.throughSequence, 4n);
+    assert.equal(completed.value.eventCount, 4);
+    assert.equal(completed.value.mayHaveMore, false);
+  }
 });
 
 test("Ack advances only an exact persisted event identity", async () => {

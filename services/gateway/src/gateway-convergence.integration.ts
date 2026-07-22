@@ -421,15 +421,16 @@ export async function runGatewayConvergenceIntegration(
     },
   }));
   const replayed: ConnectClientResponse[] = [];
-  for (let index = 0; index < 4; index += 1) {
+  for (let index = 0; index < 5; index += 1) {
     const response = await replayResponses.next();
     assert.equal(response.done, false);
     if (response.value !== undefined) replayed.push(response.value);
   }
   assert.deepEqual(
     replayed.map((response) => response.body.case === "event" ? response.body.value.sequence : 0n),
-    [1n, 2n, 3n, 4n],
+    [1n, 2n, 3n, 4n, 0n],
   );
+  assert.equal(replayed[4]?.body.case, "replayCompleted");
   const lastEvent = replayed[3]?.body;
   if (lastEvent?.case !== "event") throw new Error("terminal replay event is missing");
   replayInput.push(create(ConnectClientRequestSchema, {

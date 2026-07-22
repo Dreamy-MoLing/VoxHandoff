@@ -61,8 +61,9 @@
 - 客户端配对已通过生成的 Dart `PairingServiceClient` 接入 Begin/Complete/Confirm unary RPC，每次调用固定有限 timeout 且只尝试一次；Complete 明确清空废弃 proof 字段并提交 Ed25519 结构化签名。Gateway 以 trailer 返回受控领域错误码，客户端仅接受本地白名单并使用固定安全文案，远端 message 不进入 UI；断线、超时、取消及未知本地异常统一保持 `uncertain`，离线 fake 覆盖三阶段 wire 映射、未批准、未知错误码和无自动重试；
 - `GatewayGrpcChannelFactory` 只从无 userinfo/path/query/fragment 的规范 HTTPS audience 建立 channel，固定有限 connect timeout，使用系统信任或启动前可解析的显式 CA；生产 API 不暴露 bad-certificate callback。明文只存在于命名为 `insecureLoopbackForTests` 的 factory，且仅接受字面量 `127.0.0.1`/`::1`，离线测试覆盖自签 CA、地址混淆、非 loopback 明文和超界 timeout；
 - Dart 客户端已复用生成的 `GatewayControlServiceClient` 和 `grpc` SDK 建立认证双向流：active bearer 仅进入 metadata，Client offer 为首帧，连接 timeout 与 handshake timeout 有界且不误作长连接总 deadline；Gateway role、协议 1.0、connection ID、capability、scope 与 attachments=false 均 fail closed。业务帧先于握手、重复握手、空帧、远端 protocol error、同步/异步 transport 故障均脱敏且不自动重连；离线 fake 覆盖命令、精确 Ack、heartbeat、event 映射、超时、过期凭据与 secret diagnostics。`toolchains/protocol.json` 固定有序 proto SHA-256，repository gate 防止 Dart offer 与 schema 静默漂移；
-- Client event domain 已与 protobuf/Flutter 隔离，完整保留 request-bound connection lifecycle、message、tool、approval、clarification、terminal failure 和 unsupported 安全载荷；Gateway mapper 严格校验协议、type/payload、identity、uint64、UTC timestamp、审批 hash 与 1 MiB 上限，并只公开固定脱敏异常。`ClientEventConvergence` 按 request 的 origin device/conversation/session route 收敛所有已认证观察设备，要求 sequence 连续，以完整 typed payload 与 envelope SHA-256 识别精确重复/冲突；live synchronizer 只在耐久提交或精确读回后 Ack，缺口不展示/不 Ack且同一缺口只发送一个有界 replay，异常关闭流但不重提用户命令；
-- Drift 2.34.2 + SQLite 3.5.0 已实现私有生成数据库与安全领域 facade：完整事件、request route、accepted sequence 和 conversation cursor 原子提交，uint64 以 20 位十进制 TEXT 保存，cursor 通过复合外键指向精确事件。本地 command/idempotency/hash 与跨设备 route 分表，`prepared → outcomeUnknown → accepted/rejected` 只允许前向 CAS；confirmed text 不进入提交状态表，request acceptance 可在同一事务收敛未知结果。内存并发/回滚、typed payload 损坏、SQLite CHECK/FK、完整文件关闭重开与 90 项 Flutter 测试均已通过；
+- Client event domain 已与 protobuf/Flutter 隔离，完整保留 request-bound connection lifecycle、message、tool、approval、clarification、terminal failure 和 unsupported 安全载荷；Gateway mapper 严格校验协议、type/payload、identity、uint64、UTC timestamp、审批 hash 与 1 MiB 上限，并只公开固定脱敏异常。`ClientEventConvergence` 按 request 的 origin device/conversation/session route 收敛所有已认证观察设备，要求 sequence 连续，以完整 typed payload 与 envelope SHA-256 识别精确重复/冲突；中央 frame router 作为 live frame 唯一消费者，在耐久提交或精确读回后才 Ack，缺口不展示/不 Ack且同一未完成页只发送一个有界 replay，异常关闭流但不重提用户命令；
+- Drift 2.34.2 + SQLite 3.5.0 已实现私有生成数据库与安全领域 facade：完整事件、request route、accepted sequence 和 conversation cursor 原子提交，uint64 以 20 位十进制 TEXT 保存，cursor 通过复合外键指向精确事件。本地 command/idempotency/hash 与跨设备 route 分表，`prepared → outcomeUnknown → accepted/rejected` 只允许前向 CAS；confirmed text 不进入提交状态表，request acceptance 可在同一事务收敛未知结果。内存并发/回滚、typed payload 损坏、SQLite CHECK/FK、完整文件关闭重开与 98 项 Flutter 测试均已通过；
+- 公共协议以追加字段扩充 `RequestStatus` 的 origin device/session route，并增加关联 command/conversation/sequence/count 的 `ReplayCompleted` 尾帧；Gateway 每个 replay 页按序返回事件后给出耐久批次边界。Flutter frame mapper 将 protobuf 隔离为领域 frame；中央 router 启动时从 Drift 枚举已跟踪 conversation（无 cursor 从 0 开始），按耐久 cursor 分页，未知 request 事件有界缓冲且每个 request 只查询一次状态，严格保存 route 后才重放原事件和精确 Ack。恢复路径只产生 `GetRequest`/replay/Ack，不生成 `Send` 或其他可执行命令；
 - Dart protocol 依赖经真实 pub solver 将 `protobuf` 修正为与 `grpc 5.1.0` 相容的 6.x，不使用 dependency override；客户端运行依赖已固定 `drift 2.34.2`、`path_provider 2.1.6` 和传递依赖 `sqlite3 3.5.0`，开发生成器固定 `drift_dev 2.34.0` / `build_runner 2.15.1`。PowerSync 未进入依赖，仅保留通过独立许可、运维、最小授权和量化收益 gate 后的可选 adapter；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
@@ -70,7 +71,7 @@
 未完成或未实测：
 
 - OpenClaw adapter；
-- Flutter 中央 frame router、未知 request 状态恢复、启动 cursor replay 与目录/会话/事件/审批生产 UI 接线；
+- Flutter 目录/会话/事件/审批生产 UI 接线；
 - 一桌面一手机的跨设备观察/接管/断网恢复，以及五平台真实安全存储与 native build；
 - STT、GPT-SoVITS 和音频播放真链路；
 - 跨设备、远程网络、打包和发布测试。

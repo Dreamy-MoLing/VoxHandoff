@@ -204,6 +204,36 @@ void main() {
     },
   );
 
+  test('maps replay completion as a distinct central-router frame', () async {
+    final rpc = FakeGatewayControlStreamingRpc();
+    addTearDown(rpc.close);
+    final connection = await openWithHandshake(
+      GrpcGatewayLiveTransport(rpc, now: () => DateTime.utc(2030, 1, 1)),
+      rpc,
+    );
+    addTearDown(connection.close);
+    final firstFrame = connection.frames.first;
+
+    rpc.responses.add(
+      ConnectClientResponse(
+        replayCompleted: ReplayCompleted(
+          commandId: 'replay-command-1',
+          conversationId: 'conversation-1',
+          afterSequence: Int64.ZERO,
+          throughSequence: Int64(2),
+          eventCount: 2,
+        ),
+      ),
+    );
+
+    final frame = await firstFrame;
+    expect(frame, isA<GatewayReplayCompletedFrame>());
+    expect(
+      (frame as GatewayReplayCompletedFrame).completion.commandId,
+      'replay-command-1',
+    );
+  });
+
   test('closes the public frame stream and rejects later sends', () async {
     final rpc = FakeGatewayControlStreamingRpc();
     addTearDown(rpc.close);

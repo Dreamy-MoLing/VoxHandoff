@@ -544,6 +544,8 @@ const RequestStatus$json = {
       '10': 'failure',
       '17': true
     },
+    {'1': 'origin_device_id', '3': 9, '4': 1, '5': 9, '10': 'originDeviceId'},
+    {'1': 'session_id', '3': 10, '4': 1, '5': 9, '10': 'sessionId'},
   ],
   '8': [
     {'1': '_failure'},
@@ -557,7 +559,30 @@ final $typed_data.Uint8List requestStatusDescriptor = $convert.base64Decode(
     'Cgdub2RlX2lkGAQgASgJUgZub2RlSWQSGQoIYWdlbnRfaWQYBSABKAlSB2FnZW50SWQSLwoTY2'
     'FwYWJpbGl0eV9yZXZpc2lvbhgGIAEoCVISY2FwYWJpbGl0eVJldmlzaW9uEisKEWFjY2VwdGVk'
     'X3NlcXVlbmNlGAcgASgEUhBhY2NlcHRlZFNlcXVlbmNlEjoKB2ZhaWx1cmUYCCABKAsyGy5hZ2'
-    'VudF90YWxrLnYxLlN0YWdlRmFpbHVyZUgAUgdmYWlsdXJliAEBQgoKCF9mYWlsdXJl');
+    'VudF90YWxrLnYxLlN0YWdlRmFpbHVyZUgAUgdmYWlsdXJliAEBEigKEG9yaWdpbl9kZXZpY2Vf'
+    'aWQYCSABKAlSDm9yaWdpbkRldmljZUlkEh0KCnNlc3Npb25faWQYCiABKAlSCXNlc3Npb25JZE'
+    'IKCghfZmFpbHVyZQ==');
+
+@$core.Deprecated('Use replayCompletedDescriptor instead')
+const ReplayCompleted$json = {
+  '1': 'ReplayCompleted',
+  '2': [
+    {'1': 'command_id', '3': 1, '4': 1, '5': 9, '10': 'commandId'},
+    {'1': 'conversation_id', '3': 2, '4': 1, '5': 9, '10': 'conversationId'},
+    {'1': 'after_sequence', '3': 3, '4': 1, '5': 4, '10': 'afterSequence'},
+    {'1': 'through_sequence', '3': 4, '4': 1, '5': 4, '10': 'throughSequence'},
+    {'1': 'event_count', '3': 5, '4': 1, '5': 13, '10': 'eventCount'},
+    {'1': 'may_have_more', '3': 6, '4': 1, '5': 8, '10': 'mayHaveMore'},
+  ],
+};
+
+/// Descriptor for `ReplayCompleted`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List replayCompletedDescriptor = $convert.base64Decode(
+    'Cg9SZXBsYXlDb21wbGV0ZWQSHQoKY29tbWFuZF9pZBgBIAEoCVIJY29tbWFuZElkEicKD2Nvbn'
+    'ZlcnNhdGlvbl9pZBgCIAEoCVIOY29udmVyc2F0aW9uSWQSJQoOYWZ0ZXJfc2VxdWVuY2UYAyAB'
+    'KARSDWFmdGVyU2VxdWVuY2USKQoQdGhyb3VnaF9zZXF1ZW5jZRgEIAEoBFIPdGhyb3VnaFNlcX'
+    'VlbmNlEh8KC2V2ZW50X2NvdW50GAUgASgNUgpldmVudENvdW50EiIKDW1heV9oYXZlX21vcmUY'
+    'BiABKAhSC21heUhhdmVNb3Jl');
 
 @$core.Deprecated('Use controlLeaseDescriptor instead')
 const ControlLease$json = {

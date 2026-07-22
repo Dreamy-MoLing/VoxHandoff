@@ -24,6 +24,7 @@ message ConnectClientResponse {
     RequestStatus request_status = 4;
     ControlLease control_lease = 5;
     ProtocolError protocol_error = 6;
+    ReplayCompleted replay_completed = 7;
   }
 }
 

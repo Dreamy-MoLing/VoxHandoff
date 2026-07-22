@@ -1495,6 +1495,8 @@ class RequestStatus extends $pb.GeneratedMessage {
     $core.String? capabilityRevision,
     $fixnum.Int64? acceptedSequence,
     $0.StageFailure? failure,
+    $core.String? originDeviceId,
+    $core.String? sessionId,
   }) {
     final result = create();
     if (requestId != null) result.requestId = requestId;
@@ -1506,6 +1508,8 @@ class RequestStatus extends $pb.GeneratedMessage {
       result.capabilityRevision = capabilityRevision;
     if (acceptedSequence != null) result.acceptedSequence = acceptedSequence;
     if (failure != null) result.failure = failure;
+    if (originDeviceId != null) result.originDeviceId = originDeviceId;
+    if (sessionId != null) result.sessionId = sessionId;
     return result;
   }
 
@@ -1533,6 +1537,8 @@ class RequestStatus extends $pb.GeneratedMessage {
         defaultOrMaker: $fixnum.Int64.ZERO)
     ..aOM<$0.StageFailure>(8, _omitFieldNames ? '' : 'failure',
         subBuilder: $0.StageFailure.create)
+    ..aOS(9, _omitFieldNames ? '' : 'originDeviceId')
+    ..aOS(10, _omitFieldNames ? '' : 'sessionId')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1627,6 +1633,142 @@ class RequestStatus extends $pb.GeneratedMessage {
   void clearFailure() => $_clearField(8);
   @$pb.TagNumber(8)
   $0.StageFailure ensureFailure() => $_ensure(7);
+
+  @$pb.TagNumber(9)
+  $core.String get originDeviceId => $_getSZ(8);
+  @$pb.TagNumber(9)
+  set originDeviceId($core.String value) => $_setString(8, value);
+  @$pb.TagNumber(9)
+  $core.bool hasOriginDeviceId() => $_has(8);
+  @$pb.TagNumber(9)
+  void clearOriginDeviceId() => $_clearField(9);
+
+  @$pb.TagNumber(10)
+  $core.String get sessionId => $_getSZ(9);
+  @$pb.TagNumber(10)
+  set sessionId($core.String value) => $_setString(9, value);
+  @$pb.TagNumber(10)
+  $core.bool hasSessionId() => $_has(9);
+  @$pb.TagNumber(10)
+  void clearSessionId() => $_clearField(10);
+}
+
+class ReplayCompleted extends $pb.GeneratedMessage {
+  factory ReplayCompleted({
+    $core.String? commandId,
+    $core.String? conversationId,
+    $fixnum.Int64? afterSequence,
+    $fixnum.Int64? throughSequence,
+    $core.int? eventCount,
+    $core.bool? mayHaveMore,
+  }) {
+    final result = create();
+    if (commandId != null) result.commandId = commandId;
+    if (conversationId != null) result.conversationId = conversationId;
+    if (afterSequence != null) result.afterSequence = afterSequence;
+    if (throughSequence != null) result.throughSequence = throughSequence;
+    if (eventCount != null) result.eventCount = eventCount;
+    if (mayHaveMore != null) result.mayHaveMore = mayHaveMore;
+    return result;
+  }
+
+  ReplayCompleted._();
+
+  factory ReplayCompleted.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ReplayCompleted.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ReplayCompleted',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'commandId')
+    ..aOS(2, _omitFieldNames ? '' : 'conversationId')
+    ..a<$fixnum.Int64>(
+        3, _omitFieldNames ? '' : 'afterSequence', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(
+        4, _omitFieldNames ? '' : 'throughSequence', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..aI(5, _omitFieldNames ? '' : 'eventCount', fieldType: $pb.PbFieldType.OU3)
+    ..aOB(6, _omitFieldNames ? '' : 'mayHaveMore')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ReplayCompleted clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ReplayCompleted copyWith(void Function(ReplayCompleted) updates) =>
+      super.copyWith((message) => updates(message as ReplayCompleted))
+          as ReplayCompleted;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ReplayCompleted create() => ReplayCompleted._();
+  @$core.override
+  ReplayCompleted createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ReplayCompleted getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ReplayCompleted>(create);
+  static ReplayCompleted? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get commandId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set commandId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasCommandId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearCommandId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get conversationId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set conversationId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasConversationId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearConversationId() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $fixnum.Int64 get afterSequence => $_getI64(2);
+  @$pb.TagNumber(3)
+  set afterSequence($fixnum.Int64 value) => $_setInt64(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasAfterSequence() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearAfterSequence() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $fixnum.Int64 get throughSequence => $_getI64(3);
+  @$pb.TagNumber(4)
+  set throughSequence($fixnum.Int64 value) => $_setInt64(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasThroughSequence() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearThroughSequence() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.int get eventCount => $_getIZ(4);
+  @$pb.TagNumber(5)
+  set eventCount($core.int value) => $_setUnsignedInt32(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasEventCount() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearEventCount() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $core.bool get mayHaveMore => $_getBF(5);
+  @$pb.TagNumber(6)
+  set mayHaveMore($core.bool value) => $_setBool(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasMayHaveMore() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearMayHaveMore() => $_clearField(6);
 }
 
 class ControlLease extends $pb.GeneratedMessage {

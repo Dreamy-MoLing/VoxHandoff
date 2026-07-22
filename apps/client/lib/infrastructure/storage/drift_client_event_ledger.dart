@@ -473,6 +473,22 @@ class _EventLedgerDatabase extends _$_EventLedgerDatabase
   }
 
   @override
+  Future<List<String>> listTrackedConversationIds() async {
+    try {
+      final rows = await customSelect(
+        'SELECT DISTINCT conversation_id FROM tracked_requests '
+        'ORDER BY conversation_id',
+        readsFrom: {trackedRequests},
+      ).get();
+      return rows
+          .map((row) => row.read<String>('conversation_id'))
+          .toList(growable: false);
+    } on Object {
+      throw const DriftClientEventLedgerException('conversation_list_failed');
+    }
+  }
+
+  @override
   Future<ClientEventRecord?> readEvent(
     String conversationId,
     BigInt sequence,
@@ -1160,6 +1176,10 @@ class DriftClientEventLedger implements ClientEventLedger {
   @override
   Future<ConversationEventCursor?> readCursor(String conversationId) =>
       _database.readCursor(conversationId);
+
+  @override
+  Future<List<String>> listTrackedConversationIds() =>
+      _database.listTrackedConversationIds();
 
   @override
   Future<ClientEventRecord?> readEvent(

@@ -318,6 +318,10 @@ abstract interface class ClientEventLedger {
 
   Future<ConversationEventCursor?> readCursor(String conversationId);
 
+  /// Lists durable conversation identities that need cursor replay at startup.
+  /// A tracked route without a cursor is included and starts replay at zero.
+  Future<List<String>> listTrackedConversationIds();
+
   Future<ClientEventRecord?> readEvent(String conversationId, BigInt sequence);
 
   /// Atomically stores the complete event and advances its conversation cursor.

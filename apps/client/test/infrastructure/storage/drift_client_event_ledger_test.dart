@@ -213,6 +213,7 @@ void main() {
         expect(watched.single.eventId, 'event-7');
         final watchedRequests = await ledger.watchTrackedRequests().first;
         expect(watchedRequests.single.requestId, _requestId);
+        expect(await ledger.listTrackedConversationIds(), [_conversationId]);
 
         final raw = (await executor.runSelect(
           'SELECT sequence_text, payload_revision_text, '

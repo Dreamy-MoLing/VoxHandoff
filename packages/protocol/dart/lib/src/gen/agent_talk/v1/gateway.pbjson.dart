@@ -137,6 +137,15 @@ const ConnectClientResponse$json = {
       '9': 0,
       '10': 'protocolError'
     },
+    {
+      '1': 'replay_completed',
+      '3': 7,
+      '4': 1,
+      '5': 11,
+      '6': '.agent_talk.v1.ReplayCompleted',
+      '9': 0,
+      '10': 'replayCompleted'
+    },
   ],
   '8': [
     {'1': 'body'},
@@ -152,7 +161,8 @@ final $typed_data.Uint8List connectClientResponseDescriptor = $convert.base64Dec
     'ASgLMhwuYWdlbnRfdGFsay52MS5SZXF1ZXN0U3RhdHVzSABSDXJlcXVlc3RTdGF0dXMSQgoNY2'
     '9udHJvbF9sZWFzZRgFIAEoCzIbLmFnZW50X3RhbGsudjEuQ29udHJvbExlYXNlSABSDGNvbnRy'
     'b2xMZWFzZRJFCg5wcm90b2NvbF9lcnJvchgGIAEoCzIcLmFnZW50X3RhbGsudjEuUHJvdG9jb2'
-    'xFcnJvckgAUg1wcm90b2NvbEVycm9yQgYKBGJvZHk=');
+    'xFcnJvckgAUg1wcm90b2NvbEVycm9yEksKEHJlcGxheV9jb21wbGV0ZWQYByABKAsyHi5hZ2Vu'
+    'dF90YWxrLnYxLlJlcGxheUNvbXBsZXRlZEgAUg9yZXBsYXlDb21wbGV0ZWRCBgoEYm9keQ==');
 
 @$core.Deprecated('Use nodeDescriptorDescriptor instead')
 const NodeDescriptor$json = {

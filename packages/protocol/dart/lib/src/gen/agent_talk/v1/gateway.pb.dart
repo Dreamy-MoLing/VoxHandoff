@@ -177,6 +177,7 @@ enum ConnectClientResponse_Body {
   requestStatus,
   controlLease,
   protocolError,
+  replayCompleted,
   notSet
 }
 
@@ -188,6 +189,7 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
     $1.RequestStatus? requestStatus,
     $1.ControlLease? controlLease,
     $1.ProtocolError? protocolError,
+    $1.ReplayCompleted? replayCompleted,
   }) {
     final result = create();
     if (handshake != null) result.handshake = handshake;
@@ -196,6 +198,7 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
     if (requestStatus != null) result.requestStatus = requestStatus;
     if (controlLease != null) result.controlLease = controlLease;
     if (protocolError != null) result.protocolError = protocolError;
+    if (replayCompleted != null) result.replayCompleted = replayCompleted;
     return result;
   }
 
@@ -216,13 +219,14 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
     4: ConnectClientResponse_Body.requestStatus,
     5: ConnectClientResponse_Body.controlLease,
     6: ConnectClientResponse_Body.protocolError,
+    7: ConnectClientResponse_Body.replayCompleted,
     0: ConnectClientResponse_Body.notSet
   };
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ConnectClientResponse',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
       createEmptyInstance: create)
-    ..oo(0, [1, 2, 3, 4, 5, 6])
+    ..oo(0, [1, 2, 3, 4, 5, 6, 7])
     ..aOM<$1.HandshakeAccepted>(1, _omitFieldNames ? '' : 'handshake',
         subBuilder: $1.HandshakeAccepted.create)
     ..aOM<$1.Heartbeat>(2, _omitFieldNames ? '' : 'heartbeat',
@@ -235,6 +239,8 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
         subBuilder: $1.ControlLease.create)
     ..aOM<$1.ProtocolError>(6, _omitFieldNames ? '' : 'protocolError',
         subBuilder: $1.ProtocolError.create)
+    ..aOM<$1.ReplayCompleted>(7, _omitFieldNames ? '' : 'replayCompleted',
+        subBuilder: $1.ReplayCompleted.create)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -263,6 +269,7 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
   @$pb.TagNumber(4)
   @$pb.TagNumber(5)
   @$pb.TagNumber(6)
+  @$pb.TagNumber(7)
   ConnectClientResponse_Body whichBody() =>
       _ConnectClientResponse_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(1)
@@ -271,6 +278,7 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
   @$pb.TagNumber(4)
   @$pb.TagNumber(5)
   @$pb.TagNumber(6)
+  @$pb.TagNumber(7)
   void clearBody() => $_clearField($_whichOneof(0));
 
   @$pb.TagNumber(1)
@@ -338,6 +346,17 @@ class ConnectClientResponse extends $pb.GeneratedMessage {
   void clearProtocolError() => $_clearField(6);
   @$pb.TagNumber(6)
   $1.ProtocolError ensureProtocolError() => $_ensure(5);
+
+  @$pb.TagNumber(7)
+  $1.ReplayCompleted get replayCompleted => $_getN(6);
+  @$pb.TagNumber(7)
+  set replayCompleted($1.ReplayCompleted value) => $_setField(7, value);
+  @$pb.TagNumber(7)
+  $core.bool hasReplayCompleted() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearReplayCompleted() => $_clearField(7);
+  @$pb.TagNumber(7)
+  $1.ReplayCompleted ensureReplayCompleted() => $_ensure(6);
 }
 
 class NodeDescriptor extends $pb.GeneratedMessage {

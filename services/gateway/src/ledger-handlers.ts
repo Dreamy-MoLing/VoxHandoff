@@ -165,6 +165,8 @@ function requestStatus(record: GatewayRequestStatusRecord | import("./ledger.js"
         agentId: record.agentId,
         capabilityRevision: record.capabilityRevision,
         acceptedSequence: record.acceptedSequence,
+        originDeviceId: record.deviceId,
+        sessionId: record.sessionId ?? "",
         failure:
           failure === null
             ? undefined
@@ -476,7 +478,23 @@ export class LedgerBackedGatewayHandlers implements GatewayStreamHandlers {
             command.command.value.afterSequence,
             maximum,
           );
-          return events.map(persistedEventResponse);
+          const throughSequence = events.at(-1)?.sequence ?? command.command.value.afterSequence;
+          return [
+            ...events.map(persistedEventResponse),
+            {
+              body: {
+                case: "replayCompleted",
+                value: {
+                  commandId: command.commandId,
+                  conversationId: command.conversationId,
+                  afterSequence: command.command.value.afterSequence,
+                  throughSequence,
+                  eventCount: events.length,
+                  mayHaveMore: events.length === maximum,
+                },
+              },
+            },
+          ];
         }
         default:
           throw new ConnectError("This Client command is not implemented yet.", Code.Unimplemented);

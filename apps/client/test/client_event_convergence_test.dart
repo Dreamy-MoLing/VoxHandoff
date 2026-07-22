@@ -83,6 +83,10 @@ class FakeClientEventLedger implements ClientEventLedger {
       cursors[conversationId];
 
   @override
+  Future<List<String>> listTrackedConversationIds() async =>
+      requests.values.map((request) => request.conversationId).toSet().toList();
+
+  @override
   Future<ClientEventRecord?> readEvent(
     String conversationId,
     BigInt sequence,
