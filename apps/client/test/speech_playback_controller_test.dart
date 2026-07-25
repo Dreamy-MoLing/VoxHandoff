@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:agent_talk_client/application/speech_playback_controller.dart';
 import 'package:agent_talk_client/domain/speech.dart';
+import 'package:agent_talk_client/domain/voice.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -87,10 +88,71 @@ void main() {
       expect(playback.stops, greaterThan(0));
     },
   );
+
+  test('stop cancels an in-flight synthesis before it can play', () async {
+    final tts = _BlockingTts();
+    final playback = _BlockingPlayback();
+    final container = ProviderContainer(
+      overrides: [
+        ttsPortProvider.overrideWithValue(tts),
+        audioPlaybackPortProvider.overrideWithValue(playback),
+        speechEnabledProvider.overrideWithValue(true),
+      ],
+    );
+    addTearDown(container.dispose);
+    final controller = container.read(speechPlaybackProvider.notifier);
+
+    await controller.speakCompletedReply(
+      conversationId: 'conversation-1',
+      requestId: 'request-cancel-synthesis',
+      messageRevision: BigInt.two,
+      fullReply: '第一段仍在合成。',
+    );
+    await _eventually(() => tts.active != null);
+    await controller.stopSpeech();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(tts.cancellations, 2, reason: 'initial reset plus explicit stop');
+    expect(playback.played, isEmpty);
+    expect(container.read(speechPlaybackProvider).phase, SpeechPhase.stopped);
+  });
+
+  test(
+    'optional speech reset failure never escapes into reply handling',
+    () async {
+      final tts = _FakeTts();
+      final container = ProviderContainer(
+        overrides: [
+          ttsPortProvider.overrideWithValue(tts),
+          audioPlaybackPortProvider.overrideWithValue(_FailingStopPlayback()),
+          speechEnabledProvider.overrideWithValue(true),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(speechPlaybackProvider.notifier)
+          .speakCompletedReply(
+            conversationId: 'conversation-1',
+            requestId: 'request-reset-failure',
+            messageRevision: BigInt.from(3),
+            fullReply: '完整回复必须保持可见。',
+          );
+
+      expect(container.read(speechPlaybackProvider).phase, SpeechPhase.failed);
+      expect(tts.segments, isEmpty);
+    },
+  );
 }
 
 class _FakeTts implements TtsPort {
   final List<SpeechSegment> segments = [];
+  int cancellations = 0;
+
+  @override
+  Future<void> cancel() async {
+    cancellations += 1;
+  }
 
   @override
   Future<SynthesizedSpeech> synthesize(SpeechSegment segment) async {
@@ -133,6 +195,52 @@ class _BlockingPlayback implements AudioPlaybackPort {
     stops += 1;
     release();
   }
+
+  @override
+  Future<void> close() async {}
+}
+
+class _BlockingTts implements TtsPort {
+  Completer<SynthesizedSpeech>? active;
+  int cancellations = 0;
+
+  @override
+  Future<void> cancel() async {
+    cancellations += 1;
+    final request = active;
+    if (request != null && !request.isCompleted) {
+      request.completeError(
+        const VoicePortException(
+          VoiceStageFailure(
+            stage: VoiceFailureStage.tts,
+            code: 'tts_cancelled',
+            safeMessage: 'Speech synthesis was cancelled.',
+            retryable: true,
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
+  Future<SynthesizedSpeech> synthesize(SpeechSegment segment) {
+    active = Completer<SynthesizedSpeech>();
+    return active!.future;
+  }
+
+  @override
+  Future<void> warmUp() async {}
+
+  @override
+  Future<void> close() async {}
+}
+
+class _FailingStopPlayback implements AudioPlaybackPort {
+  @override
+  Future<void> play(SynthesizedSpeech speech) async {}
+
+  @override
+  Future<void> stopSpeech() => Future<void>.error(StateError('fixture stop'));
 
   @override
   Future<void> close() async {}

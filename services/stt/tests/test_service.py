@@ -6,6 +6,7 @@ import json
 import math
 import struct
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -35,6 +36,23 @@ class FakeBackend:
         assert audio_path.stat().st_mode & 0o077 == 0
 
 
+class BlockingBackend(FakeBackend):
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = threading.Event()
+        self.release = threading.Event()
+        self.audio_unlinked_before_return = False
+
+    def transcribe(self, audio_path: Path, *, language: str | None) -> Transcript:
+        self.calls += 1
+        self.assert_private_wav(audio_path)
+        self.started.set()
+        if not self.release.wait(timeout=1):
+            raise RuntimeError("test backend was not released")
+        self.audio_unlinked_before_return = not audio_path.exists()
+        return Transcript("不应返回的旧结果", language or "zh", 0.5)
+
+
 def request(request_id: str, method: str, params: dict | None = None) -> bytes:
     return (
         json.dumps(
@@ -58,10 +76,16 @@ def voiced_pcm(seconds: float = 0.2, sample_rate: int = 16000) -> bytes:
 
 
 class SttServiceTest(unittest.TestCase):
-    def run_service(self, payload: bytes, *, provisional_seconds: float = 100.0):
+    def run_service(
+        self,
+        payload: bytes,
+        *,
+        provisional_seconds: float = 100.0,
+        backend: FakeBackend | None = None,
+    ):
         output = io.StringIO()
         errors = io.StringIO()
-        backend = FakeBackend()
+        backend = backend or FakeBackend()
         with tempfile.TemporaryDirectory() as directory:
             service = SttService(
                 backend,
@@ -130,6 +154,48 @@ class SttServiceTest(unittest.TestCase):
         self.assertEqual(replies[3]["error"]["code"], "stt_session_unknown")
         self.assertEqual(backend.calls, 0)
         self.assertEqual(errors, "")
+        self.assertEqual(remaining, [])
+
+    def test_cancel_interrupts_final_wait_and_unlinks_private_audio(self) -> None:
+        audio = voiced_pcm()
+        backend = BlockingBackend()
+        output = io.StringIO()
+        errors = io.StringIO()
+
+        def requests():
+            yield request("start", "start", {"session_id": "session-final", "sample_rate": 16000, "channels": 1})
+            yield request(
+                "push",
+                "push",
+                {
+                    "session_id": "session-final",
+                    "sequence": 1,
+                    "audio_base64": base64.b64encode(audio).decode(),
+                },
+            )
+            yield request("end", "end", {"session_id": "session-final"})
+            self.assertTrue(backend.started.wait(timeout=1))
+            yield request("cancel", "cancel", {"session_id": "session-final"})
+            backend.release.set()
+
+        with tempfile.TemporaryDirectory() as directory:
+            service = SttService(
+                backend,
+                output=output,
+                error_output=errors,
+                temp_root=Path(directory),
+                provisional_seconds=100.0,
+            )
+            self.assertEqual(service.serve(requests()), 0)  # type: ignore[arg-type]
+            remaining = list(Path(directory).iterdir())
+
+        replies = [json.loads(line) for line in output.getvalue().splitlines()]
+        by_id = {reply.get("id"): reply for reply in replies if reply.get("id") is not None}
+        self.assertEqual(by_id["end"]["error"]["code"], "stt_cancelled")
+        self.assertEqual(by_id["cancel"]["result"]["status"], "cancelled")
+        self.assertNotIn("result", by_id["end"])
+        self.assertTrue(backend.audio_unlinked_before_return)
+        self.assertEqual(errors.getvalue(), "")
         self.assertEqual(remaining, [])
 
     def test_silence_never_becomes_a_request(self) -> None:

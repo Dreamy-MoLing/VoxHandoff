@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/client_session.dart';
 import '../domain/voice.dart';
 import 'client_session_controller.dart';
+import 'speech_playback_controller.dart';
 
 final audioCapturePortProvider = Provider<AudioCapturePort>(
   (_) => throw StateError('No production AudioCapturePort is configured.'),
@@ -17,7 +18,7 @@ final sttPortProvider = Provider<SttPort>(
 );
 
 final speechStopPortProvider = Provider<SpeechStopPort>(
-  (_) => const _NoopSpeechStopPort(),
+  (ref) => _SpeechControllerStopPort(ref),
 );
 
 final localTranscriptStoreProvider = Provider<LocalTranscriptStore>(
@@ -38,6 +39,7 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
   Future<void> _pushes = Future.value();
   Completer<void>? _audioDone;
   int _generation = 0;
+  int _lastTranscriptSequence = 0;
 
   @override
   VoiceSessionState build() {
@@ -75,6 +77,7 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
     }
 
     final generation = ++_generation;
+    _lastTranscriptSequence = 0;
     final sessionId = _newOpaqueId();
     state = state.copyWith(
       phase: VoiceInputPhase.requestingPermission,
@@ -248,6 +251,8 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
     if (generation != _generation || state.phase != VoiceInputPhase.recording) {
       return;
     }
+    if (update.sequence <= _lastTranscriptSequence) return;
+    _lastTranscriptSequence = update.sequence;
     state = state.copyWith(provisionalTranscript: update.text);
   }
 
@@ -362,11 +367,14 @@ String _newOpaqueId() {
   return 'voice-${bytes.map((value) => value.toRadixString(16).padLeft(2, '0')).join()}';
 }
 
-class _NoopSpeechStopPort implements SpeechStopPort {
-  const _NoopSpeechStopPort();
+class _SpeechControllerStopPort implements SpeechStopPort {
+  const _SpeechControllerStopPort(this._ref);
+
+  final Ref _ref;
 
   @override
-  Future<void> stopSpeech() async {}
+  Future<void> stopSpeech() =>
+      _ref.read(speechPlaybackProvider.notifier).stopSpeech();
 }
 
 class _MemoryTranscriptStore implements LocalTranscriptStore {

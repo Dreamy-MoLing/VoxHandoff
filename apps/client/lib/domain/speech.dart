@@ -55,6 +55,7 @@ class SpeechPlaybackState {
 abstract interface class TtsPort {
   Future<void> warmUp();
   Future<SynthesizedSpeech> synthesize(SpeechSegment segment);
+  Future<void> cancel();
   Future<void> close();
 }
 

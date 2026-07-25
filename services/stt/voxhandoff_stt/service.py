@@ -28,6 +28,11 @@ class _Session:
     event_sequence: int = 0
     last_provisional_bytes: int = 0
     provisional_future: Future[Transcript] | None = None
+    final_future: Future[Transcript] | None = None
+    final_request_id: str | None = None
+    final_path: Path | None = None
+    final_started_at: float | None = None
+    final_audio_duration_ms: int | None = None
     generation: int = 0
     started_at: float = field(default_factory=time.monotonic)
 
@@ -56,8 +61,15 @@ class SttService:
         self._cleanup_stale_audio()
 
     def close(self) -> None:
+        # EOF means the caller will not submit more work. Let an accepted final
+        # transcription finish so its response is not silently lost, then scrub
+        # any idle/cancelled session residue.
+        self._executor.shutdown(wait=True, cancel_futures=False)
+        for session in self._sessions.values():
+            session.audio.clear()
+            if session.final_path is not None:
+                session.final_path.unlink(missing_ok=True)
         self._sessions.clear()
-        self._executor.shutdown(wait=False, cancel_futures=True)
 
     def serve(self, source: BinaryIO) -> int:
         try:
@@ -67,7 +79,8 @@ class SttService:
                     request = parse_request(raw.rstrip(b"\r\n"))
                     request_id = request.request_id
                     result = self._dispatch(request)
-                    self._write(envelope(id=request.request_id, result=result))
+                    if result is not None:
+                        self._write(envelope(id=request.request_id, result=result))
                 except ProtocolError as exc:
                     self._write(
                         envelope(
@@ -92,7 +105,7 @@ class SttService:
         finally:
             self.close()
 
-    def _dispatch(self, request: Request) -> dict[str, Any]:
+    def _dispatch(self, request: Request) -> dict[str, Any] | None:
         method = request.method
         if method == "health":
             return {
@@ -123,7 +136,8 @@ class SttService:
         if method == "push":
             return self._push(request.params)
         if method == "end":
-            return self._end(request.params)
+            self._end(request)
+            return None
         if method == "cancel":
             return self._cancel(request.params)
         raise ProtocolError("protocol_method_unsupported", "The STT method is unsupported.")
@@ -149,6 +163,8 @@ class SttService:
 
     def _push(self, params: dict[str, Any]) -> dict[str, Any]:
         session = self._require_session(params)
+        if session.final_request_id is not None:
+            raise ProtocolError("stt_session_finalizing", "The STT session is already finalizing.")
         sequence = params.get("sequence")
         if sequence != session.next_sequence:
             raise ProtocolError("stt_audio_sequence_invalid", "The STT audio sequence is invalid.")
@@ -161,26 +177,88 @@ class SttService:
         self._maybe_schedule_provisional(session)
         return {"session_id": session.session_id, "accepted_sequence": sequence}
 
-    def _end(self, params: dict[str, Any]) -> dict[str, Any]:
-        session = self._require_session(params)
-        self._sessions.pop(session.session_id)
-        session.generation += 1
+    def _end(self, request: Request) -> None:
+        session = self._require_session(request.params)
+        if session.final_request_id is not None:
+            raise ProtocolError("stt_session_finalizing", "The STT session is already finalizing.")
         if not _contains_voice(session.audio):
+            self._sessions.pop(session.session_id)
+            session.audio.clear()
             raise ProtocolError("stt_no_audio", "No speech was detected in the recording.")
-        started = time.monotonic()
-        audio_duration_ms = _audio_duration_ms(session)
-        transcript = self._transcribe(session, bytes(session.audio))
-        if not transcript.text:
-            raise ProtocolError("stt_empty_transcript", "The STT service returned no transcript.")
+
+        session.generation += 1
+        generation = session.generation
+        if session.provisional_future is not None:
+            session.provisional_future.cancel()
+        try:
+            path = self._create_wav(session, bytes(session.audio))
+        except Exception:
+            self._sessions.pop(session.session_id, None)
+            session.audio.clear()
+            raise
+        session.final_request_id = request.request_id
+        session.final_path = path
+        session.final_started_at = time.monotonic()
+        session.final_audio_duration_ms = _audio_duration_ms(session)
         session.audio.clear()
-        return {
-            "session_id": session.session_id,
-            "text": transcript.text,
-            "language": transcript.language,
-            "confidence": transcript.confidence,
-            "duration_ms": _duration_ms(started),
-            "audio_duration_ms": audio_duration_ms,
-        }
+        try:
+            future = self._executor.submit(self._transcribe_path, path, session.language)
+        except Exception:
+            self._sessions.pop(session.session_id, None)
+            path.unlink(missing_ok=True)
+            raise
+        session.final_future = future
+
+        def completed(result: Future[Transcript]) -> None:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                self._error_output.write("stt_temp_cleanup_failed\n")
+                self._error_output.flush()
+            if generation != session.generation or self._sessions.get(session.session_id) is not session:
+                return
+            self._sessions.pop(session.session_id, None)
+            try:
+                transcript = result.result()
+                if not transcript.text:
+                    raise ProtocolError("stt_empty_transcript", "The STT service returned no transcript.")
+            except ProtocolError as exc:
+                self._write(
+                    envelope(
+                        id=request.request_id,
+                        error={"stage": "stt", "code": exc.code, "message": exc.safe_message},
+                    )
+                )
+                return
+            except Exception:
+                self._write(
+                    envelope(
+                        id=request.request_id,
+                        error={
+                            "stage": "stt",
+                            "code": "stt_final_failed",
+                            "message": "The local STT final transcription failed.",
+                        },
+                    )
+                )
+                self._error_output.write("stt_final_failed\n")
+                self._error_output.flush()
+                return
+            self._write(
+                envelope(
+                    id=request.request_id,
+                    result={
+                        "session_id": session.session_id,
+                        "text": transcript.text,
+                        "language": transcript.language,
+                        "confidence": transcript.confidence,
+                        "duration_ms": _duration_ms(session.final_started_at or time.monotonic()),
+                        "audio_duration_ms": session.final_audio_duration_ms,
+                    },
+                )
+            )
+
+        future.add_done_callback(completed)
 
     def _cancel(self, params: dict[str, Any]) -> dict[str, Any]:
         session = self._require_session(params)
@@ -190,6 +268,26 @@ class SttService:
         future = session.provisional_future
         if future is not None:
             future.cancel()
+        final_future = session.final_future
+        if final_future is not None:
+            final_future.cancel()
+        if session.final_path is not None:
+            try:
+                session.final_path.unlink(missing_ok=True)
+            except OSError:
+                self._error_output.write("stt_temp_cleanup_failed\n")
+                self._error_output.flush()
+        if session.final_request_id is not None:
+            self._write(
+                envelope(
+                    id=session.final_request_id,
+                    error={
+                        "stage": "stt",
+                        "code": "stt_cancelled",
+                        "message": "The local STT transcription was cancelled.",
+                    },
+                )
+            )
         return {"session_id": session.session_id, "status": "cancelled"}
 
     def _require_session(self, params: dict[str, Any]) -> _Session:
@@ -236,6 +334,13 @@ class SttService:
         )
 
     def _transcribe(self, session: _Session, audio: bytes) -> Transcript:
+        path = self._create_wav(session, audio)
+        try:
+            return self._transcribe_path(path, session.language)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def _create_wav(self, session: _Session, audio: bytes) -> Path:
         self._temp_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         descriptor, path_text = tempfile.mkstemp(
             prefix="voxhandoff-stt-",
@@ -246,14 +351,21 @@ class SttService:
         try:
             os.chmod(path, 0o600)
             with os.fdopen(descriptor, "wb") as raw:
+                descriptor = -1
                 with wave.open(raw, "wb") as writer:
                     writer.setnchannels(session.channels)
                     writer.setsampwidth(2)
                     writer.setframerate(session.sample_rate)
                     writer.writeframes(audio)
-            return self._backend.transcribe(path, language=session.language)
-        finally:
+            return path
+        except Exception:
+            if descriptor >= 0:
+                os.close(descriptor)
             path.unlink(missing_ok=True)
+            raise
+
+    def _transcribe_path(self, path: Path, language: str | None) -> Transcript:
+        return self._backend.transcribe(path, language=language)
 
     def _cleanup_stale_audio(self) -> None:
         self._temp_root.mkdir(mode=0o700, parents=True, exist_ok=True)

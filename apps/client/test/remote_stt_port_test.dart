@@ -42,6 +42,38 @@ void main() {
     );
   });
 
+  test('remote STT accepts only an exact HTTPS origin root', () async {
+    for (final unsafeOrigin in [
+      Uri.parse('http://stt.example.test'),
+      Uri.parse('https://user@stt.example.test'),
+      Uri.parse('https://stt.example.test/provider'),
+      Uri.parse('https://stt.example.test/?tenant=other'),
+      Uri.parse('https://stt.example.test/#other'),
+    ]) {
+      final unsafe = RemoteSttDisclosure(
+        providerId: 'safe-fixture-provider',
+        origin: unsafeOrigin,
+        tlsPolicy: 'system-roots-hostname-verified',
+        retentionPolicy: 'fixture-no-retention',
+        streaming: false,
+        revision: 'fixture-v1',
+      );
+      expect(unsafe.isSecureOrigin, isFalse, reason: unsafeOrigin.toString());
+      await expectLater(
+        JsonHttpRemoteSttTransport(
+          tokenProvider: (_) async => 'fixture-token',
+        ).warmUp(unsafe),
+        throwsA(
+          isA<VoicePortException>().having(
+            (error) => error.failure.code,
+            'code',
+            'remote_stt_origin_unsafe',
+          ),
+        ),
+      );
+    }
+  });
+
   test(
     'consented adapter buffers PCM, finalizes, and cancels locally',
     () async {

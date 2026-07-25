@@ -25,9 +25,11 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
   @override
   SpeechPlaybackState build() {
     final playback = ref.read(audioPlaybackPortProvider);
+    final tts = ref.read(ttsPortProvider);
     ref.onDispose(() {
       _generation += 1;
-      unawaited(playback.stopSpeech());
+      unawaited(playback.stopSpeech().catchError((_) {}));
+      unawaited(tts.cancel().catchError((_) {}));
     });
     return const SpeechPlaybackState();
   }
@@ -59,7 +61,17 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
     final pieces = splitSpeechSegments(summary);
     if (pieces.isEmpty) return;
     final generation = ++_generation;
-    await _stopPlaybackOnly();
+    try {
+      await _cancelSpeechResources();
+    } on Object catch (error) {
+      state = SpeechPlaybackState(
+        phase: SpeechPhase.failed,
+        spokenText: summary,
+        failure: _safeSpeechFailure(error, VoiceFailureStage.playback),
+      );
+      return;
+    }
+    if (generation != _generation) return;
     final segments = [
       for (var index = 0; index < pieces.length; index += 1)
         SpeechSegment(
@@ -93,6 +105,9 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
         final Future<SynthesizedSpeech>? next = index + 1 < segments.length
             ? tts.synthesize(segments[index + 1])
             : null;
+        if (next != null) {
+          unawaited(next.then<void>((_) {}, onError: (_) {}));
+        }
         state = SpeechPlaybackState(
           phase: SpeechPhase.playing,
           segment: audio.segment,
@@ -122,7 +137,7 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
     final stopwatch = Stopwatch()..start();
     VoiceStageFailure? failure;
     try {
-      await _stopPlaybackOnly().timeout(const Duration(milliseconds: 300));
+      await _cancelSpeechResources().timeout(const Duration(milliseconds: 300));
     } on Object catch (error) {
       failure = _safeSpeechFailure(error, VoiceFailureStage.playback);
     }
@@ -134,8 +149,10 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
     );
   }
 
-  Future<void> _stopPlaybackOnly() =>
-      ref.read(audioPlaybackPortProvider).stopSpeech();
+  Future<void> _cancelSpeechResources() => Future.wait([
+    ref.read(ttsPortProvider).cancel(),
+    ref.read(audioPlaybackPortProvider).stopSpeech(),
+  ]);
 }
 
 String createDeterministicSpeechSummary(
@@ -217,6 +234,9 @@ class _UnavailableTtsPort implements TtsPort {
           retryable: false,
         ),
       );
+
+  @override
+  Future<void> cancel() async {}
 
   @override
   Future<void> close() async {}

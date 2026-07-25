@@ -24,6 +24,7 @@ class StdioSttPort implements SttPort {
   StreamSubscription<List<int>>? _stderr;
   final Map<String, Completer<Map<String, Object?>>> _pending = {};
   final Map<String, StreamController<TranscriptUpdate>> _updates = {};
+  final Map<String, int> _lastUpdateSequence = {};
   int _requestSequence = 0;
   bool _closed = false;
 
@@ -43,6 +44,7 @@ class StdioSttPort implements SttPort {
     }
     final controller = StreamController<TranscriptUpdate>.broadcast();
     _updates[sessionId] = controller;
+    _lastUpdateSequence[sessionId] = 0;
     try {
       await _request('start', {
         'session_id': sessionId,
@@ -53,6 +55,7 @@ class StdioSttPort implements SttPort {
       return _StdioSttSession(owner: this, sessionId: sessionId);
     } on Object {
       _updates.remove(sessionId);
+      _lastUpdateSequence.remove(sessionId);
       await controller.close();
       rethrow;
     }
@@ -220,6 +223,9 @@ class StdioSttPort implements SttPort {
     if (sessionId is! String || sequence is! int) return;
     final controller = _updates[sessionId];
     if (controller == null) return;
+    final previous = _lastUpdateSequence[sessionId] ?? 0;
+    if (sequence <= previous) return;
+    _lastUpdateSequence[sessionId] = sequence;
     if (event == 'transcript.provisional' && value['text'] is String) {
       controller.add(
         TranscriptUpdate(text: value['text']! as String, sequence: sequence),
@@ -229,6 +235,7 @@ class StdioSttPort implements SttPort {
 
   Future<void> _removeSession(String sessionId) async {
     final controller = _updates.remove(sessionId);
+    _lastUpdateSequence.remove(sessionId);
     await controller?.close();
   }
 
@@ -248,6 +255,7 @@ class StdioSttPort implements SttPort {
       unawaited(controller.close());
     }
     _updates.clear();
+    _lastUpdateSequence.clear();
   }
 
   @override
@@ -269,30 +277,31 @@ class _StdioSttSession implements SttSessionPort {
   final StdioSttPort _owner;
   final String sessionId;
   int _sequence = 0;
-  bool _closed = false;
+  bool _finishStarted = false;
+  bool _cancelled = false;
 
   @override
   Stream<TranscriptUpdate> get updates => _owner._sessionUpdates(sessionId);
 
   @override
   Future<void> push(Uint8List audio) {
-    if (_closed) return Future.value();
+    if (_finishStarted || _cancelled) return Future.value();
     return _owner._push(sessionId, ++_sequence, audio);
   }
 
   @override
   Future<FinalTranscript> finish() {
-    if (_closed) {
+    if (_finishStarted || _cancelled) {
       throw StateError('The STT session is already closed.');
     }
-    _closed = true;
+    _finishStarted = true;
     return _owner._finish(sessionId);
   }
 
   @override
   Future<void> cancel() async {
-    if (_closed) return;
-    _closed = true;
+    if (_cancelled) return;
+    _cancelled = true;
     await _owner._cancel(sessionId);
   }
 }

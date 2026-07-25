@@ -36,12 +36,18 @@ void main() {
       stt.session.updatesController.add(
         const TranscriptUpdate(text: '检查核心', sequence: 1),
       );
+      stt.session.updatesController.add(
+        const TranscriptUpdate(text: '检查核心测试', sequence: 3),
+      );
+      stt.session.updatesController.add(
+        const TranscriptUpdate(text: '迟到旧文本', sequence: 2),
+      );
       capture.session.audioController.add(Uint8List.fromList([1, 0, 2, 0]));
       capture.session.levelController.add(0.6);
       await Future<void>.delayed(Duration.zero);
       expect(
         container.read(voiceSessionProvider).provisionalTranscript,
-        '检查核心',
+        '检查核心测试',
       );
 
       final stopping = container
@@ -94,6 +100,43 @@ void main() {
       expect(stt.session.finished, 0);
     },
   );
+
+  test('transcribing cancel reaches STT and rejects the late final', () async {
+    final capture = _FakeCapturePort();
+    final stt = _FakeSttPort();
+    stt.session.finishCompleter = Completer<FinalTranscript>();
+    final container = ProviderContainer(
+      overrides: [
+        audioCapturePortProvider.overrideWithValue(capture),
+        sttPortProvider.overrideWithValue(stt),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(voiceSessionProvider.notifier).startRecording();
+    final stopping = container
+        .read(voiceSessionProvider.notifier)
+        .stopRecording();
+    await capture.session.audioController.close();
+    await _eventually(() => stt.session.finished == 1);
+
+    await container.read(voiceSessionProvider.notifier).cancelRecording();
+    stt.session.finishCompleter!.complete(
+      const FinalTranscript(
+        text: '不应进入草稿的迟到结果',
+        audioDuration: Duration(seconds: 1),
+        transcriptionDuration: Duration(seconds: 1),
+      ),
+    );
+    await stopping;
+
+    expect(stt.session.cancelled, 1);
+    expect(container.read(clientSessionProvider).draftText, isEmpty);
+    expect(
+      container.read(voiceSessionProvider).phase,
+      VoiceInputPhase.cancelled,
+    );
+  });
 
   test(
     'permission denial is a recording failure and never starts STT audio',
@@ -255,6 +298,7 @@ class _FakeSttSession implements SttSessionPort {
   int finished = 0;
   int cancelled = 0;
   Object? finishFailure;
+  Completer<FinalTranscript>? finishCompleter;
 
   @override
   Stream<TranscriptUpdate> get updates => updatesController.stream;
@@ -268,6 +312,7 @@ class _FakeSttSession implements SttSessionPort {
   Future<FinalTranscript> finish() async {
     finished += 1;
     if (finishFailure case final failure?) throw failure;
+    if (finishCompleter case final completer?) return completer.future;
     return const FinalTranscript(
       text: '检查 packages/core 的测试。',
       language: 'zh',
@@ -281,6 +326,14 @@ class _FakeSttSession implements SttSessionPort {
   Future<void> push(Uint8List audio) async {
     pushed.add(audio);
   }
+}
+
+Future<void> _eventually(bool Function() predicate) async {
+  for (var attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+  fail('Condition did not become true.');
 }
 
 class _FakeSpeechStop implements SpeechStopPort {

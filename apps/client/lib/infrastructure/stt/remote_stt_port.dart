@@ -25,7 +25,10 @@ class RemoteSttDisclosure {
   bool get isSecureOrigin =>
       origin.scheme == 'https' &&
       origin.host.isNotEmpty &&
-      origin.userInfo.isEmpty;
+      origin.userInfo.isEmpty &&
+      (origin.path.isEmpty || origin.path == '/') &&
+      !origin.hasQuery &&
+      !origin.hasFragment;
 
   @override
   bool operator ==(Object other) =>
@@ -89,12 +92,12 @@ typedef RemoteSttTokenProvider = Future<String> Function(String providerId);
 /// provider callback. Upstream bodies are bounded and never included in errors.
 class JsonHttpRemoteSttTransport implements RemoteSttTransport {
   JsonHttpRemoteSttTransport({
-    required this._tokenProvider,
+    required this.tokenProvider,
     HttpClient? client,
     this.timeout = const Duration(seconds: 30),
   }) : _client = client ?? HttpClient();
 
-  final RemoteSttTokenProvider _tokenProvider;
+  final RemoteSttTokenProvider tokenProvider;
   final HttpClient _client;
   final Duration timeout;
   bool _closed = false;
@@ -102,9 +105,11 @@ class JsonHttpRemoteSttTransport implements RemoteSttTransport {
   @override
   Future<void> warmUp(RemoteSttDisclosure disclosure) async {
     if (_closed) throw StateError('The remote STT transport is closed.');
+    _requireSecureDisclosure(disclosure);
     final request = await _client
         .getUrl(disclosure.origin.resolve('/v1/health'))
         .timeout(timeout);
+    request.followRedirects = false;
     final response = await request.close().timeout(timeout);
     await response.drain<void>();
     if (response.statusCode != HttpStatus.ok) {
@@ -118,13 +123,15 @@ class JsonHttpRemoteSttTransport implements RemoteSttTransport {
     RemoteSttRequest value,
   ) async {
     if (_closed) throw StateError('The remote STT transport is closed.');
+    _requireSecureDisclosure(disclosure);
     try {
-      final token = await _tokenProvider(disclosure.providerId);
+      final token = await tokenProvider(disclosure.providerId);
       if (token.isEmpty) throw const FormatException('Missing provider token.');
       final stopwatch = Stopwatch()..start();
       final request = await _client
           .postUrl(disclosure.origin.resolve('/v1/transcribe'))
           .timeout(timeout);
+      request.followRedirects = false;
       request.headers.contentType = ContentType.json;
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
       request.add(
@@ -181,6 +188,19 @@ class JsonHttpRemoteSttTransport implements RemoteSttTransport {
     if (_closed) return;
     _closed = true;
     _client.close(force: true);
+  }
+}
+
+void _requireSecureDisclosure(RemoteSttDisclosure disclosure) {
+  if (!disclosure.isSecureOrigin) {
+    throw const VoicePortException(
+      VoiceStageFailure(
+        stage: VoiceFailureStage.configuration,
+        code: 'remote_stt_origin_unsafe',
+        safeMessage: 'The remote speech provider origin is unsafe.',
+        retryable: false,
+      ),
+    );
   }
 }
 

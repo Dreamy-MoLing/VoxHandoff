@@ -42,7 +42,6 @@ Future<void> main() async {
         sttPortProvider.overrideWithValue(stt),
         localTranscriptStoreProvider.overrideWithValue(transcriptStore),
         audioPlaybackPortProvider.overrideWithValue(playback),
-        speechStopPortProvider.overrideWithValue(playback),
         if (tts != null) ...[
           ttsPortProvider.overrideWithValue(tts),
           speechEnabledProvider.overrideWithValue(true),
