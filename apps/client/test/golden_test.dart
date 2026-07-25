@@ -6,10 +6,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Future<void> pumpAtSize(WidgetTester tester, Size size) async {
+  tester.binding.platformDispatcher.accessibilityFeaturesTestValue =
+      const FakeAccessibilityFeatures(disableAnimations: true);
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(
+    tester.binding.platformDispatcher.clearAccessibilityFeaturesTestValue,
+  );
   await tester.pumpWidget(const ProviderScope(child: AgentTalkApp()));
   await tester.pumpAndSettle();
 }

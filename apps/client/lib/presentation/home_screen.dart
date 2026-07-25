@@ -6,15 +6,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/client_session_controller.dart';
 import '../application/device_pairing_controller.dart';
 import '../application/gateway_workspace_controller.dart';
+import '../application/speech_playback_controller.dart';
 import '../application/voice_session_controller.dart';
 import '../domain/client_event.dart';
 import '../domain/client_session.dart';
 import '../domain/device_pairing.dart';
 import '../domain/gateway_sync.dart';
 import '../domain/gateway_workspace.dart';
+import '../domain/signal_core.dart';
+import '../domain/speech.dart';
 import '../domain/voice.dart';
 import 'design/agent_talk_theme.dart';
 import 'pairing_dialog.dart';
+import 'signal_core_view.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -90,6 +94,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final workspace = ref.watch(gatewayWorkspaceProvider);
     final workspaceController = ref.read(gatewayWorkspaceProvider.notifier);
     final voice = ref.watch(voiceSessionProvider);
+    final speech = ref.watch(speechPlaybackProvider);
+    final signalCore = resolveSignalCore(
+      workspace: workspace,
+      session: session,
+      voice: voice,
+      speech: speech,
+    );
     final ownsLease = workspace.ownsSelectedLease(
       workspaceController.deviceId,
       DateTime.now(),
@@ -117,70 +128,85 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final showNavigation = constraints.maxWidth >= 900;
-          return Row(
-            children: [
-              if (showNavigation)
-                _NavigationPane(
+          final banner = _LocalOnlyBanner(
+            pairing: pairing,
+            workspace: workspace,
+            onOpenPairing: _openPairing,
+            onConnect: workspaceController.connect,
+            onDisconnect: workspaceController.disconnect,
+          );
+          final conversation = workspace.selectedConversation == null
+              ? const _EmptyConversation()
+              : _ConversationView(
                   workspace: workspace,
-                  onSelect: workspaceController.selectConversation,
-                  onCreate: () => _showCreateConversationDialog(
-                    context,
-                    workspace,
-                    workspaceController,
+                  signalCore: signalCore,
+                  ownsLease: ownsLease,
+                  onAcquire: () => workspaceController.acquireSelectedControl(
+                    explicitTakeover: workspace.selectedLease != null,
+                  ),
+                  onApproval: workspaceController.resolveApproval,
+                  onClarification: workspaceController.resolveClarification,
+                  onInterrupt: workspaceController.interrupt,
+                );
+          final composer = _Composer(
+            textController: _composer,
+            session: session,
+            voice: voice,
+            onChanged: controller.editDraft,
+            onConfirm: _confirmDraft,
+            onReopen: controller.reopenDraft,
+            onSend: _send,
+            onNextDraft: _startNextDraft,
+            sendEnabled: ownsLease,
+            onStartVoice: _startVoice,
+            onStopVoice: _stopVoice,
+            onCancelVoice: _cancelVoice,
+            onDiscardVoice: _discardVoice,
+          );
+          if (!showNavigation) {
+            return Column(
+              children: [
+                Expanded(
+                  child: NestedScrollView(
+                    headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                      SliverToBoxAdapter(child: banner),
+                      if (workspace.directory != null)
+                        SliverToBoxAdapter(
+                          child: _ConversationPicker(
+                            workspace: workspace,
+                            onSelect: workspaceController.selectConversation,
+                            onCreate: () => _showCreateConversationDialog(
+                              context,
+                              workspace,
+                              workspaceController,
+                            ),
+                          ),
+                        ),
+                    ],
+                    body: conversation,
                   ),
                 ),
+                composer,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              _NavigationPane(
+                workspace: workspace,
+                onSelect: workspaceController.selectConversation,
+                onCreate: () => _showCreateConversationDialog(
+                  context,
+                  workspace,
+                  workspaceController,
+                ),
+              ),
               Expanded(
                 child: Column(
                   children: [
-                    _LocalOnlyBanner(
-                      pairing: pairing,
-                      workspace: workspace,
-                      onOpenPairing: _openPairing,
-                      onConnect: workspaceController.connect,
-                      onDisconnect: workspaceController.disconnect,
-                    ),
-                    if (!showNavigation && workspace.directory != null)
-                      _ConversationPicker(
-                        workspace: workspace,
-                        onSelect: workspaceController.selectConversation,
-                        onCreate: () => _showCreateConversationDialog(
-                          context,
-                          workspace,
-                          workspaceController,
-                        ),
-                      ),
-                    Expanded(
-                      child: workspace.selectedConversation == null
-                          ? const _EmptyConversation()
-                          : _ConversationView(
-                              workspace: workspace,
-                              ownsLease: ownsLease,
-                              onAcquire: () =>
-                                  workspaceController.acquireSelectedControl(
-                                    explicitTakeover:
-                                        workspace.selectedLease != null,
-                                  ),
-                              onApproval: workspaceController.resolveApproval,
-                              onClarification:
-                                  workspaceController.resolveClarification,
-                              onInterrupt: workspaceController.interrupt,
-                            ),
-                    ),
-                    _Composer(
-                      textController: _composer,
-                      session: session,
-                      voice: voice,
-                      onChanged: controller.editDraft,
-                      onConfirm: _confirmDraft,
-                      onReopen: controller.reopenDraft,
-                      onSend: _send,
-                      onNextDraft: _startNextDraft,
-                      sendEnabled: ownsLease,
-                      onStartVoice: _startVoice,
-                      onStopVoice: _stopVoice,
-                      onCancelVoice: _cancelVoice,
-                      onDiscardVoice: _discardVoice,
-                    ),
+                    banner,
+                    Expanded(child: conversation),
+                    composer,
                   ],
                 ),
               ),
@@ -388,6 +414,12 @@ class _LocalOnlyBanner extends StatelessWidget {
                             : paired
                             ? 'Device credential verified. Connect explicitly to load Agents and conversations.'
                             : 'Not paired. Draft text stays on this device and cannot be sent.'),
+                    maxLines: MediaQuery.textScalerOf(context).scale(1) >= 1.5
+                        ? 3
+                        : null,
+                    overflow: MediaQuery.textScalerOf(context).scale(1) >= 1.5
+                        ? TextOverflow.ellipsis
+                        : null,
                   ),
                 ),
               ],
@@ -407,6 +439,39 @@ class _LocalOnlyBanner extends StatelessWidget {
                     : 'Pair Gateway',
               ),
             );
+            if (constraints.maxWidth < 480) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(child: message),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    tooltip:
+                        workspace.connectionPhase ==
+                            GatewayConnectionPhase.connected
+                        ? 'Disconnect'
+                        : paired
+                        ? 'Connect Gateway'
+                        : 'Pair Gateway',
+                    onPressed:
+                        workspace.connectionPhase ==
+                            GatewayConnectionPhase.connected
+                        ? onDisconnect
+                        : paired
+                        ? onConnect
+                        : onOpenPairing,
+                    icon: Icon(
+                      workspace.connectionPhase ==
+                              GatewayConnectionPhase.connected
+                          ? Icons.link_off
+                          : paired
+                          ? Icons.link
+                          : Icons.lock_open,
+                    ),
+                  ),
+                ],
+              );
+            }
             if (constraints.maxWidth < 560) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -451,6 +516,7 @@ class _ConversationPicker extends StatelessWidget {
         children: [
           Expanded(
             child: DropdownButtonFormField<String>(
+              isExpanded: true,
               initialValue: workspace.selectedConversationId,
               decoration: const InputDecoration(labelText: 'Conversation'),
               items: [
@@ -557,6 +623,7 @@ String _newOpaqueId(String purpose) {
 class _ConversationView extends StatelessWidget {
   const _ConversationView({
     required this.workspace,
+    required this.signalCore,
     required this.ownsLease,
     required this.onAcquire,
     required this.onApproval,
@@ -565,6 +632,7 @@ class _ConversationView extends StatelessWidget {
   });
 
   final GatewayWorkspaceState workspace;
+  final SignalCoreSnapshot signalCore;
   final bool ownsLease;
   final VoidCallback onAcquire;
   final Future<void> Function(ClientEventRecord, ClientApprovalDecision)
@@ -578,68 +646,176 @@ class _ConversationView extends StatelessWidget {
     final activeRequest = workspace.events.reversed
         .where((event) => !_terminalKinds.contains(event.kind))
         .firstOrNull;
-    return Column(
-      children: [
-        Material(
-          color: Theme.of(context).colorScheme.surfaceContainerLow,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        conversation.title,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      Text(
-                        ownsLease
-                            ? 'Control held by this device'
-                            : workspace.selectedLease == null
-                            ? 'Observe only · no control lease'
-                            : 'Observe only · controlled by another device',
-                        style: TextStyle(color: context.visualTokens.textMuted),
-                      ),
-                    ],
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final desktop = constraints.maxWidth >= 760;
+        final coreDimension = desktop
+            ? signalCore.isExpanded
+                  ? 260.0
+                  : constraints.maxWidth < 980
+                  ? 144.0
+                  : 188.0
+            : signalCore.demandsInteraction
+            ? 68.0
+            : signalCore.isExpanded
+            ? 180.0
+            : 96.0;
+        final header = _ConversationHeader(
+          conversation: conversation,
+          workspace: workspace,
+          ownsLease: ownsLease,
+          activeRequest: activeRequest,
+          onAcquire: onAcquire,
+          onInterrupt: onInterrupt,
+        );
+        final eventList = workspace.events.isEmpty
+            ? const Center(child: Text('No durable events yet'))
+            : ListView.builder(
+                key: const ValueKey('conversation-events'),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  16,
+                  desktop ? coreDimension + 40 : 16,
+                  16,
                 ),
-                if (ownsLease && activeRequest != null)
-                  TextButton.icon(
-                    onPressed: () => onInterrupt(activeRequest),
-                    icon: const Icon(Icons.stop_circle_outlined),
-                    label: const Text('Interrupt'),
-                  )
-                else if (!ownsLease)
-                  FilledButton.tonalIcon(
-                    onPressed: onAcquire,
-                    icon: const Icon(Icons.control_point_duplicate),
-                    label: Text(
-                      workspace.selectedLease == null
-                          ? 'Take control'
-                          : 'Take over explicitly',
+                itemCount: workspace.events.length,
+                itemBuilder: (context, index) => _EventCard(
+                  event: workspace.events[index],
+                  ownsLease: ownsLease,
+                  onApproval: onApproval,
+                  onClarification: onClarification,
+                ),
+              );
+        if (desktop) {
+          return Column(
+            children: [
+              header,
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned.fill(child: eventList),
+                    Positioned(
+                      right: 20,
+                      top: 18,
+                      child: SignalCoreView(
+                        snapshot: signalCore,
+                        dimension: coreDimension,
+                        profile: SignalRenderProfile.highRefresh120,
+                      ),
                     ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        Expanded(
-          child: workspace.events.isEmpty
-              ? const Center(child: Text('No durable events yet'))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: workspace.events.length,
-                  itemBuilder: (context, index) => _EventCard(
-                    event: workspace.events[index],
-                    ownsLease: ownsLease,
-                    onApproval: onApproval,
-                    onClarification: onClarification,
-                  ),
+                  ],
                 ),
+              ),
+            ],
+          );
+        }
+        return ListView(
+          key: const ValueKey('mobile-conversation'),
+          padding: EdgeInsets.zero,
+          children: [
+            header,
+            AnimatedContainer(
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 240),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.only(top: 10),
+              child: SignalCoreView(
+                snapshot: signalCore,
+                dimension: coreDimension,
+              ),
+            ),
+            if (workspace.events.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: Text('No durable events yet')),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    for (final event in workspace.events)
+                      _EventCard(
+                        event: event,
+                        ownsLease: ownsLease,
+                        onApproval: onApproval,
+                        onClarification: onClarification,
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ConversationHeader extends StatelessWidget {
+  const _ConversationHeader({
+    required this.conversation,
+    required this.workspace,
+    required this.ownsLease,
+    required this.activeRequest,
+    required this.onAcquire,
+    required this.onInterrupt,
+  });
+
+  final ClientConversationDirectoryEntry conversation;
+  final GatewayWorkspaceState workspace;
+  final bool ownsLease;
+  final ClientEventRecord? activeRequest;
+  final VoidCallback onAcquire;
+  final void Function(ClientEventRecord) onInterrupt;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    conversation.title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  Text(
+                    ownsLease
+                        ? 'Control held by this device'
+                        : workspace.selectedLease == null
+                        ? 'Observe only · no control lease'
+                        : 'Observe only · controlled by another device',
+                    style: TextStyle(color: context.visualTokens.textMuted),
+                  ),
+                ],
+              ),
+            ),
+            if (ownsLease && activeRequest != null)
+              TextButton.icon(
+                onPressed: () => onInterrupt(activeRequest!),
+                icon: const Icon(Icons.stop_circle_outlined),
+                label: const Text('Interrupt'),
+              )
+            else if (!ownsLease)
+              FilledButton.tonalIcon(
+                onPressed: onAcquire,
+                icon: const Icon(Icons.control_point_duplicate),
+                label: Text(
+                  workspace.selectedLease == null
+                      ? 'Take control'
+                      : 'Take over explicitly',
+                ),
+              ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -668,6 +844,10 @@ class _EventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final content = event.content;
+    final pendingInteraction =
+        event.kind == ClientEventKind.approvalRequired ||
+        event.kind == ClientEventKind.clarificationRequired;
+    final tokens = context.visualTokens;
     final title = event.kind.name;
     final text = switch (content) {
       MessageClientEventContent() => content.text,
@@ -682,50 +862,75 @@ class _EventCard extends StatelessWidget {
       EmptyClientEventContent() => '',
     };
     return Card(
+      color: pendingInteraction
+          ? Color.alphaBlend(
+              tokens.attention.withValues(alpha: 0.12),
+              tokens.panelRaised,
+            )
+          : null,
+      shape: pendingInteraction
+          ? RoundedRectangleBorder(
+              borderRadius: const BorderRadius.all(Radius.circular(4)),
+              side: BorderSide(color: tokens.attention, width: 1.5),
+            )
+          : null,
       margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.labelMedium),
-            if (text.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              SelectableText(text),
-            ],
-            if (event.kind == ClientEventKind.approvalRequired &&
-                content is ApprovalClientEventContent) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                children: [
-                  FilledButton(
-                    onPressed: ownsLease
-                        ? () =>
-                              onApproval(event, ClientApprovalDecision.approve)
-                        : null,
-                    child: const Text('Approve'),
-                  ),
-                  OutlinedButton(
-                    onPressed: ownsLease
-                        ? () => onApproval(event, ClientApprovalDecision.deny)
-                        : null,
-                    child: const Text('Deny'),
-                  ),
-                ],
+      child: Semantics(
+        container: true,
+        liveRegion: pendingInteraction,
+        label: pendingInteraction ? 'User action required' : null,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: pendingInteraction ? tokens.attention : null,
+                  fontWeight: pendingInteraction ? FontWeight.w700 : null,
+                ),
               ),
+              if (text.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                SelectableText(text),
+              ],
+              if (event.kind == ClientEventKind.approvalRequired &&
+                  content is ApprovalClientEventContent) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    FilledButton(
+                      onPressed: ownsLease
+                          ? () => onApproval(
+                              event,
+                              ClientApprovalDecision.approve,
+                            )
+                          : null,
+                      child: const Text('Approve'),
+                    ),
+                    OutlinedButton(
+                      onPressed: ownsLease
+                          ? () => onApproval(event, ClientApprovalDecision.deny)
+                          : null,
+                      child: const Text('Deny'),
+                    ),
+                  ],
+                ),
+              ],
+              if (event.kind == ClientEventKind.clarificationRequired &&
+                  content is ClarificationClientEventContent) ...[
+                const SizedBox(height: 12),
+                FilledButton.tonal(
+                  onPressed: ownsLease
+                      ? () => _showClarificationDialog(context)
+                      : null,
+                  child: const Text('Answer explicitly'),
+                ),
+              ],
             ],
-            if (event.kind == ClientEventKind.clarificationRequired &&
-                content is ClarificationClientEventContent) ...[
-              const SizedBox(height: 12),
-              FilledButton.tonal(
-                onPressed: ownsLease
-                    ? () => _showClarificationDialog(context)
-                    : null,
-                child: const Text('Answer explicitly'),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -787,7 +992,15 @@ class _EmptyConversation extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            const _StaticSignalLens(),
+            SignalCoreView(
+              snapshot: resolveSignalCore(
+                workspace: const GatewayWorkspaceState(),
+                session: const ClientSessionState(),
+                voice: const VoiceSessionState(),
+                speech: const SpeechPlaybackState(),
+              ),
+              dimension: 124,
+            ),
             const SizedBox(height: 24),
             const Text(
               'Pair a Gateway, then choose an Agent and conversation.',
@@ -805,99 +1018,6 @@ class _EmptyConversation extends StatelessWidget {
       ),
     );
   }
-}
-
-class _StaticSignalLens extends StatelessWidget {
-  const _StaticSignalLens();
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.visualTokens;
-    return Semantics(
-      label: 'VoxHandoff idle status',
-      child: SizedBox.square(
-        dimension: 124,
-        child: CustomPaint(
-          painter: _SignalLensPainter(
-            signal: tokens.signal,
-            structureLine: tokens.structureLine,
-            ink: tokens.ink,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SignalLensPainter extends CustomPainter {
-  const _SignalLensPainter({
-    required this.signal,
-    required this.structureLine,
-    required this.ink,
-  });
-
-  final Color signal;
-  final Color structureLine;
-  final Color ink;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    final radius = size.shortestSide / 2;
-    final structure = Paint()
-      ..color = structureLine
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    final active = Paint()
-      ..color = signal
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.square
-      ..strokeWidth = 2;
-
-    canvas.drawCircle(center, radius - 10, structure);
-    canvas.drawCircle(center, radius - 25, structure);
-    for (var index = 0; index < 12; index += 1) {
-      final angle = index * math.pi / 6;
-      final inner = Offset(
-        center.dx + math.cos(angle) * (radius - 7),
-        center.dy + math.sin(angle) * (radius - 7),
-      );
-      final outer = Offset(
-        center.dx + math.cos(angle) * (radius - (index.isEven ? 0 : 3)),
-        center.dy + math.sin(angle) * (radius - (index.isEven ? 0 : 3)),
-      );
-      canvas.drawLine(inner, outer, index.isEven ? active : structure);
-    }
-
-    final arcBounds = Rect.fromCircle(center: center, radius: radius - 16);
-    canvas.drawArc(arcBounds, -0.18 * math.pi, 0.52 * math.pi, false, active);
-    canvas.drawArc(arcBounds, 0.82 * math.pi, 0.38 * math.pi, false, active);
-
-    final core = Path()
-      ..moveTo(center.dx, center.dy - 14)
-      ..lineTo(center.dx + 18, center.dy)
-      ..lineTo(center.dx, center.dy + 14)
-      ..lineTo(center.dx - 18, center.dy)
-      ..close();
-    canvas.drawPath(core, Paint()..color = ink);
-    canvas.drawPath(core, active);
-    canvas.drawLine(
-      Offset(center.dx - 28, center.dy),
-      Offset(center.dx - 10, center.dy),
-      active,
-    );
-    canvas.drawLine(
-      Offset(center.dx + 10, center.dy),
-      Offset(center.dx + 28, center.dy),
-      active,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _SignalLensPainter oldDelegate) =>
-      oldDelegate.signal != signal ||
-      oldDelegate.structureLine != structureLine ||
-      oldDelegate.ink != ink;
 }
 
 class _Composer extends StatelessWidget {
@@ -938,98 +1058,105 @@ class _Composer extends StatelessWidget {
     final uncertain = session.draftPhase == DraftPhase.uncertain;
     return SafeArea(
       top: false,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 900),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final editor = TextField(
-                controller: textController,
-                enabled: session.canEditDraft && !confirmed,
-                minLines: 1,
-                maxLines: 6,
-                onChanged: onChanged,
-                decoration: InputDecoration(
-                  labelText: confirmed ? 'Confirmed locally' : 'Editable draft',
-                  hintText: 'Type text to review before sending',
-                ),
-              );
-              final voiceAction = _VoiceAction(
-                voice: voice,
-                draftEditable: session.draftPhase == DraftPhase.editing,
-                onStart: onStartVoice,
-                onStop: onStopVoice,
-                onCancel: onCancelVoice,
-                onDiscard: onDiscardVoice,
-              );
-              final editorWithVoice = Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  editor,
-                  if (voice.phase != VoiceInputPhase.idle) ...[
-                    const SizedBox(height: 6),
-                    _VoiceStatus(voice: voice),
-                  ],
-                ],
-              );
-              final primaryAction = accepted
-                  ? OutlinedButton(
-                      onPressed: onNextDraft,
-                      child: const Text('New draft'),
-                    )
-                  : confirmed
-                  ? OutlinedButton(
-                      onPressed: onReopen,
-                      child: const Text('Edit'),
-                    )
-                  : FilledButton(
-                      onPressed: session.canConfirmDraft ? onConfirm : null,
-                      child: const Text('Confirm'),
-                    );
-              final canSend = confirmed && session.canSubmit && sendEnabled;
-              final sendAction = FilledButton.tonal(
-                onPressed: canSend ? onSend : null,
-                child: Text(
-                  uncertain
-                      ? 'Outcome uncertain'
-                      : session.draftPhase == DraftPhase.submitting
-                      ? 'Awaiting acceptance'
-                      : canSend
-                      ? 'Send confirmed text'
-                      : 'Send unavailable',
-                ),
-              );
-              if (constraints.maxWidth < 640) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: math.min(MediaQuery.sizeOf(context).height * 0.42, 340),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 900),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final editor = TextField(
+                  controller: textController,
+                  enabled: session.canEditDraft && !confirmed,
+                  minLines: 1,
+                  maxLines: 6,
+                  onChanged: onChanged,
+                  decoration: InputDecoration(
+                    labelText: confirmed
+                        ? 'Confirmed locally'
+                        : 'Editable draft',
+                    hintText: 'Type text to review before sending',
+                  ),
+                );
+                final voiceAction = _VoiceAction(
+                  voice: voice,
+                  draftEditable: session.draftPhase == DraftPhase.editing,
+                  onStart: onStartVoice,
+                  onStop: onStopVoice,
+                  onCancel: onCancelVoice,
+                  onDiscard: onDiscardVoice,
+                );
+                final editorWithVoice = Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    editorWithVoice,
-                    const SizedBox(height: 10),
-                    Wrap(
-                      alignment: WrapAlignment.end,
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [voiceAction, primaryAction, sendAction],
-                    ),
+                    editor,
+                    if (voice.phase != VoiceInputPhase.idle) ...[
+                      const SizedBox(height: 6),
+                      _VoiceStatus(voice: voice),
+                    ],
                   ],
                 );
-              }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(child: editorWithVoice),
-                  const SizedBox(width: 12),
-                  voiceAction,
-                  const SizedBox(width: 8),
-                  primaryAction,
-                  const SizedBox(width: 8),
-                  sendAction,
-                ],
-              );
-            },
+                final primaryAction = accepted
+                    ? OutlinedButton(
+                        onPressed: onNextDraft,
+                        child: const Text('New draft'),
+                      )
+                    : confirmed
+                    ? OutlinedButton(
+                        onPressed: onReopen,
+                        child: const Text('Edit'),
+                      )
+                    : FilledButton(
+                        onPressed: session.canConfirmDraft ? onConfirm : null,
+                        child: const Text('Confirm'),
+                      );
+                final canSend = confirmed && session.canSubmit && sendEnabled;
+                final sendAction = FilledButton.tonal(
+                  onPressed: canSend ? onSend : null,
+                  child: Text(
+                    uncertain
+                        ? 'Outcome uncertain'
+                        : session.draftPhase == DraftPhase.submitting
+                        ? 'Awaiting acceptance'
+                        : canSend
+                        ? 'Send confirmed text'
+                        : 'Send unavailable',
+                  ),
+                );
+                if (constraints.maxWidth < 640) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      editorWithVoice,
+                      const SizedBox(height: 10),
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [voiceAction, primaryAction, sendAction],
+                      ),
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(child: editorWithVoice),
+                    const SizedBox(width: 12),
+                    voiceAction,
+                    const SizedBox(width: 8),
+                    primaryAction,
+                    const SizedBox(width: 8),
+                    sendAction,
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),
