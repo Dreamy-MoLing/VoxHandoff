@@ -273,11 +273,13 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 
 - GLSL 核心、音频波纹、扫描线和短故障转场；
 - Rive 辅助微动效；
-- idle/recording/working/approval/completed/failed/uncertain 视觉状态；
+- 桌面常驻视觉安全区、录音展开和手机标题/阅读/录音三种尺寸槽位；
+- idle/recording/transcribing/awaiting-confirmation/submitting/working/speaking/approval/completed/failed/uncertain 视觉状态；
+- 真实麦克风音量、规范 Agent 事件和当前 TTS segment 驱动，stale identity 不继续响应；
 - Windows/macOS/Linux 快捷键、托盘、通知和窗口行为；
 - 减少动态效果、静态回退、60/120 FPS profile。
 
-退出条件：shader/Rive 故障不影响使用；五端同状态语义一致；审批保持高对比度。
+退出条件：shader/Rive 故障不影响使用；五端同状态语义一致；核心不覆盖正文、转写或操作；审批和澄清保持高对比度并取得视觉优先级；`uncertain` 不产生完成反馈；减少动态效果下所有状态可由静态几何和文字区分。
 
 ### M5 — OpenClaw、发行与运维
 

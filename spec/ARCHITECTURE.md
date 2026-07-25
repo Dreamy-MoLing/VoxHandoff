@@ -407,10 +407,13 @@ GPT-SoVITS adapter 生成规范音频块，`media_kit` adapter 播放。TTS 队�
 - Platform plugins：麦克风会话、安全存储、全局快捷键、通知和窗口行为。
 - 配对 presentation 只观察 Riverpod application state 并发出显式用户动作；production workflow factory 独占安全存储、TLS channel、生成 RPC client 和 coordinator 的组合与关闭，widget test 以离线 factory 替换。公开 UI state 不含 challenge、签名、nonce 或 token；
 - conversation presentation 只观察 production workspace 的领域快照；桌面导航与手机单列选择共享同一 selection identity。完整回复使用可选择文字，tool/terminal 保留安全阶段事实，approval 与 clarification 优先于装饰；无当前 lease 时所有可执行按钮禁用，只显示 observe 状态与显式 take-control/takeover；
+- 信号生命核心是只读 presentation，由规范 Agent 事件、本地 voice/speech 阶段、真实 `audioLevel` 和播放 segment identity 合成为有限视觉状态；它不持有 request、approval、lease 或命令权限，不直接解释 adapter 原始事件；
+- 状态优先级固定为 approval/clarification → uncertain → failed → recording/transcribing → submitting/working → speaking → completed → idle。同一时刻只发布一个主状态，次级连接、同步和播放事实由独立文字或图标呈现；
+- 桌面核心在会话工作台的固定视觉安全区布局，手机核心在标题、阅读和录音三种尺寸槽位间切换；布局约束先保证正文、审批、澄清、转写确认和取消/停止操作，再分配装饰空间；
 
 设计系统组件以独立 catalog/use case 覆盖真实状态，再进入业务页面；catalog 工具、第三方组件库和 styling package 都只能是开发或表现层依赖，不得成为领域状态权威。优先使用 Flutter 内建语义、focus、Theme 和自有小组件；只有组件隔离测试或跨端一致性收益足以抵消依赖/迁移成本时才引入社区包。
 
-shader 只接收 `audioLevel`、`statePhase`、`errorPulse` 等归一化数值，不接收领域对象。所有状态必须有无动画等价表现；减少动态时禁用扫描、故障和持续波纹，只保留静态几何、文字和高对比状态标记。
+shader 只接收 `audioLevel`、`playbackLevel`、`statePhase`、`errorPulse` 等归一化数值，不接收领域对象。录音响应只使用当前 AudioCapture session 的音量，TTS 响应只使用当前播放 segment 的包络；停止、取消、切换会话或 segment identity 失效后立即清除对应输入。所有状态必须有无动画等价表现；减少动态时禁用扫描、故障、漂移和持续波纹，只保留偏心核心、环结构差异、文字和高对比状态标记。
 
 ## 12. 网络与安全
 
