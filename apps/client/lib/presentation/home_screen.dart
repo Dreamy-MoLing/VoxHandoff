@@ -1,15 +1,19 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/client_session_controller.dart';
+import '../application/desktop_integration_controller.dart';
 import '../application/device_pairing_controller.dart';
 import '../application/gateway_workspace_controller.dart';
 import '../application/speech_playback_controller.dart';
 import '../application/voice_session_controller.dart';
 import '../domain/client_event.dart';
 import '../domain/client_session.dart';
+import '../domain/desktop_capabilities.dart';
 import '../domain/device_pairing.dart';
 import '../domain/gateway_sync.dart';
 import '../domain/gateway_workspace.dart';
@@ -36,6 +40,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _composer = TextEditingController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(devicePairingProvider.notifier).restore();
+      unawaited(
+        ref
+            .read(desktopIntegrationProvider.notifier)
+            .initialize(
+              onVoiceToggle: _toggleVoiceDraft,
+              workspace: ref.read(gatewayWorkspaceProvider),
+            ),
+      );
     });
   }
 
@@ -86,15 +98,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _composer.clear();
   }
 
+  Future<void> _toggleVoiceDraft() async {
+    final voice = ref.read(voiceSessionProvider);
+    if (voice.canStop) {
+      await _stopVoice();
+    } else if (voice.canStart) {
+      await _startVoice();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(clientSessionProvider);
     final controller = ref.read(clientSessionProvider.notifier);
     final pairing = ref.watch(devicePairingProvider);
     final workspace = ref.watch(gatewayWorkspaceProvider);
+    ref.listen(gatewayWorkspaceProvider, (_, next) {
+      unawaited(
+        ref.read(desktopIntegrationProvider.notifier).observeWorkspace(next),
+      );
+    });
     final workspaceController = ref.read(gatewayWorkspaceProvider.notifier);
     final voice = ref.watch(voiceSessionProvider);
     final speech = ref.watch(speechPlaybackProvider);
+    final desktop = ref.watch(desktopIntegrationProvider);
     final signalCore = resolveSignalCore(
       workspace: workspace,
       session: session,
@@ -106,113 +133,152 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       DateTime.now(),
     );
     final compactAppBar = MediaQuery.sizeOf(context).width < 480;
-    return Scaffold(
-      appBar: AppBar(
-        title: Semantics(
-          header: true,
-          label: 'VoxHandoff',
-          child: const Text(
-            'VOX / HANDOFF',
-            style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 2.2),
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(
+          LogicalKeyboardKey.space,
+          control: true,
+          shift: true,
+        ): () =>
+            unawaited(_toggleVoiceDraft()),
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Semantics(
+            header: true,
+            label: 'VoxHandoff',
+            child: const Text(
+              'VOX / HANDOFF',
+              style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 2.2),
+            ),
           ),
+          actions: [
+            if (desktop.isDesktop) _DesktopCapabilityIcon(snapshot: desktop),
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: compactAppBar
+                  ? _ConnectionStatusIcon(phase: session.connectionPhase)
+                  : _ConnectionChip(phase: session.connectionPhase),
+            ),
+          ],
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: compactAppBar
-                ? _ConnectionStatusIcon(phase: session.connectionPhase)
-                : _ConnectionChip(phase: session.connectionPhase),
-          ),
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final showNavigation = constraints.maxWidth >= 900;
-          final banner = _LocalOnlyBanner(
-            pairing: pairing,
-            workspace: workspace,
-            onOpenPairing: _openPairing,
-            onConnect: workspaceController.connect,
-            onDisconnect: workspaceController.disconnect,
-          );
-          final conversation = workspace.selectedConversation == null
-              ? const _EmptyConversation()
-              : _ConversationView(
-                  workspace: workspace,
-                  signalCore: signalCore,
-                  ownsLease: ownsLease,
-                  onAcquire: () => workspaceController.acquireSelectedControl(
-                    explicitTakeover: workspace.selectedLease != null,
-                  ),
-                  onApproval: workspaceController.resolveApproval,
-                  onClarification: workspaceController.resolveClarification,
-                  onInterrupt: workspaceController.interrupt,
-                );
-          final composer = _Composer(
-            textController: _composer,
-            session: session,
-            voice: voice,
-            onChanged: controller.editDraft,
-            onConfirm: _confirmDraft,
-            onReopen: controller.reopenDraft,
-            onSend: _send,
-            onNextDraft: _startNextDraft,
-            sendEnabled: ownsLease,
-            onStartVoice: _startVoice,
-            onStopVoice: _stopVoice,
-            onCancelVoice: _cancelVoice,
-            onDiscardVoice: _discardVoice,
-          );
-          if (!showNavigation) {
-            return Column(
-              children: [
-                Expanded(
-                  child: NestedScrollView(
-                    headerSliverBuilder: (context, innerBoxIsScrolled) => [
-                      SliverToBoxAdapter(child: banner),
-                      if (workspace.directory != null)
-                        SliverToBoxAdapter(
-                          child: _ConversationPicker(
-                            workspace: workspace,
-                            onSelect: workspaceController.selectConversation,
-                            onCreate: () => _showCreateConversationDialog(
-                              context,
-                              workspace,
-                              workspaceController,
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final showNavigation = constraints.maxWidth >= 900;
+            final banner = _LocalOnlyBanner(
+              pairing: pairing,
+              workspace: workspace,
+              onOpenPairing: _openPairing,
+              onConnect: workspaceController.connect,
+              onDisconnect: workspaceController.disconnect,
+            );
+            final conversation = workspace.selectedConversation == null
+                ? const _EmptyConversation()
+                : _ConversationView(
+                    workspace: workspace,
+                    signalCore: signalCore,
+                    ownsLease: ownsLease,
+                    onAcquire: () => workspaceController.acquireSelectedControl(
+                      explicitTakeover: workspace.selectedLease != null,
+                    ),
+                    onApproval: workspaceController.resolveApproval,
+                    onClarification: workspaceController.resolveClarification,
+                    onInterrupt: workspaceController.interrupt,
+                  );
+            final composer = _Composer(
+              textController: _composer,
+              session: session,
+              voice: voice,
+              onChanged: controller.editDraft,
+              onConfirm: _confirmDraft,
+              onReopen: controller.reopenDraft,
+              onSend: _send,
+              onNextDraft: _startNextDraft,
+              sendEnabled: ownsLease,
+              onStartVoice: _startVoice,
+              onStopVoice: _stopVoice,
+              onCancelVoice: _cancelVoice,
+              onDiscardVoice: _discardVoice,
+            );
+            if (!showNavigation) {
+              return Column(
+                children: [
+                  Expanded(
+                    child: NestedScrollView(
+                      headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                        SliverToBoxAdapter(child: banner),
+                        if (workspace.directory != null)
+                          SliverToBoxAdapter(
+                            child: _ConversationPicker(
+                              workspace: workspace,
+                              onSelect: workspaceController.selectConversation,
+                              onCreate: () => _showCreateConversationDialog(
+                                context,
+                                workspace,
+                                workspaceController,
+                              ),
                             ),
                           ),
-                        ),
-                    ],
-                    body: conversation,
+                      ],
+                      body: conversation,
+                    ),
+                  ),
+                  composer,
+                ],
+              );
+            }
+            return Row(
+              children: [
+                _NavigationPane(
+                  workspace: workspace,
+                  onSelect: workspaceController.selectConversation,
+                  onCreate: () => _showCreateConversationDialog(
+                    context,
+                    workspace,
+                    workspaceController,
                   ),
                 ),
-                composer,
+                Expanded(
+                  child: Column(
+                    children: [
+                      banner,
+                      Expanded(child: conversation),
+                      composer,
+                    ],
+                  ),
+                ),
               ],
             );
-          }
-          return Row(
-            children: [
-              _NavigationPane(
-                workspace: workspace,
-                onSelect: workspaceController.selectConversation,
-                onCreate: () => _showCreateConversationDialog(
-                  context,
-                  workspace,
-                  workspaceController,
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  children: [
-                    banner,
-                    Expanded(child: conversation),
-                    composer,
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _DesktopCapabilityIcon extends StatelessWidget {
+  const _DesktopCapabilityIcon({required this.snapshot});
+
+  final DesktopCapabilitySnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final degraded = snapshot.hasDegradedCapability;
+    return Tooltip(
+      message: snapshot.safeSummary,
+      child: Semantics(
+        label: degraded
+            ? 'Desktop integrations are partially available'
+            : 'Desktop integrations are available',
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Icon(
+            degraded
+                ? Icons.desktop_access_disabled_outlined
+                : Icons.desktop_windows_outlined,
+            color: degraded ? const Color(0xFFFFB86C) : null,
+          ),
+        ),
       ),
     );
   }

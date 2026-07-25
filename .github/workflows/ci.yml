@@ -87,7 +87,8 @@ jobs:
         run: >-
           sudo apt-get update && sudo apt-get install -y
           clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev
-          libsqlite3-dev dbus-x11 gnome-keyring xvfb ffmpeg pulseaudio-utils
+          libsqlite3-dev libkeybinder-3.0-dev libayatana-appindicator3-dev
+          libnotify-dev dbus-x11 gnome-keyring xvfb ffmpeg pulseaudio-utils
 
       - name: Install locked Node dependencies
         run: npm ci
@@ -113,6 +114,13 @@ jobs:
       - name: Build Linux release
         working-directory: apps/client
         run: flutter build linux --release
+
+      - name: Exercise Linux desktop integration startup
+        working-directory: apps/client
+        run: >-
+          dbus-run-session -- xvfb-run -a
+          env VOXHANDOFF_DESKTOP_INTEGRATION_SELF_TEST=1
+          ./build/linux/x64/release/bundle/agent_talk_client
 
       - name: Exercise Linux Secret Service round trip
         working-directory: apps/client

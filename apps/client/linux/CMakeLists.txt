@@ -74,6 +74,19 @@ set_target_properties(${BINARY_NAME}
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# These published Linux plugin sources emit newer-Clang diagnostics promoted
+# to errors by Flutter's application-wide -Werror on Fedora 44 / Clang 22.
+# Keep warnings visible while scoping the exception to third-party targets;
+# application and runner code remain fully -Werror.
+if(TARGET hotkey_manager_linux_plugin)
+  target_compile_options(hotkey_manager_linux_plugin PRIVATE
+    -Wno-error=sometimes-uninitialized)
+endif()
+if(TARGET tray_manager_plugin)
+  target_compile_options(tray_manager_plugin PRIVATE
+    -Wno-error=deprecated-declarations)
+endif()
+
 
 # === Installation ===
 # By default, "installing" just makes a relocatable bundle in the build

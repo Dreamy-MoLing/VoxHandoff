@@ -7,12 +7,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'app/agent_talk_app.dart';
-import 'application/voice_session_controller.dart';
+import 'application/desktop_integration_controller.dart';
 import 'application/speech_playback_controller.dart';
-import 'domain/voice.dart';
+import 'application/voice_session_controller.dart';
+import 'domain/desktop_capabilities.dart';
 import 'domain/speech.dart';
+import 'domain/voice.dart';
 import 'infrastructure/audio/media_kit_audio_playback.dart';
 import 'infrastructure/audio/record_audio_capture.dart';
+import 'infrastructure/desktop/production_desktop_integration.dart';
 import 'infrastructure/security/flutter_secure_value_store.dart';
 import 'infrastructure/storage/drift_local_transcript_store.dart';
 import 'infrastructure/stt/bundled_stt_launcher.dart';
@@ -30,11 +33,16 @@ Future<void> main() async {
     await _runAudioCaptureSelfTest();
     exit(exitCode);
   }
+  if (Platform.environment['VOXHANDOFF_DESKTOP_INTEGRATION_SELF_TEST'] == '1') {
+    await _runDesktopIntegrationSelfTest();
+    exit(exitCode);
+  }
   MediaKit.ensureInitialized();
   final transcriptStore = await DriftLocalTranscriptStore.forApplication();
   final stt = _productionSttPort();
   final playback = MediaKitAudioPlayback();
   final tts = _productionTtsPort();
+  final isDesktop = Platform.isLinux || Platform.isMacOS || Platform.isWindows;
   runApp(
     ProviderScope(
       overrides: [
@@ -42,6 +50,10 @@ Future<void> main() async {
         sttPortProvider.overrideWithValue(stt),
         localTranscriptStoreProvider.overrideWithValue(transcriptStore),
         audioPlaybackPortProvider.overrideWithValue(playback),
+        if (isDesktop)
+          desktopIntegrationPortProvider.overrideWithValue(
+            ProductionDesktopIntegration(),
+          ),
         if (tts != null) ...[
           ttsPortProvider.overrideWithValue(tts),
           speechEnabledProvider.overrideWithValue(true),
@@ -50,6 +62,49 @@ Future<void> main() async {
       child: const AgentTalkApp(),
     ),
   );
+}
+
+Future<void> _runDesktopIntegrationSelfTest() async {
+  if (!Platform.isLinux && !Platform.isMacOS && !Platform.isWindows) {
+    stderr.writeln(
+      'desktop integration self-test failed: desktop platform required',
+    );
+    exitCode = 1;
+    return;
+  }
+  final integration = ProductionDesktopIntegration();
+  try {
+    final snapshot = await integration.initialize(onVoiceToggle: () async {});
+    stdout.writeln(
+      'desktop integration self-test: '
+      'hotkey=${snapshot.hotkey.level.name} '
+      'tray=${snapshot.tray.level.name} '
+      'notifications=${snapshot.notifications.level.name} '
+      'window=${snapshot.window.level.name}',
+    );
+    final wayland =
+        Platform.isLinux &&
+        (Platform.environment['XDG_SESSION_TYPE']?.toLowerCase() == 'wayland' ||
+            (Platform.environment['WAYLAND_DISPLAY']?.isNotEmpty ?? false));
+    final hotkeyPassed =
+        snapshot.hotkey.level == DesktopCapabilityLevel.available ||
+        (wayland && snapshot.hotkey.level == DesktopCapabilityLevel.degraded);
+    final trayPassed =
+        snapshot.tray.level == DesktopCapabilityLevel.available ||
+        (wayland && snapshot.tray.level == DesktopCapabilityLevel.degraded);
+    final requiredCapabilitiesPassed =
+        trayPassed &&
+        snapshot.notifications.level == DesktopCapabilityLevel.available &&
+        snapshot.window.level == DesktopCapabilityLevel.available;
+    if (!hotkeyPassed || !requiredCapabilitiesPassed) {
+      stderr.writeln(
+        'desktop integration self-test failed: required capability unavailable',
+      );
+      exitCode = 1;
+    }
+  } finally {
+    await integration.close();
+  }
 }
 
 Future<void> _runAudioCaptureSelfTest() async {
