@@ -44,7 +44,14 @@ test("Hermes client probes capabilities and preserves idempotency keys", async (
     if (request.url.endsWith("/v1/capabilities")) {
       return Response.json({
         version: "test",
-        features: { run_stop: true, idempotency: true, event_replay: false },
+        features: {
+          runs: true,
+          streaming: true,
+          append_only_delta: true,
+          run_stop: true,
+          idempotency: true,
+          event_replay: false,
+        },
       });
     }
     if (request.url.endsWith("/v1/runs") && request.method === "POST") {
@@ -61,7 +68,11 @@ test("Hermes client probes capabilities and preserves idempotency keys", async (
   assert.deepEqual(await client.health(), { status: "ok" });
   const capabilities = await client.capabilities();
   assert.equal(capabilities.interrupt, true);
+  assert.equal(capabilities.eventStream, true);
+  assert.equal(capabilities.deltaMode, "append_only");
   assert.equal(capabilities.replay, false);
+  assert.equal(capabilities.approval, false);
+  assert.equal(capabilities.createSession, false);
   assert.equal(capabilities.attachments, false);
   const run = await client.startRun("hello", { requestId: "request-1" });
   assert.equal(run.runId, "run-1");
@@ -105,7 +116,8 @@ test("Hermes SSE events normalize into the shared event contract", async () => {
     delta: "完成",
   });
   assert.equal(events[1]?.type, "request.completed");
-  assert.equal(events[1]?.sequence, 2);
+  assert.equal(events[0]?.sequence, 2);
+  assert.equal(events[1]?.sequence, 16);
   assert.equal(typeof events[1]?.eventId, "string");
 });
 
@@ -173,8 +185,8 @@ test("Hermes normalizes an interrupted SSE transport as connection lost", async 
   assert.deepEqual(
     events.map((event) => [event.sequence, event.type, event.payload]),
     [
-      [1, "message.delta", { delta: "partial" }],
-      [2, "connection.lost", { reason: "transport_disconnected" }],
+      [2, "message.delta", { delta: "partial" }],
+      [3, "connection.lost", { reason: "transport_disconnected" }],
     ],
   );
   assert.doesNotMatch(JSON.stringify(events), /native transport secret/);
@@ -239,8 +251,74 @@ test("Hermes approval, stop, and client recreation preserve explicit command ide
   });
   const replayedEvents = [];
   for await (const event of restartedClient.streamRunEvents(run)) replayedEvents.push(event);
-  assert.equal(replayedEvents[0]?.sequence, 1);
-  assert.notEqual(replayedEvents[0]?.eventId, firstEvents[0]?.eventId);
+  assert.equal(replayedEvents[0]?.sequence, 2);
+  assert.equal(replayedEvents[0]?.eventId, firstEvents[0]?.eventId);
+});
+
+test("Hermes capability negotiation fails closed when fields are absent", async () => {
+  const client = new HermesApiClient({
+    baseUrl: "https://hermes.example.test",
+    token: "test",
+    fetch: async () => Response.json({ version: "test", features: { run_stop: true } }),
+  });
+
+  assert.deepEqual(await client.capabilities(), {
+    serverVersion: "test",
+    deltaMode: "none",
+    eventStream: false,
+    sessionHistory: false,
+    createSession: false,
+    resumeSession: false,
+    interrupt: true,
+    steer: false,
+    clarification: false,
+    approval: false,
+    toolEvents: false,
+    attachments: false,
+    idempotency: false,
+    replay: false,
+    sequenceRecovery: false,
+  });
+});
+
+test("Hermes forwards an explicit SSE resume cursor and preserves native event identity", async () => {
+  const encoder = new TextEncoder();
+  const requests: Request[] = [];
+  const fakeFetch: typeof fetch = async (input, init) => {
+    const request = new Request(input, init);
+    requests.push(request);
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              'id: native-event-42\nevent: run.completed\ndata: {"seq":42,"type":"run.completed"}\n\n',
+            ),
+          );
+          controller.close();
+        },
+      }),
+    );
+  };
+  const client = new HermesApiClient({
+    baseUrl: "https://hermes.example.test",
+    token: "test",
+    fetch: fakeFetch,
+  });
+  const run = { runId: "run-1", requestId: "request-1" };
+
+  const first = [];
+  for await (const event of client.streamRunEvents(run, { lastEventId: "native-event-41" })) {
+    first.push(event);
+  }
+  const second = [];
+  for await (const event of client.streamRunEvents(run, { lastEventId: "native-event-41" })) {
+    second.push(event);
+  }
+
+  assert.equal(requests[0]?.headers.get("Last-Event-ID"), "native-event-41");
+  assert.equal(first[0]?.sequence, 84);
+  assert.equal(first[0]?.eventId, second[0]?.eventId);
 });
 
 test("Hermes rejects empty approval and stop command identities", async () => {

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { AgentCapabilities, AgentEvent } from "@agent-talk/core";
 
@@ -16,6 +16,11 @@ export interface HermesRun {
   runId: string;
   requestId: string;
   sessionId?: string;
+}
+
+export interface HermesEventStreamOptions {
+  signal?: AbortSignal;
+  lastEventId?: string;
 }
 
 export class HermesApiClient {
@@ -87,16 +92,26 @@ export class HermesApiClient {
 
   async *streamRunEvents(
     run: HermesRun,
-    signal?: AbortSignal,
+    options: HermesEventStreamOptions | AbortSignal = {},
   ): AsyncGenerator<AgentEvent> {
+    const streamOptions = isAbortSignal(options) ? { signal: options } : options;
+    if (streamOptions.lastEventId !== undefined && !isOpaqueIdentity(streamOptions.lastEventId)) {
+      throw new Error("Hermes last event id is invalid");
+    }
+    const headers = new Headers({ Accept: "text/event-stream" });
+    if (streamOptions.lastEventId !== undefined) {
+      headers.set("Last-Event-ID", streamOptions.lastEventId);
+    }
     const response = await this.#request(`v1/runs/${encodeURIComponent(run.runId)}/events`, {
-      headers: { Accept: "text/event-stream" },
-      ...(signal === undefined ? {} : { signal }),
+      headers,
+      ...(streamOptions.signal === undefined ? {} : { signal: streamOptions.signal }),
     });
     if (!response.body) throw new Error("Hermes event stream returned no response body");
 
-    let localSequence = 0;
+    let localOrdinal = 0;
+    let lastSequence = 0;
     let terminalSeen = false;
+    const seenEventIds = new Set<string>();
     try {
       for await (const message of parseSseStream(response.body)) {
         if (message.data === "[DONE]") continue;
@@ -106,26 +121,36 @@ export class HermesApiClient {
         } catch {
           throw new Error("Hermes event stream returned invalid JSON");
         }
-        localSequence += 1;
+        localOrdinal += 1;
         const event = normalizeHermesEvent({
           native,
           ...(message.event === undefined ? {} : { eventName: message.event }),
-          fallbackSequence: localSequence,
+          ...(message.id === undefined ? {} : { sseEventId: message.id }),
+          fallbackOrdinal: localOrdinal,
           connectionId: this.connectionId,
           run,
         });
+        if (seenEventIds.has(event.eventId)) continue;
+        if (event.sequence <= lastSequence) {
+          throw new Error("Hermes event sequence is not strictly increasing");
+        }
+        seenEventIds.add(event.eventId);
+        lastSequence = event.sequence;
         terminalSeen = terminalSeen || isTerminalEvent(event);
         yield event;
       }
     } catch (error) {
       if (!(error instanceof SseTransportError) || terminalSeen) throw error;
-      localSequence += 1;
-      yield connectionLostEvent(this.connectionId, run, localSequence, "transport_disconnected");
+      yield connectionLostEvent(
+        this.connectionId,
+        run,
+        lastSequence + 1,
+        "transport_disconnected",
+      );
       return;
     }
     if (!terminalSeen) {
-      localSequence += 1;
-      yield connectionLostEvent(this.connectionId, run, localSequence, "unexpected_eof");
+      yield connectionLostEvent(this.connectionId, run, lastSequence + 1, "unexpected_eof");
     }
   }
 
@@ -195,7 +220,7 @@ function connectionLostEvent(
   reason: "transport_disconnected" | "unexpected_eof",
 ): AgentEvent {
   return {
-    eventId: randomUUID(),
+    eventId: stableEventId(run.runId, `connection:${reason}:${sequence}`),
     connectionId,
     ...(run.sessionId === undefined ? {} : { sessionId: run.sessionId }),
     requestId: run.requestId,
@@ -207,14 +232,14 @@ function connectionLostEvent(
 }
 
 export function normalizeHermesCapabilities(native: unknown): AgentCapabilities {
-  const flag = (name: string, fallback: boolean): boolean => {
-    if (!isRecord(native)) return fallback;
+  const flag = (name: string): boolean => {
+    if (!isRecord(native)) return false;
     const value = native[name];
     if (typeof value === "boolean") return value;
     if (isRecord(native.features) && typeof native.features[name] === "boolean") {
       return native.features[name];
     }
-    return fallback;
+    return false;
   };
   const protocolVersion = stringAt(native, "protocol_version");
   const serverVersion = stringAt(native, "version");
@@ -223,20 +248,20 @@ export function normalizeHermesCapabilities(native: unknown): AgentCapabilities 
   return {
     ...(protocolVersion === undefined ? {} : { protocolVersion }),
     ...(serverVersion === undefined ? {} : { serverVersion }),
-    deltaMode: flag("streaming", true) ? "append_only" : "none",
-    eventStream: flag("runs", true),
-    sessionHistory: flag("session_history", true),
-    createSession: flag("session_create", true),
-    resumeSession: flag("session_resume", true),
-    interrupt: flag("run_stop", true),
-    steer: flag("steer", false),
-    clarification: flag("clarification", false),
-    approval: flag("approval", true),
-    toolEvents: flag("tool_progress", true),
+    deltaMode: flag("streaming") && flag("append_only_delta") ? "append_only" : "none",
+    eventStream: flag("runs"),
+    sessionHistory: flag("session_history"),
+    createSession: flag("session_create"),
+    resumeSession: flag("session_resume"),
+    interrupt: flag("run_stop"),
+    steer: flag("steer"),
+    clarification: flag("clarification"),
+    approval: flag("approval"),
+    toolEvents: flag("tool_progress"),
     attachments: false,
-    idempotency: flag("idempotency", true),
-    replay: flag("event_replay", false),
-    sequenceRecovery: flag("sequence_recovery", false),
+    idempotency: flag("idempotency"),
+    replay: flag("event_replay"),
+    sequenceRecovery: flag("sequence_recovery") && flag("stable_event_ids"),
     ...(maxRequestBytes === undefined ? {} : { maxRequestBytes }),
     ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
   };
@@ -245,7 +270,8 @@ export function normalizeHermesCapabilities(native: unknown): AgentCapabilities 
 interface NormalizeHermesEventInput {
   native: unknown;
   eventName?: string;
-  fallbackSequence: number;
+  sseEventId?: string;
+  fallbackOrdinal: number;
   connectionId: string;
   run: HermesRun;
 }
@@ -253,13 +279,24 @@ interface NormalizeHermesEventInput {
 function normalizeHermesEvent(input: NormalizeHermesEventInput): AgentEvent {
   const nativeType =
     input.eventName ?? stringAt(input.native, "type") ?? stringAt(input.native, "event") ?? "unknown";
+  const nativeSequence = positiveIntegerAt(input.native, "sequence") ??
+    positiveIntegerAt(input.native, "seq");
+  const sourceOrdinal = nativeSequence ?? input.fallbackOrdinal;
+  const sequence = sourceOrdinal * 2;
+  if (!Number.isSafeInteger(sequence)) {
+    throw new Error("Hermes event sequence exceeds the supported safe range");
+  }
+  const sourceIdentity =
+    normalizedSseIdentity(input.sseEventId) ??
+    normalizedNativeEventIdentity(input.native) ??
+    `ordinal:${input.fallbackOrdinal}:${canonicalJson(input.native)}:${nativeType}`;
   const common = {
-    eventId: randomUUID(),
+    eventId: stableEventId(input.run.runId, sourceIdentity),
     connectionId: input.connectionId,
     ...(input.run.sessionId === undefined ? {} : { sessionId: input.run.sessionId }),
     requestId: input.run.requestId,
-    sequence: input.fallbackSequence,
-    occurredAt: new Date().toISOString(),
+    sequence,
+    occurredAt: normalizedOccurredAt(input.native),
     payload: {},
   };
 
@@ -374,4 +411,62 @@ function normalizeHermesEvent(input: NormalizeHermesEventInput): AgentEvent {
     return { ...common, type: "request.accepted" };
   }
   return { ...common, type: "agent.working", payload: { nativeType: nativeType.slice(0, 120) } };
+}
+
+function isAbortSignal(value: HermesEventStreamOptions | AbortSignal): value is AbortSignal {
+  return typeof AbortSignal !== "undefined" && value instanceof AbortSignal;
+}
+
+function isOpaqueIdentity(value: string): boolean {
+  return value.length > 0 && value.length <= 512 && !/[\u0000-\u001f\u007f]/.test(value);
+}
+
+function normalizedSseIdentity(value: string | undefined): string | undefined {
+  return value !== undefined && isOpaqueIdentity(value) ? `sse:${value}` : undefined;
+}
+
+function normalizedNativeEventIdentity(native: unknown): string | undefined {
+  const value = stringAt(native, "event_id") ?? stringAt(native, "event", "id");
+  return value !== undefined && isOpaqueIdentity(value) ? `native:${value}` : undefined;
+}
+
+function positiveIntegerAt(value: unknown, key: string): number | undefined {
+  const candidate = numberAt(value, key);
+  return candidate !== undefined &&
+      Number.isSafeInteger(candidate) &&
+      candidate > 0 &&
+      candidate <= Math.floor(Number.MAX_SAFE_INTEGER / 2)
+    ? candidate
+    : undefined;
+}
+
+function stableEventId(runId: string, sourceIdentity: string): string {
+  return createHash("sha256")
+    .update("voxhandoff:hermes-event:v1\0")
+    .update(runId)
+    .update("\0")
+    .update(sourceIdentity)
+    .digest("hex");
+}
+
+function normalizedOccurredAt(native: unknown): string {
+  const candidate =
+    stringAt(native, "occurred_at") ??
+    stringAt(native, "created_at") ??
+    stringAt(native, "timestamp");
+  if (candidate !== undefined) {
+    const parsed = new Date(candidate);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+  return new Date().toISOString();
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === undefined) return "null";
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  return `{${Object.entries(value)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
+    .join(",")}}`;
 }
