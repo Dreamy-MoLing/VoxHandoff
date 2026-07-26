@@ -54,6 +54,22 @@ class DesktopCapabilitySnapshot {
       notifications.level == DesktopCapabilityLevel.degraded ||
       window.level == DesktopCapabilityLevel.degraded;
 
+  bool passesStartupSelfTest({required bool wayland, required bool headless}) {
+    if (!isDesktop) return false;
+    final degradationExpected = wayland || headless;
+    final hotkeyPassed =
+        hotkey.level == DesktopCapabilityLevel.available ||
+        (degradationExpected &&
+            hotkey.level == DesktopCapabilityLevel.degraded);
+    final trayPassed =
+        tray.level == DesktopCapabilityLevel.available ||
+        (degradationExpected && tray.level == DesktopCapabilityLevel.degraded);
+    return hotkeyPassed &&
+        trayPassed &&
+        notifications.level == DesktopCapabilityLevel.available &&
+        window.level == DesktopCapabilityLevel.available;
+  }
+
   String get safeSummary => [
     hotkey,
     tray,

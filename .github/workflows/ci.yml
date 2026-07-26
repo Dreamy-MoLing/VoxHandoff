@@ -120,6 +120,7 @@ jobs:
         run: >-
           dbus-run-session -- xvfb-run -a
           env VOXHANDOFF_DESKTOP_INTEGRATION_SELF_TEST=1
+          VOXHANDOFF_DESKTOP_SELF_TEST_HEADLESS=1
           ./build/linux/x64/release/bundle/agent_talk_client
 
       - name: Exercise Linux Secret Service round trip

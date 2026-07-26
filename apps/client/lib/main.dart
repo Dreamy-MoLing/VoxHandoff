@@ -10,7 +10,6 @@ import 'app/agent_talk_app.dart';
 import 'application/desktop_integration_controller.dart';
 import 'application/speech_playback_controller.dart';
 import 'application/voice_session_controller.dart';
-import 'domain/desktop_capabilities.dart';
 import 'domain/speech.dart';
 import 'domain/voice.dart';
 import 'infrastructure/audio/media_kit_audio_playback.dart';
@@ -91,17 +90,9 @@ Future<void> _runDesktopIntegrationSelfTest() async {
         Platform.isLinux &&
         (Platform.environment['XDG_SESSION_TYPE']?.toLowerCase() == 'wayland' ||
             (Platform.environment['WAYLAND_DISPLAY']?.isNotEmpty ?? false));
-    final hotkeyPassed =
-        snapshot.hotkey.level == DesktopCapabilityLevel.available ||
-        (wayland && snapshot.hotkey.level == DesktopCapabilityLevel.degraded);
-    final trayPassed =
-        snapshot.tray.level == DesktopCapabilityLevel.available ||
-        (wayland && snapshot.tray.level == DesktopCapabilityLevel.degraded);
-    final requiredCapabilitiesPassed =
-        trayPassed &&
-        snapshot.notifications.level == DesktopCapabilityLevel.available &&
-        snapshot.window.level == DesktopCapabilityLevel.available;
-    if (!hotkeyPassed || !requiredCapabilitiesPassed) {
+    final headless =
+        Platform.environment['VOXHANDOFF_DESKTOP_SELF_TEST_HEADLESS'] == '1';
+    if (!snapshot.passesStartupSelfTest(wayland: wayland, headless: headless)) {
       stderr.writeln(
         'desktop integration self-test failed: required capability unavailable',
       );
