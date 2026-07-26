@@ -766,7 +766,6 @@ class _ConversationView extends StatelessWidget {
                       child: SignalCoreView(
                         snapshot: signalCore,
                         dimension: coreDimension,
-                        profile: SignalRenderProfile.highRefresh120,
                       ),
                     ),
                   ],

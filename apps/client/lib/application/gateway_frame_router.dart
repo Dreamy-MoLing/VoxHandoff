@@ -7,7 +7,7 @@ import 'client_event_convergence.dart';
 
 typedef GatewayRouterIdFactory = String Function(String purpose);
 typedef GatewayCommittedEventCallback =
-    FutureOr<void> Function(ClientEventRecord event);
+    FutureOr<void> Function(ClientEventRecord event, ClientEventOrigin origin);
 typedef GatewayRequestStatusCallback =
     FutureOr<void> Function(ClientRequestStatusSnapshot status);
 typedef GatewayControlLeaseCallback =
@@ -147,6 +147,9 @@ class GatewayFrameRouter {
     ClientEventRecord event,
     ClientGatewayCommandPort commands,
   ) async {
+    final origin = _pendingReplays.containsKey(event.conversationId)
+        ? ClientEventOrigin.replay
+        : ClientEventOrigin.live;
     late final ClientEventConvergenceResult result;
     try {
       result = await _convergence.accept(event);
@@ -161,7 +164,7 @@ class GatewayFrameRouter {
     switch (result) {
       case ClientEventCommitted():
         commands.acknowledge(_ack(result.acknowledgement));
-        await _onCommitted?.call(event);
+        await _onCommitted?.call(event, origin);
       case ClientEventDuplicate():
         commands.acknowledge(_ack(result.acknowledgement));
       case ClientEventGap():

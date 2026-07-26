@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -16,7 +17,10 @@ final desktopIntegrationProvider =
     );
 
 class DesktopIntegrationController extends Notifier<DesktopCapabilitySnapshot> {
-  final Set<String> _seenEventIds = {};
+  static const _maxRememberedConversations = 256;
+  final LinkedHashMap<String, BigInt> _seenSequenceByConversation =
+      LinkedHashMap();
+  final Set<String> _hydratedConversations = {};
   bool _initialized = false;
   bool _ready = false;
   bool _notificationInFlight = false;
@@ -37,7 +41,10 @@ class DesktopIntegrationController extends Notifier<DesktopCapabilitySnapshot> {
   }) async {
     if (_initialized) return;
     _initialized = true;
-    _remember(workspace.events);
+    _synchronizeDirectory(workspace);
+    if (workspace.selectedEventsHydrated) {
+      _primeSelectedConversation(workspace);
+    }
     state = await ref
         .read(desktopIntegrationPortProvider)
         .initialize(onVoiceToggle: onVoiceToggle);
@@ -47,22 +54,22 @@ class DesktopIntegrationController extends Notifier<DesktopCapabilitySnapshot> {
 
   Future<void> observeWorkspace(GatewayWorkspaceState workspace) async {
     if (!_initialized) return;
+    _synchronizeDirectory(workspace);
     final selectedConversationId = workspace.selectedConversationId;
-    final newEvents = workspace.events
-        .where((event) => _seenEventIds.add(event.eventId))
-        .where(
-          (event) =>
-              selectedConversationId == null ||
-              event.conversationId == selectedConversationId,
-        )
-        .toList(growable: false);
-    _trimSeenEvents(workspace.events);
-    if (newEvents.isEmpty) return;
-
-    DesktopAttentionKind? attention;
-    for (final event in newEvents) {
-      attention = _attentionFor(event) ?? attention;
+    if (selectedConversationId == null || !workspace.selectedEventsHydrated) {
+      return;
     }
+    if (!_hydratedConversations.contains(selectedConversationId)) {
+      _primeSelectedConversation(workspace);
+      return;
+    }
+    final event = workspace.latestLiveEvent;
+    if (event == null || event.conversationId != selectedConversationId) return;
+    final seen =
+        _seenSequenceByConversation[event.conversationId] ?? BigInt.zero;
+    if (event.sequence <= seen) return;
+    _rememberSequence(event.conversationId, event.sequence);
+    final attention = _attentionFor(event);
     if (attention == null) return;
     _pendingAttention = attention;
     await _drainAttention();
@@ -82,20 +89,50 @@ class DesktopIntegrationController extends Notifier<DesktopCapabilitySnapshot> {
     }
   }
 
-  void _remember(List<ClientEventRecord> events) {
-    _seenEventIds.addAll(events.map((event) => event.eventId));
-    _trimSeenEvents(events);
+  void _primeSelectedConversation(GatewayWorkspaceState workspace) {
+    final conversationId = workspace.selectedConversationId;
+    if (conversationId == null) return;
+    _hydratedConversations.add(conversationId);
+    if (!_seenSequenceByConversation.containsKey(conversationId)) {
+      _rememberSequence(conversationId, BigInt.zero);
+    }
+    for (final event in workspace.events) {
+      if (event.conversationId != conversationId) continue;
+      final seen =
+          _seenSequenceByConversation[event.conversationId] ?? BigInt.zero;
+      if (event.sequence > seen) {
+        _rememberSequence(event.conversationId, event.sequence);
+      }
+    }
+    _trimRememberedConversations();
   }
 
-  void _trimSeenEvents(List<ClientEventRecord> currentEvents) {
-    if (_seenEventIds.length <= 512) return;
-    final retained = currentEvents.reversed
-        .take(256)
-        .map((event) => event.eventId)
+  void _synchronizeDirectory(GatewayWorkspaceState workspace) {
+    final directory = workspace.directory;
+    if (directory == null) return;
+    final activeIds = directory.conversations
+        .map((conversation) => conversation.conversationId)
         .toSet();
-    _seenEventIds
-      ..clear()
-      ..addAll(retained);
+    _seenSequenceByConversation.removeWhere(
+      (conversationId, _) => !activeIds.contains(conversationId),
+    );
+    _hydratedConversations.removeWhere(
+      (conversationId) => !activeIds.contains(conversationId),
+    );
+  }
+
+  void _rememberSequence(String conversationId, BigInt sequence) {
+    _seenSequenceByConversation.remove(conversationId);
+    _seenSequenceByConversation[conversationId] = sequence;
+    _trimRememberedConversations();
+  }
+
+  void _trimRememberedConversations() {
+    while (_seenSequenceByConversation.length > _maxRememberedConversations) {
+      final oldest = _seenSequenceByConversation.keys.first;
+      _seenSequenceByConversation.remove(oldest);
+      _hydratedConversations.remove(oldest);
+    }
   }
 
   DesktopAttentionKind? _attentionFor(ClientEventRecord event) {

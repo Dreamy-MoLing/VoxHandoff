@@ -126,6 +126,15 @@ void main() {
     expect(snapshot.playbackLevel, 0);
   });
 
+  test('uses only the current speech segment PCM envelope', () {
+    final snapshot = _resolveWithEvents([
+      _event(ClientEventKind.requestCompleted),
+    ], speech: _playingSpeech());
+
+    expect(snapshot.state, SignalCoreState.speaking);
+    expect(snapshot.playbackLevel, 0.63);
+  });
+
   test('resolved interactions no longer retain visual priority', () {
     final required = _event(ClientEventKind.approvalRequired);
     final resolved = _event(ClientEventKind.approvalResolved, sequence: 2);
@@ -148,6 +157,34 @@ void main() {
 
     expect(snapshot.state, SignalCoreState.idle);
     expect(snapshot.playbackLevel, 0);
+  });
+
+  test('drops stale speech failure identity after conversation switch', () {
+    final snapshot = resolveSignalCore(
+      workspace: const GatewayWorkspaceState(
+        selectedConversationId: 'conversation-2',
+      ),
+      session: const ClientSessionState(),
+      voice: idleVoice,
+      speech: SpeechPlaybackState(
+        phase: SpeechPhase.failed,
+        segment: SpeechSegment(
+          conversationId: 'conversation-1',
+          requestId: 'request-1',
+          messageRevision: BigInt.one,
+          index: 0,
+          text: 'Safe speech.',
+        ),
+        failure: VoiceStageFailure(
+          stage: VoiceFailureStage.playback,
+          code: 'old_playback_failure',
+          safeMessage: 'Old playback failed.',
+          retryable: true,
+        ),
+      ),
+    );
+
+    expect(snapshot.state, SignalCoreState.idle);
   });
 
   test('only exposes current recording level while recording', () {
@@ -182,6 +219,7 @@ SignalCoreSnapshot _resolveWithEvents(
 
 SpeechPlaybackState _playingSpeech() => SpeechPlaybackState(
   phase: SpeechPhase.playing,
+  playbackLevel: 0.63,
   segment: SpeechSegment(
     conversationId: 'conversation-1',
     requestId: 'request-1',

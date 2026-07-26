@@ -403,13 +403,15 @@ GPT-SoVITS adapter 生成规范音频块，`media_kit` adapter 播放。TTS 队�
 - `ThemeExtension`/普通 Dart token：颜色、间距、圆角、线宽、排版、状态语义和动效时长；业务 widget 不直接散布常量；
 - Widget/CustomPainter：布局、文字、交互、静态核心和可访问性；
 - GLSL fragment shader：核心能量场、扫描线、噪声、色差和音频波纹；
-- Rive：按钮、连接图标等非核心矢量微动效；
+- Rive：只在已有受审 `.riv` 资产确实减少自有 Widget 复杂度时用于按钮、连接图标等非核心微动效；没有这种资产时不为满足技术清单引入 runtime，M4 当前使用 Flutter 内建 transition；
 - Platform plugins：麦克风会话、安全存储、全局快捷键、通知和窗口行为。
 - 配对 presentation 只观察 Riverpod application state 并发出显式用户动作；production workflow factory 独占安全存储、TLS channel、生成 RPC client 和 coordinator 的组合与关闭，widget test 以离线 factory 替换。公开 UI state 不含 challenge、签名、nonce 或 token；
 - conversation presentation 只观察 production workspace 的领域快照；桌面导航与手机单列选择共享同一 selection identity。完整回复使用可选择文字，tool/terminal 保留安全阶段事实，approval 与 clarification 优先于装饰；无当前 lease 时所有可执行按钮禁用，只显示 observe 状态与显式 take-control/takeover；
 - 信号生命核心是只读 presentation，由规范 Agent 事件、本地 voice/speech 阶段、真实 `audioLevel` 和播放 segment identity 合成为有限视觉状态；它不持有 request、approval、lease 或命令权限，不直接解释 adapter 原始事件；
 - 状态优先级固定为 approval/clarification → uncertain → failed → recording/transcribing → submitting/working → speaking → completed → idle。同一时刻只发布一个主状态，次级连接、同步和播放事实由独立文字或图标呈现；
 - 桌面核心在会话工作台的固定视觉安全区布局，手机核心在标题、阅读和录音三种尺寸槽位间切换；布局约束先保证正文、审批、澄清、转写确认和取消/停止操作，再分配装饰空间；
+- `DesktopIntegrationPort` 是 platform plugin 的唯一 application 边界；生产 adapter 分别初始化窗口、托盘、通知和热键并发布每项 `available/degraded/unsupported` 安全状态。Linux Wayland 不调用 X11 Keybinder，而明确回落到应用内 `Ctrl+Shift+Space`；快捷键 callback 只能切换本地 voice draft。托盘成功后才启用 close-to-tray，初始化失败时不得拦截正常关闭；
+- 中央 router 在耐久 replay pending 期间把已提交事件标为 `replay`，其余标为 `live`；workspace 对每次 conversation selection 另暴露明确的本地 ledger hydration 边界。desktop attention controller 只有在 hydration 完成后建立每个 conversation 的 sequence 高水位，并且只消费 router 明确标记的当前 conversation `live` approval、clarification、completed、failed 事实，因此启动/分页/切换 replay 不触发通知或历史 TTS。高水位随 directory 清理且最多保留 256 个 conversation；通知 adapter 接收 enum 而非事件 payload，因此完整回复、交互正文和摘要 hash 不可能进入系统通知；
 
 设计系统组件以独立 catalog/use case 覆盖真实状态，再进入业务页面；catalog 工具、第三方组件库和 styling package 都只能是开发或表现层依赖，不得成为领域状态权威。优先使用 Flutter 内建语义、focus、Theme 和自有小组件；只有组件隔离测试或跨端一致性收益足以抵消依赖/迁移成本时才引入社区包。
 
@@ -476,9 +478,16 @@ shader 只接收 `audioLevel`、`playbackLevel`、`statePhase`、`errorPulse` �
 
 ## 14. 选型依据
 
-以下资料是 2026-07-22 基线的复核入口；依赖升级时重新检查，不把链接当作永久兼容保证：
+以下资料是 2026-07-25 基线的复核入口；依赖升级时重新检查，不把链接当作永久兼容保证：
 
 - [Flutter 支持平台](https://docs.flutter.dev/reference/supported-platforms)
+- [Flutter fragment shaders](https://docs.flutter.dev/ui/design/graphics/fragment-shaders)
+- [Flutter accessibilityFeatures](https://api.flutter.dev/flutter/dart-ui/PlatformDispatcher/accessibilityFeatures.html)
+- [XDG GlobalShortcuts portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.GlobalShortcuts.html)
+- [hotkey_manager](https://pub.dev/packages/hotkey_manager)
+- [tray_manager](https://pub.dev/packages/tray_manager)
+- [window_manager](https://pub.dev/packages/window_manager)
+- [local_notifier](https://pub.dev/packages/local_notifier)
 - [record 平台能力矩阵](https://pub.dev/packages/record)
 - [media_kit](https://github.com/media-kit/media-kit)
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)

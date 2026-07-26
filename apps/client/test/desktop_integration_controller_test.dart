@@ -46,13 +46,12 @@ void main() {
       onVoiceToggle: () async {},
       workspace: _workspace(const []),
     );
-    final workspace = _workspace([
-      _event(
-        'clarification-new',
-        ClientEventKind.clarificationRequired,
-        sequence: 1,
-      ),
-    ]);
+    final clarification = _event(
+      'clarification-new',
+      ClientEventKind.clarificationRequired,
+      sequence: 1,
+    );
+    final workspace = _workspace([clarification], liveEvent: clarification);
 
     await controller.observeWorkspace(workspace);
     await controller.observeWorkspace(workspace);
@@ -74,8 +73,14 @@ void main() {
         workspace: _workspace(const []),
       );
 
+      final completed = _event(
+        'request-completed',
+        ClientEventKind.requestCompleted,
+        sequence: 2,
+      );
       await controller.observeWorkspace(
         _workspace([
+          completed,
           _event(
             'other-approval',
             ClientEventKind.approvalRequired,
@@ -83,11 +88,11 @@ void main() {
             conversationId: 'conversation-other',
           ),
           _event(
-            'request-completed',
-            ClientEventKind.requestCompleted,
-            sequence: 2,
+            'selected-clarification',
+            ClientEventKind.clarificationRequired,
+            sequence: 1,
           ),
-        ]),
+        ], liveEvent: completed),
       );
 
       expect(port.attention, [DesktopAttentionKind.completed]);
@@ -129,14 +134,13 @@ void main() {
         workspace: _workspace(const []),
       );
 
+      final approval = _event(
+        'approval-during-setup',
+        ClientEventKind.approvalRequired,
+        sequence: 1,
+      );
       await controller.observeWorkspace(
-        _workspace([
-          _event(
-            'approval-during-setup',
-            ClientEventKind.approvalRequired,
-            sequence: 1,
-          ),
-        ]),
+        _workspace([approval], liveEvent: approval),
       );
       expect(port.attention, isEmpty);
 
@@ -145,6 +149,75 @@ void main() {
       expect(port.attention, [DesktopAttentionKind.approval]);
     },
   );
+
+  test('does not notify when no conversation is selected', () async {
+    final port = _FakeDesktopIntegration();
+    final container = ProviderContainer(
+      overrides: [desktopIntegrationPortProvider.overrideWithValue(port)],
+    );
+    addTearDown(container.dispose);
+    final controller = container.read(desktopIntegrationProvider.notifier);
+    await controller.initialize(
+      onVoiceToggle: () async {},
+      workspace: const GatewayWorkspaceState(),
+    );
+
+    final approval = _event(
+      'unselected-approval',
+      ClientEventKind.approvalRequired,
+      sequence: 1,
+    );
+    await controller.observeWorkspace(
+      GatewayWorkspaceState(events: [approval]),
+    );
+    await controller.observeWorkspace(_workspace([approval]));
+
+    expect(port.attention, isEmpty);
+  });
+
+  test('delayed durable hydration is primed before live attention', () async {
+    final port = _FakeDesktopIntegration();
+    final container = ProviderContainer(
+      overrides: [desktopIntegrationPortProvider.overrideWithValue(port)],
+    );
+    addTearDown(container.dispose);
+    final controller = container.read(desktopIntegrationProvider.notifier);
+    await controller.initialize(
+      onVoiceToggle: () async {},
+      workspace: const GatewayWorkspaceState(
+        selectedConversationId: 'conversation-1',
+      ),
+    );
+
+    await controller.observeWorkspace(
+      GatewayWorkspaceState(
+        selectedConversationId: 'conversation-1',
+        events: [
+          _event(
+            'historical-approval',
+            ClientEventKind.approvalRequired,
+            sequence: 41,
+          ),
+        ],
+        selectedEventsHydrated: true,
+      ),
+    );
+    final historical = _event(
+      'historical-approval',
+      ClientEventKind.approvalRequired,
+      sequence: 41,
+    );
+    final clarification = _event(
+      'live-clarification',
+      ClientEventKind.clarificationRequired,
+      sequence: 42,
+    );
+    await controller.observeWorkspace(
+      _workspace([historical, clarification], liveEvent: clarification),
+    );
+
+    expect(port.attention, [DesktopAttentionKind.clarification]);
+  });
 }
 
 class _FakeDesktopIntegration implements DesktopIntegrationPort {
@@ -181,11 +254,15 @@ class _FakeDesktopIntegration implements DesktopIntegrationPort {
   Future<void> close() async {}
 }
 
-GatewayWorkspaceState _workspace(List<ClientEventRecord> events) =>
-    GatewayWorkspaceState(
-      selectedConversationId: 'conversation-1',
-      events: events,
-    );
+GatewayWorkspaceState _workspace(
+  List<ClientEventRecord> events, {
+  ClientEventRecord? liveEvent,
+}) => GatewayWorkspaceState(
+  selectedConversationId: 'conversation-1',
+  events: events,
+  selectedEventsHydrated: true,
+  latestLiveEvent: liveEvent,
+);
 
 ClientEventRecord _event(
   String eventId,

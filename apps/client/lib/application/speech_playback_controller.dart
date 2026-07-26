@@ -21,6 +21,7 @@ final speechPlaybackProvider =
 class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
     implements SpeechStopPort {
   int _generation = 0;
+  StreamSubscription<double>? _levelSubscription;
 
   @override
   SpeechPlaybackState build() {
@@ -28,8 +29,8 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
     final tts = ref.read(ttsPortProvider);
     ref.onDispose(() {
       _generation += 1;
-      unawaited(playback.stopSpeech().catchError((_) {}));
-      unawaited(tts.cancel().catchError((_) {}));
+      unawaited(_levelSubscription?.cancel());
+      unawaited(_disposeResources(playback, tts));
     });
     return const SpeechPlaybackState();
   }
@@ -60,18 +61,6 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
     final summary = createDeterministicSpeechSummary(fullReply);
     final pieces = splitSpeechSegments(summary);
     if (pieces.isEmpty) return;
-    final generation = ++_generation;
-    try {
-      await _cancelSpeechResources();
-    } on Object catch (error) {
-      state = SpeechPlaybackState(
-        phase: SpeechPhase.failed,
-        spokenText: summary,
-        failure: _safeSpeechFailure(error, VoiceFailureStage.playback),
-      );
-      return;
-    }
-    if (generation != _generation) return;
     final segments = [
       for (var index = 0; index < pieces.length; index += 1)
         SpeechSegment(
@@ -82,6 +71,19 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
           text: pieces[index],
         ),
     ];
+    final generation = ++_generation;
+    try {
+      await _cancelSpeechResources();
+    } on Object catch (error) {
+      state = SpeechPlaybackState(
+        phase: SpeechPhase.failed,
+        segment: segments.first,
+        spokenText: summary,
+        failure: _safeSpeechFailure(error, VoiceFailureStage.playback),
+      );
+      return;
+    }
+    if (generation != _generation) return;
     unawaited(_drain(generation, segments, summary));
   }
 
@@ -113,18 +115,37 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
           segment: audio.segment,
           spokenText: summary,
         );
+        await _levelSubscription?.cancel();
+        _levelSubscription = playback.levels.listen((level) {
+          if (generation != _generation ||
+              state.phase != SpeechPhase.playing ||
+              state.segment?.identity != audio.segment.identity) {
+            return;
+          }
+          state = SpeechPlaybackState(
+            phase: SpeechPhase.playing,
+            segment: audio.segment,
+            spokenText: summary,
+            playbackLevel: level.clamp(0, 1),
+          );
+        });
         await playback.play(audio);
+        await _levelSubscription?.cancel();
+        _levelSubscription = null;
         if (generation != _generation) return;
         if (next != null) current = next;
       }
       state = SpeechPlaybackState(phase: SpeechPhase.idle, spokenText: summary);
     } on Object catch (error) {
       if (generation != _generation) return;
+      await _levelSubscription?.cancel();
+      _levelSubscription = null;
       final fallback = state.phase == SpeechPhase.playing
           ? VoiceFailureStage.playback
           : VoiceFailureStage.tts;
       state = SpeechPlaybackState(
         phase: SpeechPhase.failed,
+        segment: state.segment ?? segments.first,
         spokenText: summary,
         failure: _safeSpeechFailure(error, fallback),
       );
@@ -149,10 +170,21 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
     );
   }
 
-  Future<void> _cancelSpeechResources() => Future.wait([
-    ref.read(ttsPortProvider).cancel(),
-    ref.read(audioPlaybackPortProvider).stopSpeech(),
-  ]);
+  Future<void> _cancelSpeechResources() async {
+    await _levelSubscription?.cancel();
+    _levelSubscription = null;
+    await Future.wait([
+      ref.read(ttsPortProvider).cancel(),
+      ref.read(audioPlaybackPortProvider).stopSpeech(),
+    ]);
+  }
+}
+
+Future<void> _disposeResources(AudioPlaybackPort playback, TtsPort tts) async {
+  await playback.stopSpeech().catchError((_) {});
+  await tts.cancel().catchError((_) {});
+  await playback.close().catchError((_) {});
+  await tts.close().catchError((_) {});
 }
 
 String createDeterministicSpeechSummary(
@@ -244,6 +276,9 @@ class _UnavailableTtsPort implements TtsPort {
 
 class _UnavailableAudioPlaybackPort implements AudioPlaybackPort {
   const _UnavailableAudioPlaybackPort();
+
+  @override
+  Stream<double> get levels => const Stream.empty();
 
   @override
   Future<void> play(SynthesizedSpeech speech) async {}

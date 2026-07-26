@@ -86,7 +86,7 @@ SignalCoreSnapshot resolveSignalCore({
   }
 
   if (voice.phase == VoiceInputPhase.failed ||
-      speech.phase == SpeechPhase.failed ||
+      _isCurrentSpeechFailure(speech, conversationId, latestRequestId) ||
       latestEvent?.kind == ClientEventKind.requestFailed) {
     return _snapshot(
       SignalCoreState.failed,
@@ -157,7 +157,7 @@ SignalCoreSnapshot resolveSignalCore({
       'Playing speech',
       conversationId: conversationId,
       requestId: segment.requestId,
-      playbackLevel: 1,
+      playbackLevel: speech.playbackLevel,
       sourceIdentity: segment.identity,
     );
   }
@@ -177,6 +177,18 @@ SignalCoreSnapshot resolveSignalCore({
     'VoxHandoff idle',
     conversationId: conversationId,
   );
+}
+
+bool _isCurrentSpeechFailure(
+  SpeechPlaybackState speech,
+  String? conversationId,
+  String? latestRequestId,
+) {
+  if (speech.phase != SpeechPhase.failed) return false;
+  final segment = speech.segment;
+  if (segment == null) return true;
+  return segment.conversationId == conversationId &&
+      (latestRequestId == null || segment.requestId == latestRequestId);
 }
 
 SignalCoreSnapshot _snapshot(

@@ -41,6 +41,7 @@ class SpeechPlaybackState {
     this.phase = SpeechPhase.idle,
     this.segment,
     this.spokenText,
+    this.playbackLevel = 0,
     this.failure,
     this.stopDuration,
   });
@@ -48,6 +49,7 @@ class SpeechPlaybackState {
   final SpeechPhase phase;
   final SpeechSegment? segment;
   final String? spokenText;
+  final double playbackLevel;
   final VoiceStageFailure? failure;
   final Duration? stopDuration;
 }
@@ -60,6 +62,7 @@ abstract interface class TtsPort {
 }
 
 abstract interface class AudioPlaybackPort implements SpeechStopPort {
+  Stream<double> get levels;
   Future<void> play(SynthesizedSpeech speech);
   Future<void> close();
 }

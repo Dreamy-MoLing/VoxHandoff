@@ -8,6 +8,8 @@ class GatewayWorkspaceState {
     this.directory,
     this.selectedConversationId,
     this.events = const [],
+    this.selectedEventsHydrated = false,
+    this.latestLiveEvent,
     this.leases = const {},
     this.safeErrorCode,
     this.safeErrorMessage,
@@ -18,6 +20,8 @@ class GatewayWorkspaceState {
   final ClientGatewayDirectory? directory;
   final String? selectedConversationId;
   final List<ClientEventRecord> events;
+  final bool selectedEventsHydrated;
+  final ClientEventRecord? latestLiveEvent;
   final Map<String, ClientControlLeaseSnapshot> leases;
   final String? safeErrorCode;
   final String? safeErrorMessage;
@@ -50,11 +54,14 @@ class GatewayWorkspaceState {
     ClientGatewayDirectory? directory,
     String? selectedConversationId,
     List<ClientEventRecord>? events,
+    bool? selectedEventsHydrated,
+    ClientEventRecord? latestLiveEvent,
     Map<String, ClientControlLeaseSnapshot>? leases,
     String? safeErrorCode,
     String? safeErrorMessage,
     String? uncertainRequestId,
     bool clearSelection = false,
+    bool clearLiveEvent = false,
     bool clearError = false,
     bool clearUncertain = false,
   }) => GatewayWorkspaceState(
@@ -64,6 +71,11 @@ class GatewayWorkspaceState {
         ? null
         : selectedConversationId ?? this.selectedConversationId,
     events: List.unmodifiable(events ?? this.events),
+    selectedEventsHydrated:
+        selectedEventsHydrated ?? this.selectedEventsHydrated,
+    latestLiveEvent: clearLiveEvent
+        ? null
+        : latestLiveEvent ?? this.latestLiveEvent,
     leases: Map.unmodifiable(leases ?? this.leases),
     safeErrorCode: clearError ? null : safeErrorCode ?? this.safeErrorCode,
     safeErrorMessage: clearError

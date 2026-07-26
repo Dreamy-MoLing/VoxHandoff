@@ -1,3 +1,5 @@
+enum ClientEventOrigin { replay, live }
+
 enum ClientEventKind {
   connectionReady,
   connectionLost,

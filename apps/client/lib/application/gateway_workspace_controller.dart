@@ -15,7 +15,7 @@ typedef WorkspaceDirectoryCallback =
 typedef WorkspaceConversationCallback =
     FutureOr<void> Function(ClientConversationDirectoryEntry conversation);
 typedef WorkspaceEventCallback =
-    FutureOr<void> Function(ClientEventRecord event);
+    FutureOr<void> Function(ClientEventRecord event, ClientEventOrigin origin);
 typedef WorkspaceStatusCallback =
     FutureOr<void> Function(ClientRequestStatusSnapshot status);
 typedef WorkspaceLeaseCallback =
@@ -162,6 +162,8 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
     state = state.copyWith(
       selectedConversationId: conversationId,
       events: const [],
+      selectedEventsHydrated: false,
+      clearLiveEvent: true,
     );
     await _reloadEvents(conversationId);
   }
@@ -277,6 +279,8 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
       selectedConversationId: next,
       clearSelection: next == null,
       events: const [],
+      selectedEventsHydrated: false,
+      clearLiveEvent: true,
     );
     if (next != null) await _reloadEvents(next);
   }
@@ -306,14 +310,24 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
         conversations: List.unmodifiable(conversations),
       ),
       selectedConversationId: conversation.conversationId,
+      events: const [],
+      selectedEventsHydrated: false,
+      clearLiveEvent: true,
     );
     await _reloadEvents(conversation.conversationId);
   }
 
-  Future<void> _acceptEvent(ClientEventRecord event) async {
+  Future<void> _acceptEvent(
+    ClientEventRecord event,
+    ClientEventOrigin origin,
+  ) async {
     if (event.conversationId == state.selectedConversationId) {
       await _reloadEvents(event.conversationId);
-      if (event.kind == ClientEventKind.requestCompleted) {
+      if (origin == ClientEventOrigin.live) {
+        state = state.copyWith(latestLiveEvent: event);
+      }
+      if (origin == ClientEventOrigin.live &&
+          event.kind == ClientEventKind.requestCompleted) {
         final completedMessages = state.events.where(
           (candidate) =>
               candidate.requestId == event.requestId &&
@@ -424,7 +438,7 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
     if (session == null) return;
     final events = await session.listEvents(conversationId);
     if (state.selectedConversationId == conversationId) {
-      state = state.copyWith(events: events);
+      state = state.copyWith(events: events, selectedEventsHydrated: true);
     }
   }
 

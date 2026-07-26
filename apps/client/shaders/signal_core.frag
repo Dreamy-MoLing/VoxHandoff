@@ -9,6 +9,7 @@ uniform float uPlaybackLevel;
 uniform vec3 uStateColor;
 uniform float uReducedMotion;
 uniform float uDetail;
+uniform float uFaultPulse;
 
 out vec4 fragColor;
 
@@ -33,9 +34,7 @@ void main() {
   float scan = uReducedMotion > 0.5
       ? 0.0
       : smoothstep(0.018, 0.0, abs(fract(uv.y * 7.0 - uTime * 2.0) - 0.5));
-  float fault = (uState == 9.0 || uState == 10.0)
-      ? step(0.72, fract(angle * 2.4 + uTime * 1.7))
-      : 0.0;
+  float fault = uFaultPulse * step(0.72, fract(angle * 2.4 + uTime * 1.7));
   float energy = outer * 0.45 + inner * 0.22 + ripple * uDetail * 0.38;
   energy += scan * 0.035 * (1.0 - smoothstep(0.18, 0.48, radius));
   energy += fault * ring(uv, 0.355, 0.012) * 0.18;

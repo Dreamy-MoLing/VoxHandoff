@@ -8,20 +8,25 @@ import 'design/agent_talk_theme.dart';
 
 enum SignalRenderProfile { static, balanced60, highRefresh120 }
 
+SignalRenderProfile signalRenderProfileForRefreshRate(double refreshRate) =>
+    refreshRate >= 100
+    ? SignalRenderProfile.highRefresh120
+    : SignalRenderProfile.balanced60;
+
 typedef SignalShaderLoader = Future<ui.FragmentProgram> Function();
 
 class SignalCoreView extends StatefulWidget {
   const SignalCoreView({
     required this.snapshot,
     required this.dimension,
-    this.profile = SignalRenderProfile.balanced60,
+    this.profile,
     this.shaderLoader,
     super.key,
   });
 
   final SignalCoreSnapshot snapshot;
   final double dimension;
-  final SignalRenderProfile profile;
+  final SignalRenderProfile? profile;
   final SignalShaderLoader? shaderLoader;
 
   @override
@@ -29,13 +34,18 @@ class SignalCoreView extends StatefulWidget {
 }
 
 class _SignalCoreViewState extends State<SignalCoreView>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _animation;
+  late final AnimationController _faultPulse;
   ui.FragmentProgram? _program;
   bool _shaderUnavailable = false;
 
+  SignalRenderProfile get _profile =>
+      widget.profile ??
+      signalRenderProfileForRefreshRate(View.of(context).display.refreshRate);
+
   bool get _motionDisabled =>
-      widget.profile == SignalRenderProfile.static ||
+      _profile == SignalRenderProfile.static ||
       MediaQuery.maybeDisableAnimationsOf(context) == true;
 
   @override
@@ -45,6 +55,13 @@ class _SignalCoreViewState extends State<SignalCoreView>
       vsync: this,
       duration: const Duration(seconds: 8),
     );
+    _faultPulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    );
+    if (widget.snapshot.state == SignalCoreState.failed) {
+      _faultPulse.forward();
+    }
     _loadShader();
   }
 
@@ -58,6 +75,11 @@ class _SignalCoreViewState extends State<SignalCoreView>
   void didUpdateWidget(covariant SignalCoreView oldWidget) {
     super.didUpdateWidget(oldWidget);
     _syncAnimation();
+    if (oldWidget.snapshot.state != widget.snapshot.state &&
+        widget.snapshot.state == SignalCoreState.failed &&
+        !_motionDisabled) {
+      _faultPulse.forward(from: 0);
+    }
   }
 
   Future<void> _loadShader() async {
@@ -78,6 +100,8 @@ class _SignalCoreViewState extends State<SignalCoreView>
     if (_motionDisabled) {
       _animation.stop();
       _animation.value = 0;
+      _faultPulse.stop();
+      _faultPulse.value = 0;
     } else if (!_animation.isAnimating) {
       _animation.repeat();
     }
@@ -86,6 +110,7 @@ class _SignalCoreViewState extends State<SignalCoreView>
   @override
   void dispose() {
     _animation.dispose();
+    _faultPulse.dispose();
     super.dispose();
   }
 
@@ -108,7 +133,7 @@ class _SignalCoreViewState extends State<SignalCoreView>
           key: const ValueKey('signal-core-view'),
           dimension: widget.dimension,
           child: AnimatedBuilder(
-            animation: _animation,
+            animation: Listenable.merge([_animation, _faultPulse]),
             builder: (context, _) => CustomPaint(
               painter: SignalCorePainter(
                 snapshot: widget.snapshot,
@@ -121,7 +146,8 @@ class _SignalCoreViewState extends State<SignalCoreView>
                 stateColor: stateColor,
                 program: _shaderUnavailable ? null : _program,
                 reducedMotion: staticMode,
-                detail: widget.profile == SignalRenderProfile.highRefresh120
+                faultPulse: math.sin(math.pi * _faultPulse.value),
+                detail: _profile == SignalRenderProfile.highRefresh120
                     ? 1
                     : 0.72,
               ),
@@ -146,6 +172,7 @@ class SignalCorePainter extends CustomPainter {
     required this.stateColor,
     required this.program,
     required this.reducedMotion,
+    required this.faultPulse,
     required this.detail,
   });
 
@@ -159,6 +186,7 @@ class SignalCorePainter extends CustomPainter {
   final Color stateColor;
   final ui.FragmentProgram? program;
   final bool reducedMotion;
+  final double faultPulse;
   final double detail;
 
   @override
@@ -178,7 +206,8 @@ class SignalCorePainter extends CustomPainter {
         ..setFloat(7, stateColor.g)
         ..setFloat(8, stateColor.b)
         ..setFloat(9, reducedMotion ? 1 : 0)
-        ..setFloat(10, detail);
+        ..setFloat(10, detail)
+        ..setFloat(11, faultPulse);
       canvas.drawCircle(
         center,
         radius,
@@ -317,5 +346,6 @@ class SignalCorePainter extends CustomPainter {
       oldDelegate.stateColor != stateColor ||
       oldDelegate.program != program ||
       oldDelegate.reducedMotion != reducedMotion ||
+      oldDelegate.faultPulse != faultPulse ||
       oldDelegate.detail != detail;
 }

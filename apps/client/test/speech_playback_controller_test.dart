@@ -79,8 +79,13 @@ void main() {
         fullReply: '第一段。第二段。',
       );
       await _eventually(() => playback.played.isNotEmpty);
+      playback.emitLevel(0.64);
+      await _eventually(
+        () => container.read(speechPlaybackProvider).playbackLevel == 0.64,
+      );
       await controller.stopSpeech();
       expect(container.read(speechPlaybackProvider).phase, SpeechPhase.stopped);
+      expect(container.read(speechPlaybackProvider).playbackLevel, 0);
       expect(
         container.read(speechPlaybackProvider).stopDuration,
         lessThanOrEqualTo(const Duration(milliseconds: 300)),
@@ -174,8 +179,12 @@ class _FakeTts implements TtsPort {
 
 class _BlockingPlayback implements AudioPlaybackPort {
   final List<SynthesizedSpeech> played = [];
+  final StreamController<double> _levels = StreamController<double>.broadcast();
   Completer<void>? _first;
   int stops = 0;
+
+  @override
+  Stream<double> get levels => _levels.stream;
 
   @override
   Future<void> play(SynthesizedSpeech speech) async {
@@ -188,6 +197,10 @@ class _BlockingPlayback implements AudioPlaybackPort {
 
   void release() {
     if (!(_first?.isCompleted ?? true)) _first!.complete();
+  }
+
+  void emitLevel(double level) {
+    _levels.add(level);
   }
 
   @override
@@ -236,6 +249,9 @@ class _BlockingTts implements TtsPort {
 }
 
 class _FailingStopPlayback implements AudioPlaybackPort {
+  @override
+  Stream<double> get levels => const Stream.empty();
+
   @override
   Future<void> play(SynthesizedSpeech speech) async {}
 

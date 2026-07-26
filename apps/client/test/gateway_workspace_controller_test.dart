@@ -155,6 +155,24 @@ ClientGatewayDirectory directory() => ClientGatewayDirectory(
   ],
 );
 
+ClientEventRecord approvalEvent(int sequence) => ClientEventRecord(
+  eventId: 'event-$sequence',
+  connectionId: 'connection-1',
+  originDeviceId: 'device-1',
+  conversationId: 'conversation-1',
+  requestId: 'request-1',
+  sequence: BigInt.from(sequence),
+  occurredAt: DateTime.utc(2030, 1, 1, 0, 0, sequence),
+  kind: ClientEventKind.approvalRequired,
+  content: ApprovalClientEventContent(
+    approvalId: 'approval-$sequence',
+    safeSummary: 'Review in app.',
+    operationSummarySha256: 'a' * 64,
+    expiresAt: DateTime.utc(2035),
+  ),
+  envelopeSha256: 'b' * 64,
+);
+
 void main() {
   test(
     'requires explicit control and never resubmits an uncertain send',
@@ -258,6 +276,36 @@ void main() {
       expect(
         container.read(gatewayWorkspaceProvider).safeErrorCode,
         'submission_outcome_uncertain',
+      );
+    },
+  );
+
+  test(
+    'publishes only explicit live events as desktop attention candidates',
+    () async {
+      final factory = FakeWorkspaceFactory();
+      final container = ProviderContainer(
+        overrides: [
+          gatewayWorkspaceSessionFactoryProvider.overrideWithValue(factory),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(gatewayWorkspaceProvider.notifier).connect();
+      await factory.session.directoryCallback!(directory());
+      final replayed = approvalEvent(1);
+      factory.session.storedEvents.add(replayed);
+      await factory.session.eventCallback!(replayed, ClientEventOrigin.replay);
+
+      expect(container.read(gatewayWorkspaceProvider).latestLiveEvent, isNull);
+
+      final live = approvalEvent(2);
+      factory.session.storedEvents.add(live);
+      await factory.session.eventCallback!(live, ClientEventOrigin.live);
+
+      expect(
+        container.read(gatewayWorkspaceProvider).latestLiveEvent,
+        same(live),
       );
     },
   );

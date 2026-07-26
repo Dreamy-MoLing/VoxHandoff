@@ -7,6 +7,36 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'selects balanced and high-refresh render profiles deterministically',
+    () {
+      expect(
+        signalRenderProfileForRefreshRate(60),
+        SignalRenderProfile.balanced60,
+      );
+      expect(
+        signalRenderProfileForRefreshRate(120),
+        SignalRenderProfile.highRefresh120,
+      );
+      expect(
+        signalRenderProfileForRefreshRate(0),
+        SignalRenderProfile.balanced60,
+      );
+      expect(
+        signalRenderProfileForRefreshRate(99),
+        SignalRenderProfile.balanced60,
+      );
+      expect(
+        signalRenderProfileForRefreshRate(100),
+        SignalRenderProfile.highRefresh120,
+      );
+      expect(
+        signalRenderProfileForRefreshRate(144),
+        SignalRenderProfile.highRefresh120,
+      );
+    },
+  );
+
   testWidgets('keeps a semantic static core when shader loading fails', (
     tester,
   ) async {
@@ -67,6 +97,43 @@ void main() {
 
     expect(find.bySemanticsLabel('Recording voice'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('fault texture is a one-shot transition pulse', (tester) async {
+    Future<void> pumpState(SignalCoreState state) => tester.pumpWidget(
+      MaterialApp(
+        theme: buildAgentTalkDarkTheme(),
+        home: Scaffold(
+          body: SignalCoreView(
+            snapshot: SignalCoreSnapshot(
+              state: state,
+              label: state.name,
+              audioLevel: 0,
+              playbackLevel: 0,
+            ),
+            dimension: 180,
+            profile: SignalRenderProfile.balanced60,
+            shaderLoader: _failedShader,
+          ),
+        ),
+      ),
+    );
+
+    await pumpState(SignalCoreState.idle);
+    await pumpState(SignalCoreState.failed);
+    await tester.pump(const Duration(milliseconds: 140));
+    final corePaint = find.descendant(
+      of: find.byKey(const ValueKey('signal-core-view')),
+      matching: find.byType(CustomPaint),
+    );
+    var painter =
+        tester.widget<CustomPaint>(corePaint).painter! as SignalCorePainter;
+    expect(painter.faultPulse, closeTo(1, 0.01));
+
+    await tester.pump(const Duration(milliseconds: 160));
+    painter =
+        tester.widget<CustomPaint>(corePaint).painter! as SignalCorePainter;
+    expect(painter.faultPulse, closeTo(0, 0.01));
   });
 }
 
