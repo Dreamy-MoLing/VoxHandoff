@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -67,7 +68,9 @@ class _M4RenderBenchmarkState extends State<_M4RenderBenchmark> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _startCollection());
       return program;
     } on Object catch (error) {
-      stderr.writeln(
+      // Android profile processes exit immediately after this probe. Emit
+      // synchronously through Flutter logging so the final record is not lost.
+      debugPrintSynchronously(
         jsonEncode({
           'benchmark': 'm4_signal_core',
           'status': 'failed',
@@ -116,7 +119,7 @@ class _M4RenderBenchmarkState extends State<_M4RenderBenchmark> {
     _collecting = false;
     SchedulerBinding.instance.removeTimingsCallback(_acceptTimings);
     final refreshRate = View.of(context).display.refreshRate;
-    stdout.writeln(
+    debugPrintSynchronously(
       jsonEncode({
         'benchmark': 'm4_signal_core',
         'status': 'completed',
@@ -127,7 +130,7 @@ class _M4RenderBenchmarkState extends State<_M4RenderBenchmark> {
       }),
     );
     for (final sample in _samples) {
-      stdout.writeln(jsonEncode(sample));
+      debugPrintSynchronously(jsonEncode(sample));
     }
     widget.onComplete();
   }

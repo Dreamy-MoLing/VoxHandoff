@@ -11,6 +11,7 @@ const excludedDirectories = new Set([
   ".codebase-memory",
   "node_modules",
   "dist",
+  "build",
   "coverage",
   "docs",
 ]);
