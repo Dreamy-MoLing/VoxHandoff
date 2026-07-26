@@ -37,7 +37,7 @@ Future<void> main() async {
     await _runDesktopIntegrationSelfTest();
     exit(exitCode);
   }
-  if (Platform.environment['VOXHANDOFF_M4_RENDER_BENCHMARK'] == '1') {
+  if (shouldRunM4RenderBenchmark(Platform.environment)) {
     await runM4RenderBenchmark();
     exit(exitCode);
   }

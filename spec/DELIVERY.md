@@ -291,6 +291,8 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 
 桌面性能证据位于 `artifacts/benchmarks/m4-fedora44-20260725/`：Fedora 44 / Linux 7.1.4、i5-1155G7、Iris Xe、15 GiB RAM、niri/Wayland、power-saver、1920×1080@60.001 Hz 的 Linux release，在 5 帧 shader warmup 后对 11 个状态各采 5 帧；55/55 均低于 16,667 µs，total P50 3,570 µs、P95 7,287 µs。该 probe 及汇总脚本已进入仓库，但只通过 `balanced60` 档；`highRefresh120` 和具名 Android 参考设备仍未实测。具名 Android 参考设备门补齐后，方可把本标题改为“完成”并进入 M5。
 
+Android profile 不依赖桌面进程环境变量：以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编译触发同一探针，`flutter run`/logcat 前缀可由汇总脚本安全剥离。设备接入后须先记录具名型号、exact OS/build、SoC/GPU/RAM、显示刷新率与电源模式，再保存完整 profile stdout；探针自动退出后对该原始文件运行同一汇总门。不得以 emulator、debug build 或 CI APK build 代替真机 profile 结果。
+
 ### M5 — OpenClaw、发行与运维
 
 目标：完成第三个 Agent 和五端可交付构建。
@@ -385,6 +387,11 @@ VOXHANDOFF_M4_RENDER_BENCHMARK=1 \
   > /tmp/voxhandoff-m4-measurements.jsonl
 npm run benchmark:m4:summary -- \
   /tmp/voxhandoff-m4-measurements.jsonl
+flutter run --profile -d <android-device-serial> \
+  --dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true \
+  2>&1 | tee /tmp/voxhandoff-m4-android-profile.log
+npm run benchmark:m4:summary -- \
+  /tmp/voxhandoff-m4-android-profile.log
 npm run poc -- doctor
 ```
 

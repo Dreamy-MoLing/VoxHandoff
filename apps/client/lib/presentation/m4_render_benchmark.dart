@@ -10,6 +10,17 @@ import '../domain/signal_core.dart';
 import 'design/agent_talk_theme.dart';
 import 'signal_core_view.dart';
 
+const bool m4RenderBenchmarkBuildEnabled = bool.fromEnvironment(
+  'VOXHANDOFF_M4_RENDER_BENCHMARK',
+);
+
+bool shouldRunM4RenderBenchmark(
+  Map<String, String> environment, {
+  bool buildEnabled = m4RenderBenchmarkBuildEnabled,
+}) {
+  return buildEnabled || environment['VOXHANDOFF_M4_RENDER_BENCHMARK'] == '1';
+}
+
 /// Runs the opt-in M4 frame probe and returns after 5 warmup frames plus five
 /// measured shader frames for each of the 11 states. The JSONL output contains
 /// timing facts only.
