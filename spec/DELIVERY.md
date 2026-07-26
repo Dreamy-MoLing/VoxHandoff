@@ -271,7 +271,7 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 
 脱敏基准位于 `artifacts/benchmarks/m3-fedora44-20260722/`：5 次 warmup 后 30 条合成中文技术语料的 faster-whisper base 非空 final 为 27/30，成功样本 P50 500.04 ms/P95 1953.18 ms，平均 CER 0.678；GPT-SoVITS 30/30 返回 WAV，但 CPU P50 3723.92 ms/P95 5428.33 ms；50 次 STT→确定性回复→TTS 为 44/50（88%）。失败全部保留在分母，因此该 Intel i5-1155G7 CPU/base profile 被拒绝自动语音并按 `PRODUCT.md` 标为 `text-first degraded`，不下调推荐目标。M3 接受的是可替换实现、失败隔离和经评审的降级口径；M5 启用推荐 voice release profile 前仍须以更强中文模型/加速 TTS 通过 ≥95%、10 次 cold start 和具名真人设备语料。
 
-### M4 — Fairy 动效与桌面能力（实现完成；Android 性能与本阶段五平台 CI 门待补）
+### M4 — Fairy 动效与桌面能力（实现完成；Android 性能门待补）
 
 目标：在已经可靠的交互上增加原创角色表现。
 
@@ -287,9 +287,9 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 
 实现证据：`SignalCoreSnapshot` selector 的离线矩阵覆盖 11 个状态、安全优先级、已解决交互、uncertain 不完成、stale recording/playback/failure identity；`MediaKitAudioPlayback` 从当前实际 PCM16 WAV 每 50 ms 提取有界 RMS 包络，unsupported、malformed 或超过 4 MiB/2 分钟分析上限的音频返回空而不编造音量，播放超时会停止 native player，application generation/segment identity 在停止或切换时撤销旧 level。原创 GLSL 与静态 painter 始终并存，shader 人工失败、一次性故障转场和 `disableAnimations` widget gate 保留同一语义与几何。桌面正文为固定右侧核心保留安全区，手机标题/阅读/录音状态进入可滚动单列；桌面/390px recording 与 uncertain golden、2 倍系统字号 approval 测试均无溢出。refresh rate 小于 100 Hz 使用 balanced60 detail，100 Hz 以上使用 highRefresh120 detail，Flutter ticker 仍服从实际 display vsync。
 
-桌面 adapter 的 Linux MethodChannel 测试覆盖 Wayland 明确降级、通知无正文/摘要 hash、托盘失败不拦截关闭、初始化竞态、无选择时不跨 conversation 通知，以及 router `replay/live` 来源和 events hydration 双边界后的 replay 去重；历史 replay 也不会重新触发 TTS。Fedora 44 / Clang 22.1.8 release 带四个原生插件构建成功。由于主机 Polkit 本轮没有交互代理，`libnotify-devel` 仅从 Fedora 官方仓库下载到 `/tmp` 提供头文件与链接名，运行时仍链接主机正式 `libnotify.so.4`；真实 Wayland self-test 报告 `hotkey=degraded tray=degraded notifications=available window=available` 并按产品降级契约通过。CI 已加入 Ubuntu 的三个原生开发包、Xvfb/X11 desktop startup self-test 及既有五平台 build，远端结果在本阶段 PR 后补记。
+桌面 adapter 的 Linux MethodChannel 测试覆盖 Wayland 明确降级、通知无正文/摘要 hash、托盘失败不拦截关闭、初始化竞态、无选择时不跨 conversation 通知，以及 router `replay/live` 来源和 events hydration 双边界后的 replay 去重；历史 replay 也不会重新触发 TTS。Fedora 44 / Clang 22.1.8 release 带四个原生插件构建成功。由于主机 Polkit 本轮没有交互代理，`libnotify-devel` 仅从 Fedora 官方仓库下载到 `/tmp` 提供头文件与链接名，运行时仍链接主机正式 `libnotify.so.4`；真实 Wayland self-test 报告 `hotkey=degraded tray=degraded notifications=available window=available` 并按产品降级契约通过。首轮远端门在 Linux release 通过后暴露 Xvfb 没有系统托盘宿主却被启动探针误判失败；修复只在显式 headless self-test 中接受 hotkey/tray 的可见降级，通知和窗口能力仍须可用，并增加纯策略回归测试。[GitHub Actions run 30181147513](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30181147513) 随后通过 Node/PostgreSQL、Linux 158 项 Flutter 测试与 analyze/release/Xvfb desktop/Secret Service、Android、macOS/iOS 和 Windows 全部门。
 
-桌面性能证据位于 `artifacts/benchmarks/m4-fedora44-20260725/`：Fedora 44 / Linux 7.1.4、i5-1155G7、Iris Xe、15 GiB RAM、niri/Wayland、power-saver、1920×1080@60.001 Hz 的 Linux release，在 5 帧 shader warmup 后对 11 个状态各采 5 帧；55/55 均低于 16,667 µs，total P50 3,570 µs、P95 7,287 µs。该 probe 及汇总脚本已进入仓库，但只通过 `balanced60` 档；`highRefresh120` 和具名 Android 参考设备仍未实测。Android 门补齐且本阶段 PR 的五平台 CI 通过后，方可把本标题改为“完成”并进入 M5。
+桌面性能证据位于 `artifacts/benchmarks/m4-fedora44-20260725/`：Fedora 44 / Linux 7.1.4、i5-1155G7、Iris Xe、15 GiB RAM、niri/Wayland、power-saver、1920×1080@60.001 Hz 的 Linux release，在 5 帧 shader warmup 后对 11 个状态各采 5 帧；55/55 均低于 16,667 µs，total P50 3,570 µs、P95 7,287 µs。该 probe 及汇总脚本已进入仓库，但只通过 `balanced60` 档；`highRefresh120` 和具名 Android 参考设备仍未实测。具名 Android 参考设备门补齐后，方可把本标题改为“完成”并进入 M5。
 
 ### M5 — OpenClaw、发行与运维
 
