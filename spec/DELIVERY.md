@@ -2,9 +2,9 @@
 
 ## 1. 当前状态
 
-基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.19.0、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和本地 Dart `protoc_plugin` 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。M2 使用官方 stable Flutter 3.44.6 / Dart 3.12.2 用户级 SDK，Linux archive SHA-256 固定于 `toolchains/flutter.json`；Fedora 主机已安装 Clang 22.1.8、GTK 3 与 libsecret development headers，Linux release build 和 Secret Service 真读写/删除通过。当前主机仍无 Android SDK；PR #1 的固定版本 runner 已完成 Android/iOS/macOS/Windows build。
+基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.19.0、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和本地 Dart `protoc_plugin` 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。M2 使用官方 stable Flutter 3.44.6 / Dart 3.12.2 用户级 SDK，Linux archive SHA-256 固定于 `toolchains/flutter.json`；Fedora 主机已安装 Clang 22.1.8、GTK 3 与 libsecret development headers，Linux release build 和 Secret Service 真读写/删除通过。M4 真机门使用 Android command-line tools、Platform Tools 37.0.0、Build Tools/API 36、NDK 28.2.13676358 与 OpenJDK 25，并已通过 `flutter doctor -v` 的 Android toolchain 和 license 检查。
 
-当前阶段：M4 Fairy 动效与桌面能力的代码、离线门和 Fedora 60 Hz 档已完成；阶段门尚未关闭。2026-07-25 只读硬件审计确认本机无 Android SDK、`adb` 或已连接 Android USB 设备，因此 5.5 要求的具名 Android 参考设备性能结果仍是唯一外部阻塞，不能由开发机或 CI build 推断。M-1、M0、M1、M2 与 M3 均已完成；M5 不得在该门未补证时宣称 M4 已完成，也不得回退完整文字、审批、lease、cursor、uncertain 或语音失败隔离语义。
+当前阶段：M4 Fairy 动效与桌面能力已完成，下一阶段为 M5 OpenClaw、发行与运维。2026-07-25 的 vivo X100s Android 120 Hz profile 已补齐具名设备、exact 环境、脱敏原始测量、失败保留和独立热态复验；M4 的 Fedora 60 Hz 与 Android 120 Hz 持续渲染门均有仓库证据。M-1、M0、M1、M2、M3 与 M4 均已完成；M5 不得把本阶段的 profile APK、热态帧门或 CI build 推断为签名安装包、升级/卸载、冷启动性能或发行验收，也不得回退完整文字、审批、lease、cursor、uncertain 或语音失败隔离语义。
 
 已完成：
 
@@ -77,7 +77,6 @@
 
 M4 阶段门之后未完成或未实测：
 
-- 具名 Android 参考设备上的 M4 60 Hz profile：需记录设备型号、exact OS/build、CPU/GPU/RAM、电源模式，并保存 5 次 warmup 后至少 50 帧的脱敏原始测量、汇总和 pass/fail；当前 Fedora 结果不能替代；
 - OpenClaw adapter；
 - 具名真人麦克风语料、10 次冷启动，以及达到推荐延迟/成功率的加速 TTS + 更强中文 STT release profile；当前 Fedora CPU/base profile 已实测并明确降级，不允许默认自动播报；
 - 实体手机/桌面的远程网络、非 Linux keyring 真读写、签名打包、安装/升级/卸载与发布测试；这些仍是 M5 发行门，不得从 CI 编译结果推断通过。
@@ -271,7 +270,7 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 
 脱敏基准位于 `artifacts/benchmarks/m3-fedora44-20260722/`：5 次 warmup 后 30 条合成中文技术语料的 faster-whisper base 非空 final 为 27/30，成功样本 P50 500.04 ms/P95 1953.18 ms，平均 CER 0.678；GPT-SoVITS 30/30 返回 WAV，但 CPU P50 3723.92 ms/P95 5428.33 ms；50 次 STT→确定性回复→TTS 为 44/50（88%）。失败全部保留在分母，因此该 Intel i5-1155G7 CPU/base profile 被拒绝自动语音并按 `PRODUCT.md` 标为 `text-first degraded`，不下调推荐目标。M3 接受的是可替换实现、失败隔离和经评审的降级口径；M5 启用推荐 voice release profile 前仍须以更强中文模型/加速 TTS 通过 ≥95%、10 次 cold start 和具名真人设备语料。
 
-### M4 — Fairy 动效与桌面能力（实现完成；Android 性能门待补）
+### M4 — Fairy 动效与桌面能力（完成：2026-07-25）
 
 目标：在已经可靠的交互上增加原创角色表现。
 
@@ -289,9 +288,11 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 
 桌面 adapter 的 Linux MethodChannel 测试覆盖 Wayland 明确降级、通知无正文/摘要 hash、托盘失败不拦截关闭、初始化竞态、无选择时不跨 conversation 通知，以及 router `replay/live` 来源和 events hydration 双边界后的 replay 去重；历史 replay 也不会重新触发 TTS。Fedora 44 / Clang 22.1.8 release 带四个原生插件构建成功。由于主机 Polkit 本轮没有交互代理，`libnotify-devel` 仅从 Fedora 官方仓库下载到 `/tmp` 提供头文件与链接名，运行时仍链接主机正式 `libnotify.so.4`；真实 Wayland self-test 报告 `hotkey=degraded tray=degraded notifications=available window=available` 并按产品降级契约通过。首轮远端门在 Linux release 通过后暴露 Xvfb 没有系统托盘宿主却被启动探针误判失败；修复只在显式 headless self-test 中接受 hotkey/tray 的可见降级，通知和窗口能力仍须可用，并增加纯策略回归测试。[GitHub Actions run 30182065598](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30182065598) 在 Android profile 触发与前缀日志汇总增量后通过 Node/PostgreSQL、Linux 160 项 Flutter 测试与 analyze/release/Xvfb desktop/Secret Service、Android、macOS/iOS 和 Windows 全部门。
 
-桌面性能证据位于 `artifacts/benchmarks/m4-fedora44-20260725/`：Fedora 44 / Linux 7.1.4、i5-1155G7、Iris Xe、15 GiB RAM、niri/Wayland、power-saver、1920×1080@60.001 Hz 的 Linux release，在 5 帧 shader warmup 后对 11 个状态各采 5 帧；55/55 均低于 16,667 µs，total P50 3,570 µs、P95 7,287 µs。该 probe 及汇总脚本已进入仓库，但只通过 `balanced60` 档；`highRefresh120` 和具名 Android 参考设备仍未实测。具名 Android 参考设备门补齐后，方可把本标题改为“完成”并进入 M5。
+桌面性能证据位于 `artifacts/benchmarks/m4-fedora44-20260725/`：Fedora 44 / Linux 7.1.4、i5-1155G7、Iris Xe、15 GiB RAM、niri/Wayland、power-saver、1920×1080@60.001 Hz 的 Linux release，在 5 帧 shader warmup 后对 11 个状态各采 5 帧；55/55 均低于 16,667 µs，total P50 3,570 µs、P95 7,287 µs。
 
-Android profile 不依赖桌面进程环境变量：以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编译触发同一探针，`flutter run`/logcat 前缀可由汇总脚本安全剥离。设备接入后须先记录具名型号、exact OS/build、SoC/GPU/RAM、显示刷新率与电源模式，再保存完整 profile stdout；探针自动退出后对该原始文件运行同一汇总门。不得以 emulator、debug build 或 CI APK build 代替真机 profile 结果。
+Android `highRefresh120` 证据位于 `artifacts/benchmarks/m4-android-vivo-x100s-20260725/`：vivo X100s / Android 16 API 36 / MediaTek MT6989 / Mali-G720-Immortalis MC12 / 15,691,500 KiB RAM / 1260×2800@120.000 Hz，低电量模式关闭且测试前后 thermal status 均为 0。刚安装 profile APK 后的首轮 cold 测量有 2/55 帧超过严格的 8,333 µs `FrameTiming.totalSpan` 门，原始结果按失败保留；随后两次不重装 APK 的独立 hot 进程重启均为 0/55 超预算，首轮 total P50/P95 1,044/2,029 µs，复验为 968/2,084 µs。结合 Fedora `balanced60`，M4 的持续渲染 60/120 Hz 门已覆盖；cold 结果只作为 M5 发行启动性能的明确观察，不得表述为 cold-start 通过。
+
+Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编译触发同一探针。探针改用 Flutter 同步日志输出，避免 Android 在紧接 `exit()` 时丢失 `stdout.writeln` 缓冲；汇总脚本继续安全剥离 `flutter run`/logcat 前缀。Flutter 3.44.6 的有效 Android 下限为 API 24，Gradle 配置现跟随锁定 SDK 的 `flutter.minSdkVersion`，不再在每次构建时把过时的显式 API 23 静默迁移。真机 profile、具名 exact 环境、脱敏原始测量、严格失败与两次重复通过结果均已入库，未以 emulator、debug build 或 CI APK build 替代。
 
 ### M5 — OpenClaw、发行与运维
 

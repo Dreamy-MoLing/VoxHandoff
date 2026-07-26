@@ -1,0 +1,15 @@
+{
+  "benchmark": "m4_signal_core",
+  "status": "failed",
+  "measured_frames": 55,
+  "refresh_rate_hz": 120.00000762939453,
+  "profile": "highRefresh120",
+  "frame_budget_us": 8333,
+  "build_p50_us": 231,
+  "build_p95_us": 1125,
+  "raster_p50_us": 516,
+  "raster_p95_us": 3337,
+  "total_p50_us": 1082,
+  "total_p95_us": 6640,
+  "over_budget_frames": 2
+}
