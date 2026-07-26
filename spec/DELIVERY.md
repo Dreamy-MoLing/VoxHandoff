@@ -4,7 +4,7 @@
 
 基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.19.0、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和本地 Dart `protoc_plugin` 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。M2 使用官方 stable Flutter 3.44.6 / Dart 3.12.2 用户级 SDK，Linux archive SHA-256 固定于 `toolchains/flutter.json`；Fedora 主机已安装 Clang 22.1.8、GTK 3 与 libsecret development headers，Linux release build 和 Secret Service 真读写/删除通过。当前主机仍无 Android SDK；PR #1 的固定版本 runner 已完成 Android/iOS/macOS/Windows build。
 
-当前阶段：M2 Flutter 文字客户端与同步完成；PR #1 的首轮 GitHub Actions run `29899751800` 已通过 Node/PostgreSQL、Linux quality/Secret Service、Android、macOS/iOS 和 Windows 全部门。M-1、M0 与 M1 已完成。下一阶段从 M3 语音闭环开始，不得回退 M2 的完整文字、审批、lease、cursor 或 uncertain 语义。
+当前阶段：M4 Fairy 动效与桌面能力的代码、离线门和 Fedora 60 Hz 档已完成；阶段门尚未关闭。2026-07-25 只读硬件审计确认本机无 Android SDK、`adb` 或已连接 Android USB 设备，因此 5.5 要求的具名 Android 参考设备性能结果仍是唯一外部阻塞，不能由开发机或 CI build 推断。M-1、M0、M1、M2 与 M3 均已完成；M5 不得在该门未补证时宣称 M4 已完成，也不得回退完整文字、审批、lease、cursor、uncertain 或语音失败隔离语义。
 
 已完成：
 
@@ -70,11 +70,14 @@
 - 两份独立 Drift 账本与中央 router 的组合验收覆盖桌面/手机共同观察同一完整事件、手机无隐式控制、带当前 revision 的显式接管、断线后从 sequence 2 启动 replay 并收敛到 4；两端无额外 `Send`。已连接工作区另有桌面/390px 手机 golden、完整回复与显式审批 widget gate；
 - CI 新增固定 Flutter 3.44.6 的 Linux analyze/test/release/Secret Service 门，以及 Android debug APK、macOS release、iOS simulator 和 Windows release 构建矩阵；根 `npm run check` 已按 workspace 依赖拓扑在 protocol `--noEmit` 校验后显式生成 `dist`，以移除 `origin/main` 干净 runner 在 Gateway 检查时找不到 `@agent-talk/protocol` 的顺序缺陷；Dart 生成一致性门则在固定 Flutter SDK 就绪后运行。这些是共享 M2 客户端的合并门，不替代 M5 的签名、安装、升级、卸载与实体设备发行验收；
 - Dart protocol 依赖经真实 pub solver 将 `protobuf` 修正为与 `grpc 5.1.0` 相容的 6.x，不使用 dependency override；客户端运行依赖已固定 `drift 2.34.2`、`path_provider 2.1.6` 和传递依赖 `sqlite3 3.5.0`，开发生成器固定 `drift_dev 2.34.0` / `build_runner 2.15.1`。PowerSync 未进入依赖，仅保留通过独立许可、运维、最小授权和量化收益 gate 后的可选 adapter；
+- M4 信号生命核心以纯 Dart selector 从规范 Agent event、本地 voice/speech 和精确 identity 生成 11 个互斥主状态，固定 approval/clarification → uncertain → failed → voice → work → speech → completed → idle 优先级；GLSL 与静态 CustomPainter 共用状态几何，录音使用当前 capture level，播放使用当前 segment 的 PCM16 WAV RMS 包络，shader load failure、系统减少动态和 60/120 Hz profile 都不改变语义。桌面固定安全区、手机可滚动槽位、2 倍系统字号、审批/uncertain 高对比和桌面/手机 golden 已进入 Flutter 门；
+- M4 桌面能力由独立 port/controller/production adapter 组合 `hotkey_manager`、`tray_manager`、`local_notifier` 与 `window_manager`。启动 replay 不弹历史通知，新事件按 conversation sequence 高水位去重且通知只含固定阶段文案；全局/应用内快捷键只切换语音草稿。close-to-tray 只有托盘成功后启用，Fedora 44 niri/Wayland 真自检明确得到 hotkey/tray `degraded`、notifications/window `available`，没有伪装 X11 能力；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
-M3 之后未完成或未实测：
+M4 阶段门之后未完成或未实测：
 
+- 具名 Android 参考设备上的 M4 60 Hz profile：需记录设备型号、exact OS/build、CPU/GPU/RAM、电源模式，并保存 5 次 warmup 后至少 50 帧的脱敏原始测量、汇总和 pass/fail；当前 Fedora 结果不能替代；
 - OpenClaw adapter；
 - 具名真人麦克风语料、10 次冷启动，以及达到推荐延迟/成功率的加速 TTS + 更强中文 STT release profile；当前 Fedora CPU/base profile 已实测并明确降级，不允许默认自动播报；
 - 实体手机/桌面的远程网络、非 Linux keyring 真读写、签名打包、安装/升级/卸载与发布测试；这些仍是 M5 发行门，不得从 CI 编译结果推断通过。
@@ -177,6 +180,7 @@ scripts/                # 协议、质量与构建脚本
 | `drift_dev` / `build_runner` | 2.34.0 / 2.15.1，Flutter lockfile | MIT / BSD-3-Clause | 仅开发期生成；真实 pub solver 证明 `drift_dev >=2.34.1+1` 的 Analyzer 13 与 Flutter 3.44.6 固定测试栈冲突，因此精确固定最后兼容版本而不使用 override | 提交生成的 Dart 文件并做一致性门；升级 Flutter 后单独重跑 solver/generator，也可改为 `.drift`/手写 SQL adapter 而不改变领域接口 |
 | Flutter `record` | 7.1.1，Flutter lockfile | BSD-3-Clause | [官方平台矩阵](https://pub.dev/packages/record)覆盖 Android/iOS/Linux/macOS/Windows；只使用内存 PCM16 stream、权限/encoder runtime probe，并提供 `VOXHANDOFF_AUDIO_CAPTURE_SELF_TEST=1`；Linux 还要求 `parecord/pactl`，CI 已安装 `pulseaudio-utils` | `AudioCapturePort` 隔离插件；单平台可替换原生 capture 而不改变 STT/确认状态机 |
 | `media_kit` / `media_kit_libs_audio` | 1.2.6 / 1.0.7，Flutter lockfile | MIT / MIT | [官方仓库](https://github.com/media-kit/media-kit)覆盖五目标平台；adapter 只接收有界内存音频并暴露 play/stop，队列和 stale identity 留在 application 层 | `AudioPlaybackPort` 隔离播放器；可换平台播放器而不改变 segment identity/TTS 队列 |
+| `hotkey_manager` / `tray_manager` / `window_manager` / `local_notifier` | 0.2.3 / 0.5.3 / 0.5.2 / 0.1.6，Flutter lockfile | MIT | pub.dev 声明 Windows/macOS/Linux；application 只依赖 `DesktopIntegrationPort`，Linux 离线 MethodChannel 测试和 Fedora 44 release 自检覆盖逐项降级。Linux build 固定 `keybinder-3.0`、Ayatana AppIndicator 与 `libnotify` 开发包；Wayland 不调用 X11 Keybinder | 可逐平台替换 portal/native adapter，不改变 controller/通知 enum；托盘或热键失败保留前台窗口、应用内快捷键和完整正文 |
 | `faster-whisper` | 1.2.1，`services/stt/uv.lock` | MIT | [SYSTRAN 官方仓库](https://github.com/SYSTRAN/faster-whisper)；Python 3.11 本机 base 模型已通过 JSONL sidecar、临时文件权限/清理和真实中文音频链路 | `SttBackend` 与 1.0 sidecar protocol 隔离引擎；30 条中文门不达标时换模型/后端而不改变 Flutter domain |
 | GPT-SoVITS | 本机 `api_v2.py` `/tts` 契约；不纳入应用依赖 | MIT（发布时连同模型/权重另审） | [官方仓库](https://github.com/RVC-Boss/GPT-SoVITS)契约已真合成 WAV；Client 仅允许 loopback HTTP build config | `TtsPort` 隔离 HTTP 服务和音色；可换其他本地/经同意的远程 TTS，不改变完整回复或播报摘要 |
 | `pg` / `@types/pg` | 8.22.0 / 8.20.0，npm lockfile | MIT | node-postgres 长期维护；使用底层 Pool/transaction API，不引入 ORM | `GatewayLedger` 隔离 SQL；可替换其他 PostgreSQL driver 而不改变 acceptance 语义 |
@@ -267,12 +271,12 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 
 脱敏基准位于 `artifacts/benchmarks/m3-fedora44-20260722/`：5 次 warmup 后 30 条合成中文技术语料的 faster-whisper base 非空 final 为 27/30，成功样本 P50 500.04 ms/P95 1953.18 ms，平均 CER 0.678；GPT-SoVITS 30/30 返回 WAV，但 CPU P50 3723.92 ms/P95 5428.33 ms；50 次 STT→确定性回复→TTS 为 44/50（88%）。失败全部保留在分母，因此该 Intel i5-1155G7 CPU/base profile 被拒绝自动语音并按 `PRODUCT.md` 标为 `text-first degraded`，不下调推荐目标。M3 接受的是可替换实现、失败隔离和经评审的降级口径；M5 启用推荐 voice release profile 前仍须以更强中文模型/加速 TTS 通过 ≥95%、10 次 cold start 和具名真人设备语料。
 
-### M4 — Fairy 动效与桌面能力
+### M4 — Fairy 动效与桌面能力（实现完成；Android 性能与本阶段五平台 CI 门待补）
 
 目标：在已经可靠的交互上增加原创角色表现。
 
 - GLSL 核心、音频波纹、扫描线和短故障转场；
-- Rive 辅助微动效；
+- Rive 只在受审资产能减少实现复杂度时作为辅助微动效；本阶段没有合适 `.riv` 资产，按架构最小依赖门保留 Flutter 内建 transition 而不引入空 runtime；
 - 桌面常驻视觉安全区、录音展开和手机标题/阅读/录音三种尺寸槽位；
 - idle/recording/transcribing/awaiting-confirmation/submitting/working/speaking/approval/completed/failed/uncertain 视觉状态；
 - 真实麦克风音量、规范 Agent 事件和当前 TTS segment 驱动，stale identity 不继续响应；
@@ -280,6 +284,12 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 - 减少动态效果、静态回退、60/120 FPS profile。
 
 退出条件：shader/Rive 故障不影响使用；五端同状态语义一致；核心不覆盖正文、转写或操作；审批和澄清保持高对比度并取得视觉优先级；`uncertain` 不产生完成反馈；减少动态效果下所有状态可由静态几何和文字区分。
+
+实现证据：`SignalCoreSnapshot` selector 的离线矩阵覆盖 11 个状态、安全优先级、已解决交互、uncertain 不完成、stale recording/playback/failure identity；`MediaKitAudioPlayback` 从当前实际 PCM16 WAV 每 50 ms 提取有界 RMS 包络，unsupported、malformed 或超过 4 MiB/2 分钟分析上限的音频返回空而不编造音量，播放超时会停止 native player，application generation/segment identity 在停止或切换时撤销旧 level。原创 GLSL 与静态 painter 始终并存，shader 人工失败、一次性故障转场和 `disableAnimations` widget gate 保留同一语义与几何。桌面正文为固定右侧核心保留安全区，手机标题/阅读/录音状态进入可滚动单列；桌面/390px recording 与 uncertain golden、2 倍系统字号 approval 测试均无溢出。refresh rate 小于 100 Hz 使用 balanced60 detail，100 Hz 以上使用 highRefresh120 detail，Flutter ticker 仍服从实际 display vsync。
+
+桌面 adapter 的 Linux MethodChannel 测试覆盖 Wayland 明确降级、通知无正文/摘要 hash、托盘失败不拦截关闭、初始化竞态、无选择时不跨 conversation 通知，以及 router `replay/live` 来源和 events hydration 双边界后的 replay 去重；历史 replay 也不会重新触发 TTS。Fedora 44 / Clang 22.1.8 release 带四个原生插件构建成功。由于主机 Polkit 本轮没有交互代理，`libnotify-devel` 仅从 Fedora 官方仓库下载到 `/tmp` 提供头文件与链接名，运行时仍链接主机正式 `libnotify.so.4`；真实 Wayland self-test 报告 `hotkey=degraded tray=degraded notifications=available window=available` 并按产品降级契约通过。CI 已加入 Ubuntu 的三个原生开发包、Xvfb/X11 desktop startup self-test 及既有五平台 build，远端结果在本阶段 PR 后补记。
+
+桌面性能证据位于 `artifacts/benchmarks/m4-fedora44-20260725/`：Fedora 44 / Linux 7.1.4、i5-1155G7、Iris Xe、15 GiB RAM、niri/Wayland、power-saver、1920×1080@60.001 Hz 的 Linux release，在 5 帧 shader warmup 后对 11 个状态各采 5 帧；55/55 均低于 16,667 µs，total P50 3,570 µs、P95 7,287 µs。该 probe 及汇总脚本已进入仓库，但只通过 `balanced60` 档；`highRefresh120` 和具名 Android 参考设备仍未实测。Android 门补齐且本阶段 PR 的五平台 CI 通过后，方可把本标题改为“完成”并进入 M5。
 
 ### M5 — OpenClaw、发行与运维
 
@@ -370,6 +380,11 @@ npm run protocol:codex
 npm run flutter:check
 VOXHANDOFF_SECURE_STORAGE_SELF_TEST=1 \
   ./apps/client/build/linux/x64/release/bundle/agent_talk_client
+VOXHANDOFF_M4_RENDER_BENCHMARK=1 \
+  ./apps/client/build/linux/x64/release/bundle/agent_talk_client \
+  > /tmp/voxhandoff-m4-measurements.jsonl
+npm run benchmark:m4:summary -- \
+  /tmp/voxhandoff-m4-measurements.jsonl
 npm run poc -- doctor
 ```
 

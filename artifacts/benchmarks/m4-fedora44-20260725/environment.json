@@ -1,0 +1,18 @@
+{
+  "captured_at": "2026-07-25T19:46:43-04:00",
+  "os": "Fedora Linux 44",
+  "kernel": "Linux 7.1.4-204.fc44.x86_64",
+  "cpu": "11th Gen Intel Core i5-1155G7, 8 logical CPUs",
+  "gpu": "Intel TigerLake-LP GT2 Iris Xe, i915",
+  "ram_gib": 15,
+  "display": "Chimei Innolux 0x151B, 1920x1080 at 60.001 Hz",
+  "session": "niri on Wayland",
+  "power_source": "mains with battery present",
+  "power_profile": "power-saver",
+  "flutter": "3.44.6 stable",
+  "dart": "3.12.2",
+  "mesa": "26.1.5-1.fc44",
+  "build": "Linux x64 release",
+  "network_profile": "not applicable; local synthetic rendering only",
+  "state_profile": "five measured frames for each of 11 SignalCoreState values after five shader warmup frames"
+}

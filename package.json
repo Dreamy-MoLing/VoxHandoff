@@ -17,6 +17,7 @@
     "test:postgres": "npm run test:postgres -w @agent-talk/gateway",
     "test:transport": "npm run test:transport -w @agent-talk/gateway",
     "flutter:check": "node scripts/run-flutter-check.mjs",
+    "benchmark:m4:summary": "node scripts/summarize-m4-frame-benchmark.mjs",
     "protocol:lint": "node scripts/run-buf.mjs lint && node scripts/run-buf.mjs build",
     "protocol:generate": "node scripts/run-buf.mjs generate --template buf.gen.yaml",
     "protocol:generate:dart": "node scripts/run-buf.mjs generate --template buf.gen.dart.yaml",
