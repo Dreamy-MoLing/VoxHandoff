@@ -294,6 +294,8 @@ Android `highRefresh120` 证据位于 `artifacts/benchmarks/m4-android-vivo-x100
 
 Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编译触发同一探针。探针改用 Flutter 同步日志输出，避免 Android 在紧接 `exit()` 时丢失 `stdout.writeln` 缓冲；汇总脚本继续安全剥离 `flutter run`/logcat 前缀。Flutter 3.44.6 的有效 Android 下限为 API 24，Gradle 配置现跟随锁定 SDK 的 `flutter.minSdkVersion`，不再在每次构建时把过时的显式 API 23 静默迁移。真机 profile、具名 exact 环境、脱敏原始测量、严格失败与两次重复通过结果均已入库，未以 emulator、debug build 或 CI APK build 替代。
 
+[GitHub Actions run 30184413298](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30184413298) 已在包含上述真机探针修正和全部 Android 证据的 head 上通过 Node/PostgreSQL、Linux 160 项 Flutter 测试与 analyze/release/Xvfb desktop/Secret Service、Android debug APK、macOS/iOS 和 Windows 全部门。该 CI 证明代码、生成物与五平台构建门一致，但不替代已单独保存的实体 Android profile 结果。
+
 ### M5 — OpenClaw、发行与运维
 
 目标：完成第三个 Agent 和五端可交付构建。
