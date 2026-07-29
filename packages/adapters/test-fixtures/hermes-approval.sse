@@ -1,5 +1,5 @@
 event: approval.required
-data: {"approval_id":"approval-1","token":"[REDACTED]"}
+data: {"approval_id":"approval-1","safe_summary":"Run a harmless test command.","operation_summary_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expires_at":"2099-01-01T00:00:00.000Z","token":"[REDACTED]"}
 
 event: approval.approved
 data: {"approval_id":"approval-1","approved":true}

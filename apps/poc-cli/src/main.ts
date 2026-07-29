@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import process from "node:process";
 
 import {
@@ -37,7 +38,6 @@ function commandVersion(command: string, args: string[]): string | undefined {
 function doctor(): void {
   const checks = [
     ["node", commandVersion("node", ["--version"])],
-    ["codex", commandVersion("codex", ["--version"])],
     ["hermes", commandVersion("hermes", ["--version"])],
     ["ffmpeg", commandVersion("ffmpeg", ["-version"])],
   ];
@@ -180,12 +180,20 @@ async function hermes(args: ParsedArgs): Promise<void> {
   const stopAfterMs = optionalPositiveInteger(args, "stop-after-ms");
   const approvalProbe = args.flags.has("approval-probe");
   const disconnectProbe = args.flags.has("disconnect-probe");
+  const approvalTimeoutSeconds = optionalPositiveInteger(args, "approval-timeout-seconds");
+  const approvalDecision = args.values.get("approval-decision");
   if (rounds > 100) throw new Error("Option --rounds cannot exceed 100");
   if (rounds > 1 && stopAfterMs !== undefined) {
     throw new Error("Option --stop-after-ms requires --rounds 1");
   }
   if (approvalProbe && (rounds > 1 || stopAfterMs !== undefined)) {
     throw new Error("Option --approval-probe requires one round without --stop-after-ms");
+  }
+  if (approvalProbe && approvalTimeoutSeconds === undefined) {
+    throw new Error("Option --approval-probe requires --approval-timeout-seconds");
+  }
+  if (approvalDecision !== undefined && (!approvalProbe || approvalDecision !== "deny")) {
+    throw new Error("Option --approval-decision only supports deny with --approval-probe");
   }
   if (disconnectProbe && (rounds > 1 || stopAfterMs !== undefined || approvalProbe)) {
     throw new Error(
@@ -198,13 +206,16 @@ async function hermes(args: ParsedArgs): Promise<void> {
   const client = new HermesApiClient({
     baseUrl: args.values.get("base-url") ?? "http://127.0.0.1:8642",
     token,
+    ...(approvalTimeoutSeconds === undefined
+      ? {}
+      : { approvalTimeoutMs: approvalTimeoutSeconds * 1000 }),
   });
   print({ kind: "health", value: await client.health() });
   print({ kind: "capabilities", value: await client.capabilities() });
   let sessionId = args.values.get("session");
   if (args.flags.has("create-session")) {
     if (sessionId) throw new Error("Options --session and --create-session cannot be combined");
-    sessionId = await client.createSession("VoxHandoff protocol PoC");
+    sessionId = await client.createSession(`VoxHandoff protocol PoC ${randomUUID()}`);
     print({ kind: "session_created", sessionId });
   }
 
@@ -217,6 +228,7 @@ async function hermes(args: ParsedArgs): Promise<void> {
     let outcome: TerminalAgentEventType | undefined;
     let lastSequence = 0;
     let blockedUserAction = false;
+    let approvalResolved = false;
     let connectionLost = false;
     let stopAttempt: Promise<void> | undefined;
     let stopError: Error | undefined;
@@ -244,15 +256,25 @@ async function hermes(args: ParsedArgs): Promise<void> {
         if (event.requestId !== run.requestId) {
           throw new Error(`Hermes round ${round} returned the wrong request identity`);
         }
-        if (event.sequence !== lastSequence + 1) {
-          throw new Error(`Hermes round ${round} returned a non-contiguous sequence`);
+        if (event.sequence <= lastSequence) {
+          throw new Error(`Hermes round ${round} returned a non-monotonic sequence`);
         }
         lastSequence = event.sequence;
         if (event.type === "approval.required" || event.type === "clarification.required") {
           blockedUserAction = true;
           print({ kind: "blocked", round, reason: "user_action_required" });
-          requestStop("user_action_required");
+          if (event.type === "approval.required" && approvalDecision === "deny") {
+            const approvalId = (event.payload as { approvalId?: unknown }).approvalId;
+            if (typeof approvalId !== "string" || approvalId.length === 0) {
+              throw new Error("Hermes approval probe returned no stable approval identity");
+            }
+            await client.resolveApproval(run.runId, approvalId, false);
+            print({ kind: "approval_denied", round, approvalId });
+          } else {
+            requestStop("user_action_required");
+          }
         }
+        if (event.type === "approval.resolved") approvalResolved = true;
         if (event.type === "connection.lost") connectionLost = true;
         if (event.type === "message.delta") {
           const payload = event.payload as { delta?: unknown };
@@ -293,10 +315,17 @@ async function hermes(args: ParsedArgs): Promise<void> {
     if (approvalProbe && !blockedUserAction) {
       throw new Error("Hermes approval probe completed without a blocking approval request");
     }
+    if (approvalDecision === "deny" && !approvalResolved) {
+      throw new Error("Hermes approval denial was not confirmed by the event stream");
+    }
     if (blockedUserAction && !approvalProbe) {
       throw new Error("Hermes requested interactive user action; run stopped without approval");
     }
-    if (stopAfterMs !== undefined || approvalProbe) {
+    if (approvalProbe && approvalDecision === "deny") {
+      if (outcome !== "request.completed") {
+        throw new Error(`Hermes denied approval probe ended as ${outcome}`);
+      }
+    } else if (stopAfterMs !== undefined || approvalProbe) {
       if (outcome !== "request.cancelled" && outcome !== "request.interrupted") {
         throw new Error(`Hermes stop/approval probe ended as ${outcome}`);
       }
@@ -311,17 +340,13 @@ function usage(): void {
   process.stdout.write(`VoxHandoff protocol PoC\n\n`);
   process.stdout.write(`  doctor\n`);
   process.stdout.write(
-    `  codex --prompt TEXT [--cwd PATH] [--thread ID] [--interrupt-after-ms N] [--approval-probe|--failure-probe]\n`,
-  );
-  process.stdout.write(
-    `  hermes --prompt TEXT [--base-url URL] [--token-env NAME] [--session ID|--create-session] [--rounds N] [--stop-after-ms N] [--approval-probe|--disconnect-probe]\n`,
+    `  hermes --prompt TEXT [--base-url URL] [--token-env NAME] [--session ID|--create-session] [--rounds N] [--stop-after-ms N] [--approval-probe --approval-timeout-seconds N [--approval-decision deny]|--disconnect-probe]\n`,
   );
 }
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.command === "doctor") doctor();
-  else if (args.command === "codex") await codex(args);
   else if (args.command === "hermes") await hermes(args);
   else usage();
 }

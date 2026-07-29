@@ -258,7 +258,14 @@ function safeString(value: Record<string, unknown>, key: string): string | undef
 
 function safePayload(record: PersistedEventRecord): AgentPayloadInit | undefined {
   if (record.eventType === "request.accepted") {
-    return { case: "requestProgress", value: { safeMessage: "Request accepted." } };
+    const value = safeObject(record.safePayload);
+    return {
+      case: "requestProgress",
+      value: {
+        safeMessage: "Request accepted.",
+        confirmedText: value === undefined ? "" : safeString(value, "confirmedText") ?? "",
+      },
+    };
   }
   const value = safeObject(record.safePayload);
   if (value === undefined) return undefined;

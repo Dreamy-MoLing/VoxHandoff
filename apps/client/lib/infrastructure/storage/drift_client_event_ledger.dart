@@ -910,6 +910,7 @@ class _EventLedgerDatabase extends _$_EventLedgerDatabase
       return switch (content) {
         SafeMessageClientEventContent() => _StoredPayload(
           safeMessage: content.safeMessage,
+          text: content.confirmedText,
         ),
         MessageClientEventContent() => _StoredPayload(
           text: content.text,
@@ -987,9 +988,15 @@ class _EventLedgerDatabase extends _$_EventLedgerDatabase
   ) {
     final fields = _PayloadFields.fromRow(row);
     return switch (kind) {
+      ClientEventKind.requestAccepted => () {
+        fields.requireOnly(const {'safeMessage', 'text'});
+        return SafeMessageClientEventContent(
+          fields.requireSafeMessage(),
+          confirmedText: fields.text,
+        );
+      }(),
       ClientEventKind.connectionReady ||
       ClientEventKind.connectionLost ||
-      ClientEventKind.requestAccepted ||
       ClientEventKind.agentWorking ||
       ClientEventKind.requestInterrupting => () {
         fields.requireOnly(const {'safeMessage'});

@@ -189,7 +189,7 @@ test("replay remains ordered and preserves unsupported events without inventing 
       requestId: "request-1",
       sequence: 1n,
       eventType: "request.accepted",
-      safePayload: {},
+      safePayload: { confirmedText: "Confirmed user turn." },
       occurredAt: new Date("2030-01-01T00:00:00.000Z"),
     },
     {
@@ -249,6 +249,15 @@ test("replay remains ordered and preserves unsupported events without inventing 
   const firstEvent = responses[0]?.body;
   const secondEvent = responses[1]?.body;
   assert.equal(firstEvent?.case === "event" ? firstEvent.value.event?.type : undefined, AgentEventType.REQUEST_ACCEPTED);
+  const firstPayload = firstEvent?.case === "event"
+    ? firstEvent.value.event?.payload
+    : undefined;
+  assert.equal(
+    firstPayload?.case === "requestProgress"
+      ? firstPayload.value.confirmedText
+      : undefined,
+    "Confirmed user turn.",
+  );
   assert.equal(secondEvent?.case === "event" ? secondEvent.value.event?.type : undefined, AgentEventType.UNSPECIFIED);
   if (secondEvent?.case === "event") {
     assert.equal(secondEvent.value?.event?.payload?.case, "unsupported");

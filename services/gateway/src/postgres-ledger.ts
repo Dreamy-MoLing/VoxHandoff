@@ -722,7 +722,8 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
       `INSERT INTO agent_talk.events (
          event_id, connection_id, device_id, conversation_id, session_id, request_id,
          sequence, event_type, safe_payload, occurred_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '{}'::jsonb, $9)`,
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+                 jsonb_build_object('confirmedText', $9::text), $10)`,
       [
         facts.event.eventId,
         facts.event.connectionId,
@@ -732,6 +733,7 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
         facts.event.requestId,
         facts.event.sequence.toString(),
         facts.event.type,
+        facts.confirmedText,
         facts.event.occurredAt,
       ],
     );

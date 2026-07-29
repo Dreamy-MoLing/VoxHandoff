@@ -37,6 +37,7 @@ message ConnectionEvent {
 
 message RequestProgressEvent {
   string safe_message = 1;
+  string confirmed_text = 2;
 }
 
 message MessageEvent {

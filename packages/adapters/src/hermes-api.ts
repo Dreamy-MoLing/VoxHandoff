@@ -10,6 +10,7 @@ export interface HermesApiOptions {
   token: string;
   fetch?: typeof globalThis.fetch;
   allowInsecureHttp?: boolean;
+  approvalTimeoutMs?: number;
 }
 
 export interface HermesRun {
@@ -21,6 +22,16 @@ export interface HermesRun {
 export interface HermesEventStreamOptions {
   signal?: AbortSignal;
   lastEventId?: string;
+  previousSequence?: number;
+  previousEventIds?: ReadonlyMap<number, string>;
+  onResumeCursor?: (eventId: string) => void;
+}
+
+export class HermesHttpError extends Error {
+  constructor(readonly status: number, statusText: string) {
+    super(`Hermes HTTP ${status} ${statusText}`);
+    this.name = "HermesHttpError";
+  }
 }
 
 export class HermesApiClient {
@@ -28,6 +39,7 @@ export class HermesApiClient {
   readonly #baseUrl: URL;
   readonly #token: string;
   readonly #fetch: typeof globalThis.fetch;
+  readonly #approvalTimeoutMs: number | undefined;
 
   constructor(options: HermesApiOptions) {
     this.#baseUrl = new URL(options.baseUrl.endsWith("/") ? options.baseUrl : `${options.baseUrl}/`);
@@ -45,8 +57,15 @@ export class HermesApiClient {
       throw new Error("Hermes base URL must use HTTP or HTTPS");
     }
     if (!options.token) throw new Error("Hermes API token is required");
+    if (
+      options.approvalTimeoutMs !== undefined &&
+      (!Number.isSafeInteger(options.approvalTimeoutMs) || options.approvalTimeoutMs <= 0)
+    ) {
+      throw new Error("Hermes approval timeout must be a positive integer");
+    }
     this.#token = options.token;
     this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#approvalTimeoutMs = options.approvalTimeoutMs;
   }
 
   async health(): Promise<unknown> {
@@ -108,9 +127,14 @@ export class HermesApiClient {
     });
     if (!response.body) throw new Error("Hermes event stream returned no response body");
 
-    let localOrdinal = 0;
-    let lastSequence = 0;
+    const previousSequence = streamOptions.previousSequence ?? 0;
+    if (!Number.isSafeInteger(previousSequence) || previousSequence < 0) {
+      throw new Error("Hermes previous event sequence is invalid");
+    }
+    let localOrdinal = Math.floor(previousSequence / 2);
+    let lastSequence = previousSequence;
     let terminalSeen = false;
+    let pendingApprovalId: string | undefined;
     const seenEventIds = new Set<string>();
     try {
       for await (const message of parseSseStream(response.body)) {
@@ -129,13 +153,32 @@ export class HermesApiClient {
           fallbackOrdinal: localOrdinal,
           connectionId: this.connectionId,
           run,
+          ...(this.#approvalTimeoutMs === undefined
+            ? {}
+            : { approvalTimeoutMs: this.#approvalTimeoutMs }),
+          ...(pendingApprovalId === undefined ? {} : { pendingApprovalId }),
         });
         if (seenEventIds.has(event.eventId)) continue;
         if (event.sequence <= lastSequence) {
+          if (streamOptions.previousEventIds?.get(event.sequence) === event.eventId) {
+            continue;
+          }
           throw new Error("Hermes event sequence is not strictly increasing");
         }
         seenEventIds.add(event.eventId);
         lastSequence = event.sequence;
+        if (event.type === "approval.required") {
+          pendingApprovalId = stringAt(event.payload, "approvalId");
+        } else if (
+          event.type === "approval.resolved" ||
+          event.type === "approval.expired" ||
+          event.type === "approval.cancelled"
+        ) {
+          pendingApprovalId = undefined;
+        }
+        if (message.id !== undefined && isOpaqueIdentity(message.id)) {
+          streamOptions.onResumeCursor?.(message.id);
+        }
         terminalSeen = terminalSeen || isTerminalEvent(event);
         yield event;
       }
@@ -144,13 +187,18 @@ export class HermesApiClient {
       yield connectionLostEvent(
         this.connectionId,
         run,
-        lastSequence + 1,
+        nextSyntheticSequence(lastSequence),
         "transport_disconnected",
       );
       return;
     }
     if (!terminalSeen) {
-      yield connectionLostEvent(this.connectionId, run, lastSequence + 1, "unexpected_eof");
+      yield connectionLostEvent(
+        this.connectionId,
+        run,
+        nextSyntheticSequence(lastSequence),
+        "unexpected_eof",
+      );
     }
   }
 
@@ -174,7 +222,10 @@ export class HermesApiClient {
     await this.#json(`v1/runs/${encodeURIComponent(runId)}/approval`, {
       method: "POST",
       headers: { "Idempotency-Key": commandId },
-      body: JSON.stringify({ approval_id: approvalId, approved }),
+      // Hermes 0.19 resolves the oldest pending approval within this run.
+      // approvalId remains mandatory locally so Gateway decisions stay bound
+      // to the exact fact shown to the user.
+      body: JSON.stringify({ choice: approved ? "once" : "deny" }),
     });
   }
 
@@ -198,7 +249,7 @@ export class HermesApiClient {
     const response = await this.#fetch(new URL(path, this.#baseUrl), { ...init, headers });
     if (!response.ok) {
       await response.body?.cancel().catch(() => undefined);
-      throw new Error(`Hermes HTTP ${response.status} ${response.statusText}`);
+      throw new HermesHttpError(response.status, response.statusText);
     }
     return response;
   }
@@ -231,6 +282,14 @@ function connectionLostEvent(
   };
 }
 
+function nextSyntheticSequence(lastSequence: number): number {
+  const sequence = lastSequence % 2 === 0 ? lastSequence + 1 : lastSequence + 2;
+  if (!Number.isSafeInteger(sequence)) {
+    throw new Error("Hermes synthetic event sequence exceeds the supported safe range");
+  }
+  return sequence;
+}
+
 export function normalizeHermesCapabilities(native: unknown): AgentCapabilities {
   const flag = (name: string): boolean => {
     if (!isRecord(native)) return false;
@@ -241,23 +300,51 @@ export function normalizeHermesCapabilities(native: unknown): AgentCapabilities 
     }
     return false;
   };
+  const endpoint = (name: string, method: string, path: string): boolean => {
+    if (
+      !isRecord(native) ||
+      !isRecord(native.endpoints) ||
+      !isRecord(native.endpoints[name])
+    ) {
+      return false;
+    }
+    return (
+      native.endpoints[name].method === method &&
+      native.endpoints[name].path === path
+    );
+  };
   const protocolVersion = stringAt(native, "protocol_version");
   const serverVersion = stringAt(native, "version");
   const maxRequestBytes = numberAt(native, "limits", "max_request_bytes");
   const requestTimeoutMs = numberAt(native, "limits", "request_timeout_ms");
+  const runSubmission = flag("run_submission") || flag("runs");
+  const sessionResources = flag("session_resources");
   return {
     ...(protocolVersion === undefined ? {} : { protocolVersion }),
     ...(serverVersion === undefined ? {} : { serverVersion }),
     deltaMode: flag("streaming") && flag("append_only_delta") ? "append_only" : "none",
-    eventStream: flag("runs"),
-    sessionHistory: flag("session_history"),
-    createSession: flag("session_create"),
-    resumeSession: flag("session_resume"),
+    eventStream: flag("run_events_sse") || flag("runs"),
+    sessionHistory:
+      flag("session_history") ||
+      (sessionResources &&
+        endpoint(
+          "session_messages",
+          "GET",
+          "/api/sessions/{session_id}/messages",
+        )),
+    createSession:
+      flag("session_create") ||
+      (sessionResources &&
+        endpoint("session_create", "POST", "/api/sessions")),
+    resumeSession:
+      flag("session_resume") || (sessionResources && runSubmission),
     interrupt: flag("run_stop"),
     steer: flag("steer"),
     clarification: flag("clarification"),
-    approval: flag("approval"),
-    toolEvents: flag("tool_progress"),
+    approval:
+      flag("approval") ||
+      (flag("run_approval_response") && flag("approval_events")),
+    toolEvents: flag("tool_progress") || flag("tool_progress_events"),
     attachments: false,
     idempotency: flag("idempotency"),
     replay: flag("event_replay"),
@@ -274,6 +361,8 @@ interface NormalizeHermesEventInput {
   fallbackOrdinal: number;
   connectionId: string;
   run: HermesRun;
+  approvalTimeoutMs?: number;
+  pendingApprovalId?: string;
 }
 
 function normalizeHermesEvent(input: NormalizeHermesEventInput): AgentEvent {
@@ -296,7 +385,7 @@ function normalizeHermesEvent(input: NormalizeHermesEventInput): AgentEvent {
     ...(input.run.sessionId === undefined ? {} : { sessionId: input.run.sessionId }),
     requestId: input.run.requestId,
     sequence,
-    occurredAt: normalizedOccurredAt(input.native),
+    occurredAt: normalizedOccurredAt(input.native, sourceOrdinal),
     payload: {},
   };
 
@@ -327,43 +416,117 @@ function normalizeHermesEvent(input: NormalizeHermesEventInput): AgentEvent {
     };
   }
   if (/tool\.(start|started)/.test(nativeType)) {
-    return { ...common, type: "tool.started", payload: { toolName: nativeType } };
+    return {
+      ...common,
+      type: "tool.started",
+      payload: {
+        toolName: safeNativeText(
+          input.native,
+          "tool_name",
+          safeNativeText(input.native, "tool", nativeType),
+        ),
+        safeSummary: safeNativeText(input.native, "safe_summary", "Tool execution started."),
+      },
+    };
   }
   if (/tool\.(complete|completed)/.test(nativeType)) {
-    return { ...common, type: "tool.completed", payload: { toolName: nativeType } };
+    return {
+      ...common,
+      type: "tool.completed",
+      payload: {
+        toolName: safeNativeText(
+          input.native,
+          "tool_name",
+          safeNativeText(input.native, "tool", nativeType),
+        ),
+        safeSummary: safeNativeText(input.native, "safe_summary", "Tool execution completed."),
+      },
+    };
   }
   if (/tool\.(fail|failed)/.test(nativeType)) {
-    return { ...common, type: "tool.failed", payload: { toolName: nativeType } };
+    return {
+      ...common,
+      type: "tool.failed",
+      payload: {
+        toolName: safeNativeText(
+          input.native,
+          "tool_name",
+          safeNativeText(input.native, "tool", nativeType),
+        ),
+        safeSummary: safeNativeText(input.native, "safe_summary", "Tool execution failed."),
+      },
+    };
   }
-  if (/approval\.(resolved|approved|rejected)/.test(nativeType)) {
-    const outcome = /rejected/.test(nativeType) ? "rejected" : "approved";
+  if (/approval\.(resolved|approved|rejected|responded)/.test(nativeType)) {
+    const outcome =
+      /rejected/.test(nativeType) || stringAt(input.native, "choice") === "deny"
+        ? "rejected"
+        : "approved";
+    const approvalId =
+      stringAt(input.native, "approval_id") ??
+      stringAt(input.native, "id") ??
+      input.pendingApprovalId;
+    if (approvalId === undefined || !isOpaqueIdentity(approvalId)) {
+      return approvalContractFailure(common);
+    }
     return {
       ...common,
       type: "approval.resolved",
       payload: {
-        approvalId:
-          stringAt(input.native, "approval_id") ??
-          stringAt(input.native, "id") ??
-          `unresolved:${common.eventId}`,
+        approvalId,
         outcome,
       },
     };
   }
   if (/approval\.expired/.test(nativeType)) {
-    return { ...common, type: "approval.expired" };
+    const approvalId =
+      stringAt(input.native, "approval_id") ??
+      stringAt(input.native, "id");
+    return approvalId !== undefined && isOpaqueIdentity(approvalId)
+      ? { ...common, type: "approval.expired", payload: { approvalId } }
+      : approvalContractFailure(common);
   }
   if (/approval\.cancelled/.test(nativeType)) {
-    return { ...common, type: "approval.cancelled" };
+    const approvalId =
+      stringAt(input.native, "approval_id") ??
+      stringAt(input.native, "id");
+    return approvalId !== undefined && isOpaqueIdentity(approvalId)
+      ? { ...common, type: "approval.cancelled", payload: { approvalId } }
+      : approvalContractFailure(common);
   }
   if (/approval/.test(nativeType)) {
+    const approvalId =
+      stringAt(input.native, "approval_id") ??
+      stringAt(input.native, "id") ??
+      `hermes:${common.eventId}`;
+    const safeSummary =
+      stringAt(input.native, "safe_summary") ??
+      stringAt(input.native, "operation_summary") ??
+      stringAt(input.native, "description");
+    const expiresAt =
+      validTimestamp(stringAt(input.native, "expires_at")) ??
+      derivedApprovalExpiry(input.native, input.approvalTimeoutMs);
+    if (
+      approvalId === undefined ||
+      !isOpaqueIdentity(approvalId) ||
+      safeSummary === undefined ||
+      safeSummary.length === 0 ||
+      safeSummary.length > 4096 ||
+      expiresAt === undefined
+    ) {
+      return approvalContractFailure(common);
+    }
+    const operationSummarySha256 =
+      validSha256(stringAt(input.native, "operation_summary_sha256")) ??
+      createHash("sha256").update(safeSummary).digest("hex");
     return {
       ...common,
       type: "approval.required",
       payload: {
-        approvalId:
-          stringAt(input.native, "approval_id") ??
-          stringAt(input.native, "id") ??
-          `unresolved:${common.eventId}`,
+        approvalId,
+        safeSummary,
+        operationSummarySha256,
+        expiresAt,
       },
     };
   }
@@ -449,7 +612,7 @@ function stableEventId(runId: string, sourceIdentity: string): string {
     .digest("hex");
 }
 
-function normalizedOccurredAt(native: unknown): string {
+function normalizedOccurredAt(native: unknown, sourceOrdinal: number): string {
   const candidate =
     stringAt(native, "occurred_at") ??
     stringAt(native, "created_at") ??
@@ -458,7 +621,25 @@ function normalizedOccurredAt(native: unknown): string {
     const parsed = new Date(candidate);
     if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
   }
-  return new Date().toISOString();
+  const unixSeconds = numberAt(native, "timestamp");
+  if (unixSeconds !== undefined && Number.isFinite(unixSeconds) && unixSeconds >= 0) {
+    const parsed = new Date(unixSeconds * 1000);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+  return new Date(sourceOrdinal).toISOString();
+}
+
+function derivedApprovalExpiry(
+  native: unknown,
+  approvalTimeoutMs: number | undefined,
+): string | undefined {
+  if (approvalTimeoutMs === undefined) return undefined;
+  const unixSeconds = numberAt(native, "timestamp");
+  if (unixSeconds === undefined || !Number.isFinite(unixSeconds) || unixSeconds < 0) {
+    return undefined;
+  }
+  const expiresAt = new Date(unixSeconds * 1000 + approvalTimeoutMs);
+  return Number.isNaN(expiresAt.getTime()) ? undefined : expiresAt.toISOString();
 }
 
 function canonicalJson(value: unknown): string {
@@ -469,4 +650,34 @@ function canonicalJson(value: unknown): string {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
     .join(",")}}`;
+}
+
+function safeNativeText(native: unknown, key: string, fallback: string): string {
+  const value = stringAt(native, key);
+  return value === undefined || value.length === 0
+    ? fallback
+    : value.slice(0, 4096);
+}
+
+function validSha256(value: string | undefined): string | undefined {
+  return value !== undefined && /^[0-9a-f]{64}$/u.test(value) ? value : undefined;
+}
+
+function validTimestamp(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+function approvalContractFailure(
+  common: Omit<AgentEvent, "type">,
+): AgentEvent {
+  return {
+    ...common,
+    type: "request.failed",
+    payload: {
+      code: "hermes_approval_contract_incomplete",
+      message: "Hermes approval metadata was incomplete; no approval was shown.",
+    },
+  };
 }

@@ -102,6 +102,24 @@ void main() {
     );
   });
 
+  test('preserves confirmed user text on the accepted turn', () async {
+    final mapped = await GatewayEventMapper().map(
+      envelope(
+        event: AgentEvent(
+          type: AgentEventType.AGENT_EVENT_TYPE_REQUEST_ACCEPTED,
+          requestProgress: RequestProgressEvent(
+            safeMessage: 'Request accepted.',
+            confirmedText: 'Explain the verified result.',
+          ),
+        ),
+      ),
+    );
+
+    expect(mapped.kind, ClientEventKind.requestAccepted);
+    final content = mapped.content as SafeMessageClientEventContent;
+    expect(content.confirmedText, 'Explain the verified result.');
+  });
+
   test(
     'rejects a type and payload mismatch with no remote text in the error',
     () async {

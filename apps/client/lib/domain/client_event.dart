@@ -35,9 +35,10 @@ class EmptyClientEventContent extends ClientEventContent {
 }
 
 class SafeMessageClientEventContent extends ClientEventContent {
-  const SafeMessageClientEventContent(this.safeMessage);
+  const SafeMessageClientEventContent(this.safeMessage, {this.confirmedText});
 
   final String safeMessage;
+  final String? confirmedText;
 }
 
 class MessageClientEventContent extends ClientEventContent {
@@ -173,6 +174,7 @@ class ClientEventRecord {
         sequence > _maximumUint64 ||
         !occurredAt.isUtc ||
         !_contentMatchesKind(kind, content) ||
+        !_validConfirmedText(kind, content) ||
         !RegExp(r'^[0-9a-f]{64}$').hasMatch(envelopeSha256)) {
       throw const FormatException('The Client event fact is invalid.');
     }
@@ -339,6 +341,15 @@ bool _opaque(String value) =>
     value.length <= 256 &&
     !value.contains(RegExp(r'[\u0000-\u001f\u007f]'));
 
+bool _validConfirmedText(ClientEventKind kind, ClientEventContent content) {
+  if (content is! SafeMessageClientEventContent ||
+      content.confirmedText == null) {
+    return true;
+  }
+  return kind == ClientEventKind.requestAccepted &&
+      content.confirmedText!.trim().isNotEmpty;
+}
+
 bool _contentMatchesKind(
   ClientEventKind kind,
   ClientEventContent content,
@@ -379,7 +390,8 @@ bool _sameClientEventContent(
   }
   if (left is SafeMessageClientEventContent &&
       right is SafeMessageClientEventContent) {
-    return left.safeMessage == right.safeMessage;
+    return left.safeMessage == right.safeMessage &&
+        left.confirmedText == right.confirmedText;
   }
   if (left is MessageClientEventContent && right is MessageClientEventContent) {
     return left.text == right.text && left.revision == right.revision;

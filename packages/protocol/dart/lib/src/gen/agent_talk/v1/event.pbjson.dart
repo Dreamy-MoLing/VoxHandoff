@@ -82,13 +82,14 @@ const RequestProgressEvent$json = {
   '1': 'RequestProgressEvent',
   '2': [
     {'1': 'safe_message', '3': 1, '4': 1, '5': 9, '10': 'safeMessage'},
+    {'1': 'confirmed_text', '3': 2, '4': 1, '5': 9, '10': 'confirmedText'},
   ],
 };
 
 /// Descriptor for `RequestProgressEvent`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List requestProgressEventDescriptor = $convert.base64Decode(
     'ChRSZXF1ZXN0UHJvZ3Jlc3NFdmVudBIhCgxzYWZlX21lc3NhZ2UYASABKAlSC3NhZmVNZXNzYW'
-    'dl');
+    'dlEiUKDmNvbmZpcm1lZF90ZXh0GAIgASgJUg1jb25maXJtZWRUZXh0');
 
 @$core.Deprecated('Use messageEventDescriptor instead')
 const MessageEvent$json = {

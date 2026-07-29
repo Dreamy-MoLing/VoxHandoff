@@ -1,0 +1,30 @@
+{
+  "name": "@agent-talk/node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "voxhandoff-hermes-node": "./dist/main.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test dist/*.test.js",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@agent-talk/adapters": "*",
+    "@agent-talk/core": "*",
+    "@agent-talk/protocol": "*",
+    "@bufbuild/protobuf": "^2.12.1",
+    "@connectrpc/connect": "^2.1.2",
+    "@connectrpc/connect-node": "^2.1.2"
+  },
+  "devDependencies": {
+    "@agent-talk/gateway": "*"
+  }
+}

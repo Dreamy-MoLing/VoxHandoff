@@ -105,12 +105,7 @@ class GatewayEventMapper {
         ClientEventKind.connectionLost,
         event.connection.safeMessage,
       ),
-      3 => _safeMessage(
-        event,
-        AgentEvent_Payload.requestProgress,
-        ClientEventKind.requestAccepted,
-        event.requestProgress.safeMessage,
-      ),
+      3 => _requestAccepted(event),
       4 => _safeMessage(
         event,
         AgentEvent_Payload.requestProgress,
@@ -155,6 +150,18 @@ class GatewayEventMapper {
   ) {
     _expectPayload(event, expectedPayload);
     return _MappedEvent(kind, SafeMessageClientEventContent(safeMessage));
+  }
+
+  _MappedEvent _requestAccepted(AgentEvent event) {
+    _expectPayload(event, AgentEvent_Payload.requestProgress);
+    final confirmedText = event.requestProgress.confirmedText;
+    return _MappedEvent(
+      ClientEventKind.requestAccepted,
+      SafeMessageClientEventContent(
+        event.requestProgress.safeMessage,
+        confirmedText: confirmedText.isEmpty ? null : confirmedText,
+      ),
+    );
   }
 
   _MappedEvent _message(AgentEvent event, ClientEventKind kind) {

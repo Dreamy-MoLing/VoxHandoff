@@ -42,7 +42,7 @@ class GrpcGatewayLiveTransport {
 
   static const schemaBuild = 'agent-talk-proto-v1.0';
   static const schemaSha256 =
-      '525da3ef16b7c856991ac905208a4d9ca3978ceb8ed67879053724b16a719a02';
+      'ff60edd0d233123d10f0ede78feb9bc8de3e8eed5608678441918fa574bddac2';
   static const componentVersion = '0.1.0';
   static const capabilityRevision = 'client-m2-live-v1';
 

@@ -81,9 +81,11 @@ class ConnectionEvent extends $pb.GeneratedMessage {
 class RequestProgressEvent extends $pb.GeneratedMessage {
   factory RequestProgressEvent({
     $core.String? safeMessage,
+    $core.String? confirmedText,
   }) {
     final result = create();
     if (safeMessage != null) result.safeMessage = safeMessage;
+    if (confirmedText != null) result.confirmedText = confirmedText;
     return result;
   }
 
@@ -101,6 +103,7 @@ class RequestProgressEvent extends $pb.GeneratedMessage {
       package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
       createEmptyInstance: create)
     ..aOS(1, _omitFieldNames ? '' : 'safeMessage')
+    ..aOS(2, _omitFieldNames ? '' : 'confirmedText')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -130,6 +133,15 @@ class RequestProgressEvent extends $pb.GeneratedMessage {
   $core.bool hasSafeMessage() => $_has(0);
   @$pb.TagNumber(1)
   void clearSafeMessage() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get confirmedText => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set confirmedText($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasConfirmedText() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearConfirmedText() => $_clearField(2);
 }
 
 class MessageEvent extends $pb.GeneratedMessage {
