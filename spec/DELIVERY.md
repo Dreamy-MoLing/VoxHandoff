@@ -4,7 +4,19 @@
 
 基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.19.0、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和本地 Dart `protoc_plugin` 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。M2 使用官方 stable Flutter 3.44.6 / Dart 3.12.2 用户级 SDK，Linux archive SHA-256 固定于 `toolchains/flutter.json`；Fedora 主机已安装 Clang 22.1.8、GTK 3 与 libsecret development headers，Linux release build 和 Secret Service 真读写/删除通过。M4 真机门使用 Android command-line tools、Platform Tools 37.0.0、Build Tools/API 36、NDK 28.2.13676358 与 OpenJDK 25，并已通过 `flutter doctor -v` 的 Android toolchain 和 license 检查。
 
-当前阶段：M4 Fairy 动效与桌面能力已完成，下一阶段为 M5 OpenClaw、发行与运维。2026-07-25 的 vivo X100s Android 120 Hz profile 已补齐具名设备、exact 环境、脱敏原始测量、失败保留和独立热态复验；M4 的 Fedora 60 Hz 与 Android 120 Hz 持续渲染门均有仓库证据。M-1、M0、M1、M2、M3 与 M4 均已完成；M5 不得把本阶段的 profile APK、热态帧门或 CI build 推断为签名安装包、升级/卸载、冷启动性能或发行验收，也不得回退完整文字、审批、lease、cursor、uncertain 或语音失败隔离语义。
+当前阶段：M4 历史里程碑已完成，产品现已收缩为 Hermes-only MVP；原 M5 OpenClaw、通用 Agent 扩展以及签名发行/运维工作全部暂停。新的 M5 是 Flutter → Gateway → Hermes Node Connector 纵向链路，新的 M6 是可用性、SignalCore 与真实 HomeScreen 性能收敛。既有 Codex 适配器和证据只保留为历史回归，不代表当前产品支持。任何新里程碑都不得回退完整文字、审批、lease、cursor、`uncertain`、防重提或语音失败隔离语义。
+
+2026-07-29 的当前实现状态：
+
+- Hermes capability 已改为 fail closed；Hermes 0.19 的显式 feature/endpoint 已逐项映射，数字 Unix timestamp 被规范化为 UTC，事件 ID 可跨 client recreation 确定性重建，原生 SSE 恢复锚点进入 `Last-Event-ID`，本地补充事件与原生 sequence 保持单调且不冲突；
+- `services/node` 已实现生产 Connector：从环境变量读取 Gateway/Hermes 配置和 token，持久化不含正文/秘密的 conversation→session 映射，接通注册、会话创建/恢复、文字 run、SSE、stop、approval 与明确错误；生产边界的真实 Gateway stream + fake Hermes 集成测试覆盖 dispatch、事件和交互往返；
+- Flutter timeline 已按 request 聚合为轮次、Hermes 回复、工具轨迹、未决交互和终态；长列表使用惰性构建，高频音量只更新隔离子树，PCM 包络移至 isolate，活动请求只取非终态轮次；
+- SignalCore 已扩大为状态主体并按状态改变几何、轨道、能量和音频响应；idle/completed/failed 与 reduced-motion 不持有持续 ticker，着色器已通过 Flutter runtime-effect 离线编译；
+- 新增长历史 HomeScreen widget gate（桌面 500、手机 2,000 条）和实际 HomeScreen 的并发 delta/录音/TTS/shader profile 探针。
+
+这些条目表示实现与已列出的证据，不表示真实 Hermes MVP 已全部验收。2026-07-29 在独立 `/tmp` HERMES_HOME、字面量 loopback 18642、无消息平台凭据且不接触默认 gateway 的 Hermes 0.19.0 环境中，直接 adapter PoC 已完成同一 session 10/10 轮、stop、manual approval 明确拒绝、运行中 SIGKILL→`uncertain`，以及 gateway 重启后的旧 session 恢复。真实 capability 同时明确返回 `idempotency=false`、`replay=false`、`sequenceRecovery=false`；当前 `/v1/runs` 也没有可验证的幂等提交实现，因此生产 Connector 按安全契约拒绝注册，真实 Flutter→Gateway/PostgreSQL→Connector→Hermes 纵向门仍未关闭。该门不能用 fake Hermes、直接 adapter PoC 或放宽 `uncertain` 防重提替代。
+
+固定 Flutter 3.44.6 / Dart 3.12.2 的 analyze、170 项 test（含 widget/golden/accessibility/长历史）、runtime-effect 编译和 Linux x64 release build 已通过。真实 release HomeScreen 在 60.001 Hz Fedora/Wayland 上以 2,000 条耐久事件测得 stress total P50/P95 8,687/12,759 µs、idle 6,056/12,964 µs，均通过 16,667 µs P95 门；完整环境、原始测量和汇总位于 `artifacts/benchmarks/mvp-fedora44-20260729/`。这不替代 120 Hz 实体手机的 MVP HomeScreen profile。
 
 已完成：
 
@@ -75,11 +87,12 @@
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
-M4 阶段门之后未完成或未实测：
+Hermes-only MVP 尚未完成或未实测：
 
-- OpenClaw adapter；
+- Hermes 0.19.0 尚未提供生产 Connector 所需的显式幂等 run submission；在该能力补齐前，真实 Flutter/Gateway/PostgreSQL/Connector 端到端 10 轮与重启门保持阻断；
+- 120 Hz 实体手机上的新 HomeScreen 2,000 条历史、并发 delta/录音/TTS/SignalCore profile；
 - 具名真人麦克风语料、10 次冷启动，以及达到推荐延迟/成功率的加速 TTS + 更强中文 STT release profile；当前 Fedora CPU/base profile 已实测并明确降级，不允许默认自动播报；
-- 实体手机/桌面的远程网络、非 Linux keyring 真读写、签名打包、安装/升级/卸载与发布测试；这些仍是 M5 发行门，不得从 CI 编译结果推断通过。
+- 实体手机/桌面的远程网络、非 Linux keyring 真读写、签名打包、安装/升级/卸载与发布测试；这些发行工作当前暂停，不得从 CI 编译结果推断通过。
 
 Hermes 默认 gateway 当前由 user systemd service 运行并关联 QQBot；它不是 VoxHandoff 测试资源。Live PoC 必须使用不同 HERMES_HOME、端口、PID/state 目录和只含所需 provider key 的干净子进程环境，不得停止、重启或复用默认 gateway。
 
@@ -91,12 +104,12 @@ apps/
   client/               # Flutter 五端共享 shell、领域/application 层与平台 runner
 packages/
   core/                 # 无外部依赖的领域模型和状态机
-  adapters/             # Agent 原生协议适配器
+  adapters/             # Hermes 正式适配器；Codex 历史回归隔离保留
   protocol/             # Protobuf/Buf schema、TS/Dart binding 与协商测试
   sidecar/              # desktop stdio host（后续统一打包 supervisor）
 services/
   gateway/              # 耐久控制面、gRPC/HTTPS、配对、凭据与 PostgreSQL adapter
-  node/                 # Agent 主机 Connector（待建）
+  node/                 # Hermes 主机 Connector、配置与 session state
   stt/                  # Python streaming STT sidecar、uv lock 与离线协议测试
 infra/
   postgres/             # forward-only migrations；backup/restore tests 待建
@@ -296,18 +309,34 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
 
 [GitHub Actions run 30184413298](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30184413298) 已在包含上述真机探针修正和全部 Android 证据的 head 上通过 Node/PostgreSQL、Linux 160 项 Flutter 测试与 analyze/release/Xvfb desktop/Secret Service、Android debug APK、macOS/iOS 和 Windows 全部门。该 CI 证明代码、生成物与五平台构建门一致，但不替代已单独保存的实体 Android profile 结果。
 
-### M5 — OpenClaw、发行与运维
+### M5 — Hermes 单一纵向链路（实现完成，上游幂等能力阻断真实端到端门）
 
-目标：完成第三个 Agent 和五端可交付构建。
+目标：只把 Hermes 做成可真实使用的首发 Agent。
 
-- OpenClaw pairing/role/scope/event adapter；
-- Tailscale/WireGuard、SSH tunnel 和 TLS reverse proxy runbook；
-- Windows/Linux/macOS 安装包，Android/iOS 签名构建；
-- Gateway backup/restore/upgrade/telemetry；
-- SBOM、许可证清单、依赖和 secret scan；
-- 平台 smoke、升级、崩溃恢复和撤销凭据测试。
+- capability fail closed，固定 SSE event identity、sequence、`Last-Event-ID` 与断线恢复；
+- 生产 Node Connector 接通配置/secret、Gateway 注册、session、run、SSE、stop、approval 和错误；
+- Gateway 接受后的 start 结果不明不得再次调用 run，只允许状态/事件恢复；
+- 审批字段不完整时 fail closed，所有决定继续受 device signature、scope、lease、expiry、operation hash 和 idempotency 保护；
+- 以真实 Flutter 客户端、Gateway/PostgreSQL、Connector 和隔离 Hermes 0.19.0 完成 10 轮、stop、approval、非优雅断线与 Connector/Gateway 重启。
 
-退出条件：五端均可连接测试 Gateway 完成文字流程；支持的平台语音流程逐端验收；部署可备份、恢复和升级。
+退出条件：真实端到端门全部通过，事件和 session 不串线，没有重复执行、自动审批、秘密日志或把连接丢失误报为失败/完成。fake Hermes 只证明 Connector 契约，不满足退出条件。
+
+当前实证：直接 Hermes 0.19 adapter 已通过 10 轮、stop、manual deny、SIGKILL uncertain 和 gateway 重启/session resume；生产 Connector 因上游 `idempotency=false` 正确拒绝注册。只有 Hermes 明确声明并实际实现相同 idempotency key 的精确 run submission 恢复后，才重跑完整 Flutter/Gateway/PostgreSQL/Connector 门。
+
+### M6 — Hermes MVP 界面与真实负载（Fedora 60 Hz 门完成）
+
+目标：将底层事件变成可长期使用的对话界面，并让 SignalCore 成为原创、实时、可访问的状态主体。
+
+- request 事件聚合为用户轮次、完整 Hermes 回复、可折叠工具轨迹、未决交互和终态；
+- 修复跨请求失败污染与错误 active request，delta 不再生成独立卡片；
+- 拆分 HomeScreen，将高频 audio level 隔离到局部 consumer，长历史使用虚拟化列表；
+- PCM 包络在 isolate 中分析，迟到 generation/segment 结果丢弃；
+- SignalCore 状态形变、音频响应、静态回退、无障碍标签和 reduced-motion；
+- 500 条桌面/2,000 条手机历史 widget gate，以及 actual HomeScreen 的 delta + recording + TTS + shader 并发 profile。
+
+退出条件：固定 Flutter SDK 的 analyze、全部 widget/golden/accessibility test、Linux release 和实际 HomeScreen profile 通过；手机不一次构建全部历史，idle 无持续帧，正文与审批始终优先且可读。
+
+完成证据：Flutter analyze、170 项 test、Linux x64 release build 和 runtime-effect 编译通过；桌面 500/手机 2,000 条长历史 widget gate 均通过。Fedora 44 release 的 2,000 事件实际 HomeScreen stress/idle P95 分别为 12,759/12,964 µs，低于 60 Hz 的 16,667 µs 门，证据位于 `artifacts/benchmarks/mvp-fedora44-20260729/`。120 Hz 实体手机 profile 仍是跨设备性能限制，不改写本里程碑的 Fedora 首发结论。
 
 ## 5. 测试矩阵
 
@@ -333,7 +362,7 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
 - 真实安全存储写入/重启/读回/撤销；
 - 麦克风权限、设备断开和音频播放中断；
 - PostgreSQL/Drift/Gateway 重启和升级；启用 PowerSync 后再加入其退出/恢复矩阵；
-- Codex/Hermes/OpenClaw 允许版本的 live compatibility；
+- Hermes 允许版本的 live compatibility；
 - 性能、内存、GPU、冷/热 STT/TTS 指标。
 
 ### 5.4 发布门
@@ -344,7 +373,7 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
 - Gateway 数据备份和恢复演练通过；
 - 设备凭据吊销后旧设备不可继续连接；
 - TLS 错误 fail closed；
-- 50 次端到端和各 Agent 10 轮验收通过；
+- 50 次端到端和 Hermes 同一 session 10 轮验收通过；
 - 安装、升级、卸载不删除未明确选择删除的用户数据。
 
 ### 5.5 可重复性能口径
@@ -381,7 +410,6 @@ npm run protocol:breaking
 npm run protocol:check:dart
 AGENT_TALK_POSTGRES_URL=<isolated-loopback-url> npm run test:postgres
 AGENT_TALK_LOOPBACK_INTEGRATION=1 npm run test:transport
-npm run protocol:codex
 npm run flutter:check
 VOXHANDOFF_SECURE_STORAGE_SELF_TEST=1 \
   ./apps/client/build/linux/x64/release/bundle/agent_talk_client
@@ -395,22 +423,17 @@ flutter run --profile -d <android-device-serial> \
   2>&1 | tee /tmp/voxhandoff-m4-android-profile.log
 npm run benchmark:m4:summary -- \
   /tmp/voxhandoff-m4-android-profile.log
+VOXHANDOFF_MVP_RENDER_BENCHMARK=1 \
+  ./apps/client/build/linux/x64/release/bundle/agent_talk_client \
+  > /tmp/voxhandoff-mvp-home-measurements.jsonl
+npm run benchmark:mvp:summary -- \
+  /tmp/voxhandoff-mvp-home-measurements.jsonl
 npm run poc -- doctor
 ```
 
 显式 live PoC：
 
 ```bash
-npm run poc -- codex --prompt "Reply with exactly: ready"
-npm run poc -- codex \
-  --prompt "Write a long numbered list. Do not use tools." \
-  --interrupt-after-ms 750
-npm run poc -- codex \
-  --prompt "Use the terminal tool to run bash -lc 'exit 0'. Do not do anything else." \
-  --approval-probe
-npm run poc -- codex \
-  --prompt "Reply with exactly: this should not complete" \
-  --failure-probe
 npm run poc -- hermes \
   --base-url http://127.0.0.1:18642 \
   --token-env HERMES_API_KEY \
@@ -429,7 +452,9 @@ npm run poc -- hermes \
   --base-url http://127.0.0.1:18642 \
   --token-env HERMES_API_KEY \
   --prompt "Use the terminal tool to run bash -lc 'exit 0'. Do not do anything else." \
-  --approval-probe
+  --approval-probe \
+  --approval-timeout-seconds 60 \
+  --approval-decision deny
 npm run poc -- hermes \
   --base-url http://127.0.0.1:18642 \
   --token-env HERMES_API_KEY \
@@ -464,8 +489,8 @@ UI 不展示虚构完成百分比。诊断页面显示最后真实事件、同�
 | Client 离线命令自动执行 | Client 只保存草稿，恢复连接必须重新确认 | 任何自动排空可执行命令即阻止发布 |
 | protocol 滚动升级不兼容 | major/minor handshake、前一 minor fixtures、expand-first migration | N/N-1 组合失败即阻止升级 |
 | 远程 STT 泄露音频 | 默认关闭、provider 同意、目标/TLS/保留提示 | 未确认上传或目标变化后继续上传即 Critical |
-| Codex app-server 协议变化 | 当前版本生成 schema + 12 项兼容检查 | CI/live matrix 失败即阻止升级 |
-| Hermes 真链路未验证 | fake SSE 已覆盖，完整 gateway 不擅自启动 | 建隔离 profile 后完成 M0 gate |
+| Hermes capability 或 SSE 契约变化 | fail-closed 协商、稳定事件身份、fake 契约与隔离 live profile | 任一必需能力缺失或事件不可恢复即拒绝 Connector 上线 |
+| Hermes 当前纵向真链路未验证 | fake Hermes + 真实 Gateway stream 已覆盖 Connector 边界，不擅自复用默认 gateway | 建隔离 Hermes 0.19.0 profile 后关闭 M5 live gate |
 | PowerSync 引入第二同步/授权平面 | 当前采用 Drift + 已认证 cursor sync；PowerSync 仅位于可选 Sync Adapter | 只有许可、运维、最小授权和量化收益同时过门才引入 |
 | 五端插件能力不一致 | record/media/security adapter + real device tests | 单平台失败显式降级或写原生 plugin |
 | TTS 冷启动/崩溃 | 常驻预热、分段、纯文字降级 | 不达标时限制自动播报长度 |

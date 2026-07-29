@@ -6,7 +6,7 @@
 - 事实唯一：PostgreSQL 决定同步模式的耐久状态，Agent 原生线程决定执行上下文；
 - 实时与耐久分离：gRPC 负责低延迟事件，数据库同步负责完整历史；
 - 安全失败：状态未知时停止重试并显示 `uncertain`；
-- 协议先于框架：领域模型不依赖 Flutter、PowerSync、Codex 或 Hermes SDK 类型；
+- 协议先于框架：领域模型不依赖 Flutter、PowerSync 或 Hermes SDK 类型；
 - 社区优先：官方方案优先，其次选择成熟组件，自研只做适配和产品特有语义；
 - 可降级：视觉、STT、TTS、同步任一失败不应破坏文字 Agent 主链路。
 
@@ -53,8 +53,8 @@ Windows / Linux / macOS / iOS / Android
             ▲
             │ outbound gRPC node stream
 ┌───────────┴─────────────────────────────────────┐
-│ Node Connector + Agent adapters                 │
-│ Codex stdio | Hermes HTTPS/SSE/stdio | OpenClaw │
+│ Hermes Node Connector                           │
+│ capability gate + HTTPS/SSE + session state     │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -66,7 +66,7 @@ Embedded 桌面模式可以把 Gateway 和 Node 打包为本地 sidecar，通过
 | --- | --- | --- | --- | --- |
 | Embedded standalone | bundled sidecar 的应用私有 SQLite 账本 | Client 本地 SQLite | Flutter desktop host 启动的专用 stdio；每次启动完成一次随机 challenge 握手 | 不支持 |
 | Self-hosted | Gateway PostgreSQL | Drift/SQLite + cursor sync；可选 PowerSync adapter | 设备密钥、短期 access token、scope、TLS | 支持 |
-| Hybrid | Self-hosted Gateway PostgreSQL | 同 Self-hosted | 同 Self-hosted；每个请求额外固定 `nodeId` | 支持 |
+| Multi-device self-hosted | Self-hosted Gateway PostgreSQL | 同 Self-hosted | 同 Self-hosted；每个请求固定 `nodeId` 与 Hermes session | 支持 |
 
 Embedded SQLite 必须实现与 PostgreSQL 路径相同的 request ID、idempotency uniqueness、conversation sequence、accepted 事务和恢复语义；区别只在存储与传输，不在领域行为。sidecar 在同一事务写入 request、`request.accepted` 和本地 dispatch outbox，提交后才能驱动 Agent。Flutter Client 自身的 SQLite 仍只是读模型和草稿库，不能充当执行账本。
 
@@ -120,11 +120,13 @@ Gateway 需要看到请求明文才能驱动 Agent，因此首版不宣称端到
 
 部署在 Agent 所在主机，主动出站连接 Gateway。它：
 
-- 使用官方本地/远程协议驱动 Agent；
+- 只使用显式配置的 Hermes HTTPS/SSE endpoint 驱动 Agent；
 - 将原生事件严格转换为统一 Protobuf；
 - 保留 Agent 原有审批和沙箱；
 - 报告实际主机、版本和 capability；
-- 不开放 Codex app-server 公网端口。
+- 不开放 Hermes endpoint 入站公网端口；
+- 将 Hermes credential 仅从环境变量读入内存，URL、状态文件和日志均不得包含 token；
+- 以权限收紧的本地状态文件保存 conversation 到 Hermes session 的映射，不保存正文或 secret。
 
 ### 4.5 STT/TTS sidecar
 
@@ -137,9 +139,7 @@ Gateway 需要看到请求明文才能驱动 Agent，因此首版不宣称端到
 - Client/Node ↔ Gateway live：gRPC bidirectional streaming；
 - 配对、登录、健康和配置：HTTPS；大附件 HTTPS 路径仅为当前禁用的协议扩展点；
 - Desktop host ↔ bundled sidecar：JSON-RPC 2.0 over stdio/JSONL；
-- Node ↔ Codex：app-server stdio；
-- Node ↔ Hermes：HTTPS/SSE，或同机 TUI Gateway 协议；
-- Adapter ↔ OpenClaw：Gateway WSS；
+- Node ↔ Hermes：HTTPS/SSE；明文 HTTP 仅允许显式配置的字面量 loopback；
 - Client durable sync：Gateway cursor replay/status → Drift local SQLite；可选 PowerSync 只替代历史快照传输。
 
 WebRTC 不进入默认主链路，因为不持续上传原始音频。未来远程流式音频必须作为独立 media channel，不混入 Agent event stream。
@@ -225,9 +225,11 @@ Agent adapter 只输出以下规范事件；未知原生事件记录为受限诊
 | Clarification | `clarification.required`、`clarification.resolved`、`clarification.expired`、`clarification.cancelled` | 不与 approval scope 混用 |
 | Request terminal | `request.completed`、`request.failed`、`request.cancelled`、`request.interrupted` | 四种不可互换的终态 |
 
-每个事件必须有本地生成的 opaque `eventId`、connection/session/request identity、从 1 开始且连续的规范 sequence 和本地接收 `occurredAt`。原生 sequence/time 可以放入受限诊断，但不能直接驱动 Core；`final` 由规范终态类型推导，不接受上游布尔值。
+每个事件必须有本地生成的 opaque `eventId`、connection/session/request identity、从 1 开始且连续的规范 sequence 和 UTC `occurredAt`。Hermes 提供有效数字 Unix timestamp 时适配器规范化为 UTC；缺失或非法时使用确定性本地序号时间，不能以每次重连的墙钟时间破坏事件身份。原生 sequence 只经范围和单调校验后进入规范序号空间；`final` 由规范终态类型推导，不接受上游布尔值。
 
 Capability 字段固定为：`deltaMode`（`none|append_only|revisable`）、`eventStream`、`sessionHistory`、`createSession`、`resumeSession`、`interrupt`、`steer`、`clarification`、`approval`、`toolEvents`、`attachments`、`idempotency`、`replay`、`sequenceRecovery`、请求大小和 timeout。M0-M5 `attachments=false`；UI 不使用旧名称或失败探测能力。
+
+Hermes capability 必须保守协商：缺失、未知或类型错误一律解释为不支持。`append_only` 只有在 Hermes 同时明确声明 streaming 与 append-only delta 时成立；`sequenceRecovery` 还要求稳定事件 ID，`replay`、approval、interrupt、session create/resume 和 idempotency 均不得由版本号或成功探测推断。Connector 注册前至少要求 `eventStream=true` 与 `idempotency=true`，否则拒绝上线并报告 capability stage。
 
 错误至少包含 `stage`、`category`、稳定 `code`、用户可行动的安全 `message` 和 `retryable`。stage 固定为 `recording|stt|connection|authentication|authorization|protocol|agent|summary|tts|playback|storage|sync|configuration`；category 固定为 `validation|unavailable|authentication|authorization|protocol|timeout|rate_limit|upstream|storage|privacy|unknown`。只有能证明幂等且 acceptance 未发生的操作才允许标记自动安全重试；当前 Client 不自动重试 executable command。
 
@@ -345,34 +347,25 @@ PowerSync Open Edition 只保留为可选加速器，须同时满足以下条件
 
 PowerSync 类型和 schema 若被引入，只能存在于 `SyncAdapter`。移除它时保留 Drift schema、公共 Protobuf、领域模型和 UI，以 cursor sync 完整恢复；当前未通过上述 gate，因此不建立 `infra/powersync` 服务或配置。
 
-## 9. Agent 适配
+## 9. Hermes 适配
 
-### 9.1 Codex
-
-- 本地启动 `codex app-server`，stdio initialize；
-- 支持 thread start/resume、turn start/interrupt、delta、完成和审批；
-- 从已安装 CLI 临时生成 schema 并执行协议兼容检查；
-- 不提交大批版本特定生成物；
-- 进程创建位于可 fake 的 adapter 边界；server request 只输出规范 ID、method 和脱敏安全摘要，notification 只输出 method，二者都不向 Core/UI 暴露原生 params；
-- WebSocket 实验传输不直接对公网开放；
-- 不依赖 Codex Desktop 当前窗口或焦点会话。
-
-### 9.2 Hermes
+### 9.1 正式链路
 
 - 普通路径使用 HTTPS/SSE；
 - 映射 health、capability、session、run、stop、approval 和错误；
 - run、stop 和 approval command 都携带调用方可稳定复用的 idempotency key；adapter 重建后由 run/request identity 恢复，不自行重复提交；
 - SSE 单事件默认上限 256 KiB，畸形 JSON 使当前 stream 明确失败；非 2xx 响应正文不进入普通异常或日志；
-- 需要完整控制时在 Hermes 同机侧使用正式 TUI Gateway 协议；
+- 原生 SSE ID 优先作为恢复锚点；缺失时以 run identity、原生 sequence 和规范化 payload 生成确定性 ID。重建 adapter 后同一事实必须得到同一 ID，`Last-Event-ID` 只使用最近已接受的原生恢复锚点；
+- 原生 sequence 与本地补充事件使用不重叠的单调序号空间；重复事件精确忽略，倒退、身份变化或不可证明的缺口 fail closed；
+- approval 只有在 Hermes 提供稳定 approval ID、安全操作摘要、expiry 和明确 operation digest，或 Connector 可从这些固定事实确定性计算 digest 时才进入 UI；字段不完整必须变为安全契约错误，不能产生可点击批准按钮；
+- Hermes 0.19 的 `approval.request` 不含原生 approval ID/expiry：Connector 以 run+确定性事件 ID 生成 approval ID，并只在显式配置的 `VOXHANDOFF_HERMES_APPROVAL_TIMEOUT_SECONDS` 与 Hermes `approvals.timeout` 完全一致时，从事件 timestamp 计算 expiry；摘要 hash 从已脱敏 description 确定性计算。响应仍由 run URL 限定，只发送 Hermes 0.19 支持的 `choice: once|deny`。Hermes profile 必须使用 `approvals.mode: manual`，smart/off 不得注册为生产 Connector；
+- Hermes 0.19 当前明确协商为 `idempotency=false`、`replay=false`、`sequenceRecovery=false`，因此生产 Connector 按 capability 门拒绝注册；不得依据请求头名称、版本号或一次成功调用推断支持；
 - 启动用户既有 gateway 前必须确认不会意外连接其消息平台；
 - 远程明文 HTTP 默认拒绝，loopback 开发例外必须显式配置。
 
-### 9.3 OpenClaw
+### 9.2 暂停的适配范围
 
-- 使用原生 Gateway WSS、role/scope、设备身份和配对；
-- 适配器保存可撤销设备身份，不默认请求管理员 scope；
-- 事件缺口刷新权威状态，不假设永久回放；
-- VoxHandoff Client 不直接接触 OpenClaw 管理密钥。
+Codex 研究适配器可以继续留在仓库内承担历史回归，但不得被生产 Node Connector 注册或出现在客户端目录。OpenClaw 和其他 Agent 不建立 adapter、配置入口或发行承诺。恢复这些方向前必须单独完成产品决策、威胁模型、capability 映射、幂等/恢复语义与真实端到端验收。
 
 ## 10. 语音架构
 
@@ -407,6 +400,7 @@ GPT-SoVITS adapter 生成规范音频块，`media_kit` adapter 播放。TTS 队�
 - Platform plugins：麦克风会话、安全存储、全局快捷键、通知和窗口行为。
 - 配对 presentation 只观察 Riverpod application state 并发出显式用户动作；production workflow factory 独占安全存储、TLS channel、生成 RPC client 和 coordinator 的组合与关闭，widget test 以离线 factory 替换。公开 UI state 不含 challenge、签名、nonce 或 token；
 - conversation presentation 只观察 production workspace 的领域快照；桌面导航与手机单列选择共享同一 selection identity。完整回复使用可选择文字，tool/terminal 保留安全阶段事实，approval 与 clarification 优先于装饰；无当前 lease 时所有可执行按钮禁用，只显示 observe 状态与显式 take-control/takeover；
+- presentation 在领域层把同一 request 的耐久事件一次聚合为用户轮次、Hermes 回复、可折叠工具轨迹、未决交互和终态；`message.delta` 更新同一回复，不生成独立卡片。desktop 使用惰性列表，mobile 使用 sliver 虚拟化；顺序 live event 只增量更新当前 timeline，不能每帧重新排序完整历史；
 - 信号生命核心是只读 presentation，由规范 Agent 事件、本地 voice/speech 阶段、真实 `audioLevel` 和播放 segment identity 合成为有限视觉状态；它不持有 request、approval、lease 或命令权限，不直接解释 adapter 原始事件；
 - 状态优先级固定为 approval/clarification → uncertain → failed → recording/transcribing → submitting/working → speaking → completed → idle。同一时刻只发布一个主状态，次级连接、同步和播放事实由独立文字或图标呈现；
 - 桌面核心在会话工作台的固定视觉安全区布局，手机核心在标题、阅读和录音三种尺寸槽位间切换；布局约束先保证正文、审批、澄清、转写确认和取消/停止操作，再分配装饰空间；
@@ -416,6 +410,8 @@ GPT-SoVITS adapter 生成规范音频块，`media_kit` adapter 播放。TTS 队�
 设计系统组件以独立 catalog/use case 覆盖真实状态，再进入业务页面；catalog 工具、第三方组件库和 styling package 都只能是开发或表现层依赖，不得成为领域状态权威。优先使用 Flutter 内建语义、focus、Theme 和自有小组件；只有组件隔离测试或跨端一致性收益足以抵消依赖/迁移成本时才引入社区包。
 
 shader 只接收 `audioLevel`、`playbackLevel`、`statePhase`、`errorPulse` 等归一化数值，不接收领域对象。录音响应只使用当前 AudioCapture session 的音量，TTS 响应只使用当前播放 segment 的包络；停止、取消、切换会话或 segment identity 失效后立即清除对应输入。所有状态必须有无动画等价表现；减少动态时禁用扫描、故障、漂移和持续波纹，只保留偏心核心、环结构差异、文字和高对比状态标记。
+
+SignalCore 仅在 recording/transcribing/submitting/working/speaking 等活动状态持有 ticker；idle、completed、failed 和减少动态模式使用静态帧。高频麦克风/TTS 电平只重建隔离的 SignalCore/voice status 子树。PCM 包络分析通过独立 isolate 处理有界不可变字节，并以 generation/segment identity 丢弃迟到结果，禁止在 UI isolate 同步扫描长音频。
 
 ## 12. 网络与安全
 

@@ -1,7 +1,7 @@
 # VoxHandoff 正式开发基线
 
-> 基线版本：1.52<br>
-> 生效日期：2026-07-22<br>
+> 基线版本：1.54<br>
+> 生效日期：2026-07-29<br>
 > 状态：Active
 
 本目录是 VoxHandoff 唯一有效的产品与工程基线。实现、评审、测试和发布只引用这里的文档：
@@ -31,6 +31,8 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.54 | 2026-07-29 | 固化 Hermes 0.19 真实 10 轮/stop/manual deny/SIGKILL/restart 证据与幂等能力阻断；关闭 Fedora Flutter 170 测试、Linux release 和 2,000 事件 HomeScreen 60 Hz 门 |
+| 1.53 | 2026-07-26 | 收缩为 Hermes-only MVP，暂停 Codex/OpenClaw 与发行工作；新增生产 Connector、保守能力/恢复契约、轮次聚合、SignalCore 和真实 HomeScreen 性能门 |
 | 1.52 | 2026-07-22 | 完成 M3 录音/本地与远程 STT 同意边界、终稿确认、GPT-SoVITS 分段播报与可打断播放，并记录 CPU/base profile 的 30/30/50 降级实测 |
 | 1.51 | 2026-07-22 | 完成 M2 目录/会话协议、Flutter 生产文字工作区、双客户端 cursor 恢复、Linux Secret Service 真读写与五平台构建门 |
 | 1.50 | 2026-07-22 | 正式产品名定为 VoxHandoff；保留既有协议、签名 domain、package scope 与应用 ID 作为兼容标识 |
