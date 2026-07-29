@@ -21,7 +21,7 @@ void main() {
   test('maps directory and conversation route facts', () async {
     final descriptor = ConversationDescriptor(
       conversationId: 'conversation-1',
-      title: 'Codex work',
+      title: 'Hermes work',
       nodeId: 'node-1',
       agentId: 'agent-1',
       capabilityRevision: 'capability-1',
@@ -45,9 +45,9 @@ void main() {
             AgentDescriptor(
               agentId: 'agent-1',
               nodeId: 'node-1',
-              displayName: 'Codex',
-              adapter: 'codex',
-              version: '1.0.0',
+              displayName: 'Hermes',
+              adapter: 'hermes',
+              version: '0.19.0',
               capabilityRevision: 'capability-1',
               capabilities: AgentCapabilities(
                 eventStream: true,

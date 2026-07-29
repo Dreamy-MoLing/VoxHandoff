@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/client_event.dart';
 import '../domain/client_session.dart';
+import '../domain/conversation_timeline.dart';
 import '../domain/gateway_sync.dart';
 import '../domain/gateway_workspace.dart';
 import '../infrastructure/gateway/secure_grpc_gateway_workspace_factory.dart';
@@ -162,6 +163,7 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
     state = state.copyWith(
       selectedConversationId: conversationId,
       events: const [],
+      turns: const [],
       selectedEventsHydrated: false,
       clearLiveEvent: true,
     );
@@ -279,6 +281,7 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
       selectedConversationId: next,
       clearSelection: next == null,
       events: const [],
+      turns: const [],
       selectedEventsHydrated: false,
       clearLiveEvent: true,
     );
@@ -311,6 +314,7 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
       ),
       selectedConversationId: conversation.conversationId,
       events: const [],
+      turns: const [],
       selectedEventsHydrated: false,
       clearLiveEvent: true,
     );
@@ -322,7 +326,20 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
     ClientEventOrigin origin,
   ) async {
     if (event.conversationId == state.selectedConversationId) {
-      await _reloadEvents(event.conversationId);
+      final currentEvents = state.events;
+      final canAppend =
+          state.selectedEventsHydrated &&
+          (currentEvents.isEmpty ||
+              (currentEvents.last.sequence < event.sequence &&
+                  currentEvents.last.conversationId == event.conversationId));
+      if (canAppend) {
+        state = state.copyWith(
+          events: [...currentEvents, event],
+          turns: appendConversationTurnEvent(state.turns, event),
+        );
+      } else {
+        await _reloadEvents(event.conversationId);
+      }
       if (origin == ClientEventOrigin.live) {
         state = state.copyWith(latestLiveEvent: event);
       }
@@ -438,7 +455,11 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
     if (session == null) return;
     final events = await session.listEvents(conversationId);
     if (state.selectedConversationId == conversationId) {
-      state = state.copyWith(events: events, selectedEventsHydrated: true);
+      state = state.copyWith(
+        events: events,
+        turns: aggregateConversationTurns(events),
+        selectedEventsHydrated: true,
+      );
     }
   }
 

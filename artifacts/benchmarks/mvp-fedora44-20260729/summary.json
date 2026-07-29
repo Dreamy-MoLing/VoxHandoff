@@ -1,0 +1,31 @@
+{
+  "benchmark": "mvp_home_screen",
+  "status": "passed",
+  "history_events": 2000,
+  "refresh_rate_hz": 60.001,
+  "profile": "balanced60",
+  "frame_budget_us": 16667,
+  "stress": {
+    "frames": 120,
+    "build_p50_us": 1939,
+    "build_p95_us": 6581,
+    "raster_p50_us": 1940,
+    "raster_p95_us": 2538,
+    "total_p50_us": 8687,
+    "total_p95_us": 12759,
+    "over_budget_frames": 1
+  },
+  "idle": {
+    "frames": 60,
+    "build_p50_us": 1482,
+    "build_p95_us": 7264,
+    "raster_p50_us": 1896,
+    "raster_p95_us": 2436,
+    "total_p50_us": 6056,
+    "total_p95_us": 12964,
+    "over_budget_frames": 2
+  },
+  "rss_start_bytes": 174100480,
+  "rss_peak_bytes": 174137344,
+  "rss_growth_bytes": -2203648
+}

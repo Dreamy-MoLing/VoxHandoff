@@ -133,9 +133,9 @@ ClientGatewayDirectory directory() => ClientGatewayDirectory(
     ClientAgentDirectoryEntry(
       agentId: 'agent-1',
       nodeId: 'node-1',
-      displayName: 'Codex',
-      adapter: 'codex',
-      version: '1.0.0',
+      displayName: 'Hermes',
+      adapter: 'hermes',
+      version: '0.19.0',
       capabilityRevision: 'capability-1',
       supportsInterrupt: true,
       supportsApprovals: true,

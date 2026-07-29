@@ -32,6 +32,18 @@ void main() {
     expect(extractPcm16WavEnvelope(oversized), isEmpty);
   });
 
+  test('extracts the playback envelope outside the caller isolate', () async {
+    final wav = _pcm16Wav([
+      ...List<int>.filled(800, 0),
+      ...List<int>.filled(800, 16384),
+    ]);
+
+    final envelope = await extractPcm16WavEnvelopeOffMainIsolate(wav);
+
+    expect(envelope, hasLength(2));
+    expect(envelope.last, closeTo(1, 0.01));
+  });
+
   test('playback timeout stops the driver and resets the level', () async {
     final driver = _FakeMediaKitDriver();
     final playback = MediaKitAudioPlayback.withDriver(

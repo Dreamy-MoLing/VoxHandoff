@@ -51,14 +51,10 @@ SignalCoreSnapshot resolveSignalCore({
   required SpeechPlaybackState speech,
 }) {
   final conversationId = workspace.selectedConversationId;
-  final events =
-      workspace.events
-          .where((event) => event.conversationId == conversationId)
-          .toList(growable: false)
-        ..sort((left, right) => left.sequence.compareTo(right.sequence));
-  final latestEvent = events.isEmpty ? null : events.last;
-  final latestRequestId = latestEvent?.requestId;
-  final pendingInteraction = _latestPendingInteraction(events);
+  final latestTurn = workspace.latestTurn;
+  final latestEvent = latestTurn?.latestEvent;
+  final latestRequestId = latestTurn?.requestId;
+  final pendingInteraction = workspace.pendingInteraction;
 
   if (pendingInteraction != null) {
     return _snapshot(
@@ -82,19 +78,6 @@ SignalCoreSnapshot resolveSignalCore({
       conversationId: conversationId,
       requestId: uncertainRequestId,
       sourceIdentity: uncertainRequestId,
-    );
-  }
-
-  if (voice.phase == VoiceInputPhase.failed ||
-      _isCurrentSpeechFailure(speech, conversationId, latestRequestId) ||
-      latestEvent?.kind == ClientEventKind.requestFailed) {
-    return _snapshot(
-      SignalCoreState.failed,
-      'Request or voice stage failed',
-      conversationId: conversationId,
-      requestId: latestRequestId,
-      sourceIdentity:
-          voice.failure?.code ?? speech.failure?.code ?? latestEvent?.eventId,
     );
   }
 
@@ -137,13 +120,27 @@ SignalCoreSnapshot resolveSignalCore({
     );
   }
 
-  if (latestEvent != null && !_terminalKinds.contains(latestEvent.kind)) {
+  if (voice.phase == VoiceInputPhase.failed ||
+      _isCurrentSpeechFailure(speech, conversationId, latestRequestId) ||
+      latestTurn?.isFailed == true) {
+    return _snapshot(
+      SignalCoreState.failed,
+      'Request or voice stage failed',
+      conversationId: conversationId,
+      requestId: latestRequestId,
+      sourceIdentity:
+          voice.failure?.code ?? speech.failure?.code ?? latestEvent?.eventId,
+    );
+  }
+
+  final activeTurn = workspace.activeTurn;
+  if (activeTurn != null) {
     return _snapshot(
       SignalCoreState.working,
       'Agent working',
       conversationId: conversationId,
-      requestId: latestEvent.requestId,
-      sourceIdentity: latestEvent.eventId,
+      requestId: activeTurn.requestId,
+      sourceIdentity: activeTurn.latestEvent.eventId,
     );
   }
 
@@ -162,13 +159,13 @@ SignalCoreSnapshot resolveSignalCore({
     );
   }
 
-  if (latestEvent?.kind == ClientEventKind.requestCompleted) {
+  if (latestTurn?.terminalEvent?.kind == ClientEventKind.requestCompleted) {
     return _snapshot(
       SignalCoreState.completed,
       'Request completed',
       conversationId: conversationId,
-      requestId: latestEvent!.requestId,
-      sourceIdentity: latestEvent.eventId,
+      requestId: latestTurn!.requestId,
+      sourceIdentity: latestTurn.terminalEvent!.eventId,
     );
   }
 
@@ -208,33 +205,3 @@ SignalCoreSnapshot _snapshot(
   audioLevel: audioLevel.clamp(0, 1),
   playbackLevel: playbackLevel.clamp(0, 1),
 );
-
-ClientEventRecord? _latestPendingInteraction(List<ClientEventRecord> events) {
-  final resolvedApprovalIds = <String>{};
-  final resolvedClarificationIds = <String>{};
-  for (final event in events.reversed) {
-    final content = event.content;
-    if (content is ApprovalClientEventContent) {
-      if (event.kind != ClientEventKind.approvalRequired) {
-        resolvedApprovalIds.add(content.approvalId);
-      } else if (!resolvedApprovalIds.contains(content.approvalId)) {
-        return event;
-      }
-    }
-    if (content is ClarificationClientEventContent) {
-      if (event.kind != ClientEventKind.clarificationRequired) {
-        resolvedClarificationIds.add(content.clarificationId);
-      } else if (!resolvedClarificationIds.contains(content.clarificationId)) {
-        return event;
-      }
-    }
-  }
-  return null;
-}
-
-const _terminalKinds = {
-  ClientEventKind.requestCompleted,
-  ClientEventKind.requestFailed,
-  ClientEventKind.requestCancelled,
-  ClientEventKind.requestInterrupted,
-};

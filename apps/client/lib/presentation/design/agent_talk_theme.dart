@@ -15,15 +15,15 @@ class AgentTalkVisualTokens extends ThemeExtension<AgentTalkVisualTokens> {
   });
 
   static const dark = AgentTalkVisualTokens(
-    ink: Color(0xFF080B10),
-    panel: Color(0xFF0E151D),
-    panelRaised: Color(0xFF151F2A),
-    structureLine: Color(0xFF334454),
-    textPrimary: Color(0xFFE8EDF2),
-    textMuted: Color(0xFF9AAABA),
-    signal: Color(0xFF55D8D0),
-    attention: Color(0xFFF0B84B),
-    danger: Color(0xFFFF6B6B),
+    ink: Color(0xFF05080F),
+    panel: Color(0xFF0A1320),
+    panelRaised: Color(0xFF101E2E),
+    structureLine: Color(0xFF2B4960),
+    textPrimary: Color(0xFFEAF7FA),
+    textMuted: Color(0xFF91AAB8),
+    signal: Color(0xFF63F3E6),
+    attention: Color(0xFFFFC866),
+    danger: Color(0xFFFF7185),
   );
 
   final Color ink;
@@ -90,8 +90,8 @@ ThemeData buildAgentTalkDarkTheme() {
       ).copyWith(
         primary: tokens.signal,
         onPrimary: tokens.ink,
-        primaryContainer: const Color(0xFF123B3C),
-        onPrimaryContainer: const Color(0xFFBEFFF9),
+        primaryContainer: const Color(0xFF0D484B),
+        onPrimaryContainer: const Color(0xFFC9FFFA),
         secondary: tokens.attention,
         onSecondary: tokens.ink,
         secondaryContainer: const Color(0xFF4A3712),
@@ -104,13 +104,13 @@ ThemeData buildAgentTalkDarkTheme() {
         surfaceContainerLow: tokens.panel,
         surfaceContainer: tokens.panel,
         surfaceContainerHigh: tokens.panelRaised,
-        surfaceContainerHighest: const Color(0xFF1B2834),
-        outline: const Color(0xFF657789),
+        surfaceContainerHighest: const Color(0xFF172C40),
+        outline: const Color(0xFF68869A),
         outlineVariant: tokens.structureLine,
       );
 
   const compactShape = RoundedRectangleBorder(
-    borderRadius: BorderRadius.all(Radius.circular(4)),
+    borderRadius: BorderRadius.all(Radius.circular(10)),
   );
   return ThemeData(
     brightness: Brightness.dark,
@@ -125,18 +125,26 @@ ThemeData buildAgentTalkDarkTheme() {
       scrolledUnderElevation: 0,
     ),
     dividerTheme: DividerThemeData(color: tokens.structureLine),
+    cardTheme: CardThemeData(
+      color: tokens.panelRaised,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.all(Radius.circular(14)),
+        side: BorderSide(color: tokens.structureLine.withValues(alpha: 0.7)),
+      ),
+    ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: tokens.panel,
       border: const OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(4)),
+        borderRadius: BorderRadius.all(Radius.circular(10)),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: const BorderRadius.all(Radius.circular(4)),
+        borderRadius: const BorderRadius.all(Radius.circular(10)),
         borderSide: BorderSide(color: tokens.structureLine),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: const BorderRadius.all(Radius.circular(4)),
+        borderRadius: const BorderRadius.all(Radius.circular(10)),
         borderSide: BorderSide(color: tokens.signal, width: 1.5),
       ),
     ),

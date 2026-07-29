@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -65,7 +66,7 @@ class MediaKitAudioPlayback implements AudioPlaybackPort {
         await _stopDriverQuietly();
         return;
       }
-      _startEnvelope(speech.bytes, generation);
+      unawaited(_startEnvelope(speech.bytes, generation));
       await completed.future.timeout(_completionTimeout);
       final streamError = completionError;
       if (streamError != null) {
@@ -127,10 +128,10 @@ class MediaKitAudioPlayback implements AudioPlaybackPort {
     }
   }
 
-  void _startEnvelope(Uint8List bytes, int generation) {
+  Future<void> _startEnvelope(Uint8List bytes, int generation) async {
     _stopEnvelope();
-    final envelope = extractPcm16WavEnvelope(bytes);
-    if (envelope.isEmpty) return;
+    final envelope = await extractPcm16WavEnvelopeOffMainIsolate(bytes);
+    if (_closed || generation != _generation || envelope.isEmpty) return;
     var index = 0;
     _levels.add(envelope[index]);
     _levelTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
@@ -189,6 +190,19 @@ class _MediaKitPlayerDriver implements MediaKitPlayerDriver {
 
   @override
   Future<void> dispose() => _player.dispose();
+}
+
+@visibleForTesting
+Future<List<double>> extractPcm16WavEnvelopeOffMainIsolate(
+  Uint8List bytes, {
+  Duration bucket = const Duration(milliseconds: 50),
+}) async {
+  if (bytes.length > maxAnalyzedPcmBytes) return const [];
+  final transferable = TransferableTypedData.fromList([bytes]);
+  return Isolate.run(() {
+    final isolatedBytes = transferable.materialize().asUint8List();
+    return extractPcm16WavEnvelope(isolatedBytes, bucket: bucket);
+  });
 }
 
 @visibleForTesting

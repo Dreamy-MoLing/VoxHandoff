@@ -73,7 +73,7 @@ void main() {
     final port = GrpcGatewayCommandPort(connection);
     final conversation = ClientConversationDirectoryEntry(
       conversationId: 'conversation-1',
-      title: 'Codex work',
+      title: 'Hermes work',
       nodeId: 'node-1',
       agentId: 'agent-1',
       capabilityRevision: 'capability-1',
@@ -159,7 +159,7 @@ void main() {
       ClientCommand_Command.resolveApproval,
       ClientCommand_Command.resolveClarification,
     ]);
-    expect(connection.commands[1].createConversation.title, 'Codex work');
+    expect(connection.commands[1].createConversation.title, 'Hermes work');
     expect(connection.commands[2].acquireLease.explicitTakeover, isTrue);
     expect(connection.commands[3].renewLease.leaseId, 'lease-1');
     expect(connection.commands[3].renewLease.expectedRevision.toString(), '2');

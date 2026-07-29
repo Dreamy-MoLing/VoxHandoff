@@ -48,6 +48,18 @@ class _SignalCoreViewState extends State<SignalCoreView>
       _profile == SignalRenderProfile.static ||
       MediaQuery.maybeDisableAnimationsOf(context) == true;
 
+  bool get _stateAnimates => switch (widget.snapshot.state) {
+    SignalCoreState.recording ||
+    SignalCoreState.transcribing ||
+    SignalCoreState.awaitingConfirmation ||
+    SignalCoreState.submitting ||
+    SignalCoreState.working ||
+    SignalCoreState.speaking ||
+    SignalCoreState.approval ||
+    SignalCoreState.uncertain => true,
+    _ => false,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -102,8 +114,11 @@ class _SignalCoreViewState extends State<SignalCoreView>
       _animation.value = 0;
       _faultPulse.stop();
       _faultPulse.value = 0;
-    } else if (!_animation.isAnimating) {
+    } else if (_stateAnimates && !_animation.isAnimating) {
       _animation.repeat();
+    } else if (!_stateAnimates) {
+      _animation.stop();
+      _animation.value = 0;
     }
   }
 
@@ -132,26 +147,50 @@ class _SignalCoreViewState extends State<SignalCoreView>
         child: SizedBox.square(
           key: const ValueKey('signal-core-view'),
           dimension: widget.dimension,
-          child: AnimatedBuilder(
-            animation: Listenable.merge([_animation, _faultPulse]),
-            builder: (context, _) => CustomPaint(
-              painter: SignalCorePainter(
-                snapshot: widget.snapshot,
-                phase: staticMode ? 0 : _animation.value,
-                signal: tokens.signal,
-                attention: tokens.attention,
-                danger: tokens.danger,
-                structureLine: tokens.structureLine,
-                ink: tokens.ink,
-                stateColor: stateColor,
-                program: _shaderUnavailable ? null : _program,
-                reducedMotion: staticMode,
-                faultPulse: math.sin(math.pi * _faultPulse.value),
-                detail: _profile == SignalRenderProfile.highRefresh120
-                    ? 1
-                    : 0.72,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              AnimatedBuilder(
+                animation: Listenable.merge([_animation, _faultPulse]),
+                builder: (context, _) => CustomPaint(
+                  painter: SignalCorePainter(
+                    snapshot: widget.snapshot,
+                    phase: staticMode ? 0 : _animation.value,
+                    signal: tokens.signal,
+                    attention: tokens.attention,
+                    danger: tokens.danger,
+                    structureLine: tokens.structureLine,
+                    ink: tokens.ink,
+                    stateColor: stateColor,
+                    program: _shaderUnavailable ? null : _program,
+                    reducedMotion: staticMode,
+                    faultPulse: math.sin(math.pi * _faultPulse.value),
+                    detail: _profile == SignalRenderProfile.highRefresh120
+                        ? 1
+                        : 0.72,
+                  ),
+                ),
               ),
-            ),
+              Positioned(
+                left: widget.dimension * 0.16,
+                right: widget.dimension * 0.16,
+                bottom: widget.dimension * 0.08,
+                child: ExcludeSemantics(
+                  child: Text(
+                    _displayLabel(widget.snapshot.state),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.fade,
+                    style: TextStyle(
+                      color: stateColor.withValues(alpha: 0.92),
+                      fontSize: math.max(9, widget.dimension * 0.05),
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: widget.dimension * 0.006,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -217,15 +256,34 @@ class SignalCorePainter extends CustomPainter {
       );
     }
 
+    final activity = math.max(snapshot.audioLevel, snapshot.playbackLevel);
+    final energyRadius = radius * (0.76 + activity * 0.08);
+    canvas.drawCircle(
+      center,
+      energyRadius,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          center,
+          energyRadius,
+          [
+            stateColor.withValues(
+              alpha: snapshot.state == SignalCoreState.idle ? 0.035 : 0.12,
+            ),
+            stateColor.withValues(alpha: 0),
+          ],
+          const [0, 1],
+        ),
+    );
+
     final structure = Paint()
-      ..color = structureLine.withValues(alpha: 0.9)
+      ..color = structureLine.withValues(alpha: 0.72)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
     final active = Paint()
       ..color = stateColor
       ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.square
-      ..strokeWidth = snapshot.state == SignalCoreState.approval ? 2.6 : 2;
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = snapshot.state == SignalCoreState.approval ? 2.8 : 2.1;
     final dimActive = Paint()
       ..color = stateColor.withValues(
         alpha: snapshot.state == SignalCoreState.idle ? 0.32 : 0.72,
@@ -233,28 +291,37 @@ class SignalCorePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.4;
 
-    canvas.drawCircle(center, radius - 10, structure);
-    canvas.drawCircle(center, radius - 25, structure);
+    canvas.drawCircle(center, radius - 8, structure);
+    canvas.drawCircle(
+      center,
+      radius * (snapshot.state == SignalCoreState.approval ? 0.68 : 0.75),
+      structure,
+    );
     final offsetAngle = reducedMotion ? 0.12 : phase * math.pi * 2;
-    for (var index = 0; index < 12; index += 1) {
-      final angle = offsetAngle + index * math.pi / 6;
-      final innerRadius = radius - (index.isEven ? 8 : 11);
-      final outerRadius = radius - (index.isEven ? 0 : 4);
-      canvas.drawLine(
-        Offset(
-          center.dx + math.cos(angle) * innerRadius,
-          center.dy + math.sin(angle) * innerRadius,
-        ),
-        Offset(
-          center.dx + math.cos(angle) * outerRadius,
-          center.dy + math.sin(angle) * outerRadius,
-        ),
+    final segmentCount = snapshot.state == SignalCoreState.speaking ? 18 : 12;
+    for (var index = 0; index < segmentCount; index += 1) {
+      final angle = offsetAngle + index * math.pi * 2 / segmentCount;
+      final gap =
+          snapshot.state == SignalCoreState.uncertain &&
+          (index == 2 || index == 3 || index == 8);
+      if (gap) continue;
+      final segmentBounds = Rect.fromCircle(
+        center: center,
+        radius: radius - (index.isEven ? 4 : 7),
+      );
+      canvas.drawArc(
+        segmentBounds,
+        angle,
+        math.pi / segmentCount * (index.isEven ? 0.9 : 0.52),
+        false,
         index.isEven ? active : structure,
       );
     }
 
-    final expansion = snapshot.state == SignalCoreState.recording
-        ? snapshot.audioLevel * radius * 0.08
+    final expansion =
+        (snapshot.state == SignalCoreState.recording ||
+            snapshot.state == SignalCoreState.speaking)
+        ? activity * radius * 0.1
         : 0.0;
     final arcBounds = Rect.fromCircle(
       center: center,
@@ -276,7 +343,8 @@ class SignalCorePainter extends CustomPainter {
       dimActive,
     );
 
-    if (snapshot.state == SignalCoreState.transcribing) {
+    if (snapshot.state == SignalCoreState.transcribing ||
+        snapshot.state == SignalCoreState.submitting) {
       final y = reducedMotion
           ? center.dy
           : center.dy - radius * 0.45 + phase * radius * 0.9;
@@ -296,40 +364,165 @@ class SignalCorePainter extends CustomPainter {
       );
     }
     if (snapshot.state == SignalCoreState.failed) {
+      final split = radius * (0.24 + faultPulse * 0.04);
       canvas.drawLine(
-        Offset(center.dx - radius * 0.3, center.dy + radius * 0.2),
-        Offset(center.dx + radius * 0.32, center.dy - radius * 0.24),
+        Offset(center.dx - split, center.dy + split * 0.8),
+        Offset(center.dx + split, center.dy - split),
         active,
       );
     }
 
-    final coreOffset = Offset(radius * 0.07, -radius * 0.04);
-    final coreCenter = center + coreOffset;
-    final coreWidth =
-        radius *
-        (0.25 + (snapshot.audioLevel * 0.08) + (snapshot.playbackLevel * 0.04));
-    final core = Path()
-      ..moveTo(coreCenter.dx - coreWidth, coreCenter.dy)
-      ..lineTo(coreCenter.dx + coreWidth * 0.3, coreCenter.dy - coreWidth * 0.7)
-      ..lineTo(coreCenter.dx + coreWidth, coreCenter.dy + coreWidth * 0.05)
-      ..lineTo(
-        coreCenter.dx - coreWidth * 0.1,
-        coreCenter.dy + coreWidth * 0.62,
-      )
-      ..close();
-    canvas.drawPath(core, Paint()..color = ink.withValues(alpha: 0.88));
-    canvas.drawPath(core, active);
+    if (snapshot.state == SignalCoreState.recording ||
+        snapshot.state == SignalCoreState.speaking) {
+      final spokeCount = snapshot.state == SignalCoreState.recording ? 8 : 12;
+      for (var index = 0; index < spokeCount; index += 1) {
+        final angle = index * math.pi * 2 / spokeCount;
+        final pulse = 0.08 + activity * (index.isEven ? 0.12 : 0.06);
+        final inner = radius * 0.31;
+        final outer = radius * (0.38 + pulse);
+        canvas.drawLine(
+          center + Offset(math.cos(angle), math.sin(angle)) * inner,
+          center + Offset(math.cos(angle), math.sin(angle)) * outer,
+          index.isEven ? active : dimActive,
+        );
+      }
+    }
 
-    final axisEnd = switch (snapshot.state) {
-      SignalCoreState.approval => Offset(center.dx, center.dy + radius * 0.48),
-      SignalCoreState.recording || SignalCoreState.transcribing => Offset(
-        center.dx - radius * 0.35,
-        center.dy + radius * 0.35,
-      ),
-      _ => Offset(center.dx + radius * 0.48, center.dy - radius * 0.18),
-    };
-    canvas.drawLine(coreCenter, axisEnd, dimActive);
+    if (snapshot.state == SignalCoreState.working) {
+      for (var index = 0; index < 3; index += 1) {
+        final angle = offsetAngle + index * math.pi * 2 / 3;
+        canvas.drawCircle(
+          center + Offset(math.cos(angle), math.sin(angle)) * (radius * 0.42),
+          radius * 0.025,
+          Paint()..color = stateColor,
+        );
+      }
+    }
+
+    if (snapshot.state == SignalCoreState.approval) {
+      final shield = Rect.fromCenter(
+        center: center,
+        width: radius * 0.92,
+        height: radius * 0.92,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(shield, Radius.circular(radius * 0.12)),
+        active,
+      );
+    }
+
+    final coreWidth = radius * (0.31 + activity * 0.08);
+    final core = _corePath(center, coreWidth);
+    canvas.drawPath(
+      core,
+      Paint()
+        ..color = ink.withValues(alpha: 0.78)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawPath(core, active);
+    canvas.drawCircle(
+      center,
+      radius * (0.055 + activity * 0.025),
+      Paint()..color = stateColor.withValues(alpha: 0.9),
+    );
   }
+
+  Path _corePath(Offset center, double width) {
+    final points = switch (snapshot.state) {
+      SignalCoreState.idle => <Offset>[
+        const Offset(0, -1),
+        const Offset(0.72, 0),
+        const Offset(0, 1),
+        const Offset(-0.72, 0),
+      ],
+      SignalCoreState.recording => <Offset>[
+        const Offset(0, -1.22),
+        const Offset(0.58, -0.36),
+        const Offset(0.86, 0),
+        const Offset(0.55, 0.42),
+        const Offset(0, 1.22),
+        const Offset(-0.55, 0.42),
+        const Offset(-0.86, 0),
+        const Offset(-0.58, -0.36),
+      ],
+      SignalCoreState.transcribing => _regularPoints(6, rotation: -math.pi / 2),
+      SignalCoreState.awaitingConfirmation => <Offset>[
+        const Offset(0, -1),
+        const Offset(1, -0.22),
+        const Offset(0.48, 0.82),
+        const Offset(-0.48, 0.82),
+        const Offset(-1, -0.22),
+      ],
+      SignalCoreState.submitting => <Offset>[
+        const Offset(-0.9, -0.72),
+        const Offset(1.08, 0),
+        const Offset(-0.9, 0.72),
+        const Offset(-0.48, 0),
+      ],
+      SignalCoreState.working => _regularPoints(7, rotation: -math.pi / 2),
+      SignalCoreState.speaking => _starPoints(8, 1, 0.58),
+      SignalCoreState.approval => <Offset>[
+        const Offset(0, -1),
+        const Offset(0.88, -0.5),
+        const Offset(0.72, 0.62),
+        const Offset(0, 1.08),
+        const Offset(-0.72, 0.62),
+        const Offset(-0.88, -0.5),
+      ],
+      SignalCoreState.completed => <Offset>[
+        const Offset(0, -0.88),
+        const Offset(0.95, -0.25),
+        const Offset(0.35, 0.95),
+        const Offset(-0.35, 0.95),
+        const Offset(-0.95, -0.25),
+      ],
+      SignalCoreState.failed => <Offset>[
+        const Offset(-0.9, -0.72),
+        const Offset(-0.15, -0.92),
+        const Offset(0.05, -0.18),
+        const Offset(0.92, -0.55),
+        const Offset(0.55, 0.92),
+        const Offset(-0.72, 0.62),
+      ],
+      SignalCoreState.uncertain => <Offset>[
+        const Offset(-0.75, -0.72),
+        const Offset(0.28, -1),
+        const Offset(0.92, -0.28),
+        const Offset(0.46, 0.25),
+        const Offset(0.72, 0.9),
+        const Offset(-0.48, 0.72),
+        const Offset(-0.92, 0),
+      ],
+    };
+    final path = Path();
+    for (var index = 0; index < points.length; index += 1) {
+      final point = center + points[index] * width;
+      if (index == 0) {
+        path.moveTo(point.dx, point.dy);
+      } else {
+        path.lineTo(point.dx, point.dy);
+      }
+    }
+    return path..close();
+  }
+
+  List<Offset> _regularPoints(int count, {double rotation = 0}) => [
+    for (var index = 0; index < count; index += 1)
+      Offset(
+        math.cos(rotation + index * math.pi * 2 / count),
+        math.sin(rotation + index * math.pi * 2 / count),
+      ),
+  ];
+
+  List<Offset> _starPoints(int count, double outer, double inner) => [
+    for (var index = 0; index < count * 2; index += 1)
+      Offset(
+        math.cos(-math.pi / 2 + index * math.pi / count) *
+            (index.isEven ? outer : inner),
+        math.sin(-math.pi / 2 + index * math.pi / count) *
+            (index.isEven ? outer : inner),
+      ),
+  ];
 
   @override
   bool shouldRepaint(covariant SignalCorePainter oldDelegate) =>
@@ -349,3 +542,17 @@ class SignalCorePainter extends CustomPainter {
       oldDelegate.faultPulse != faultPulse ||
       oldDelegate.detail != detail;
 }
+
+String _displayLabel(SignalCoreState state) => switch (state) {
+  SignalCoreState.idle => 'HERMES READY',
+  SignalCoreState.recording => 'LISTENING',
+  SignalCoreState.transcribing => 'TRANSCRIBING',
+  SignalCoreState.awaitingConfirmation => 'REVIEW',
+  SignalCoreState.submitting => 'HANDOFF',
+  SignalCoreState.working => 'HERMES ACTIVE',
+  SignalCoreState.speaking => 'VOICE',
+  SignalCoreState.approval => 'DECISION',
+  SignalCoreState.completed => 'COMPLETE',
+  SignalCoreState.failed => 'FAULT',
+  SignalCoreState.uncertain => 'VERIFY',
+};

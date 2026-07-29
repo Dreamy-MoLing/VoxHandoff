@@ -22,6 +22,7 @@ import 'infrastructure/stt/stdio_stt_port.dart';
 import 'infrastructure/stt/unavailable_stt_port.dart';
 import 'infrastructure/tts/gpt_sovits_tts_port.dart';
 import 'presentation/m4_render_benchmark.dart';
+import 'presentation/mvp_render_benchmark.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +36,10 @@ Future<void> main() async {
   }
   if (Platform.environment['VOXHANDOFF_DESKTOP_INTEGRATION_SELF_TEST'] == '1') {
     await _runDesktopIntegrationSelfTest();
+    exit(exitCode);
+  }
+  if (shouldRunMvpRenderBenchmark(Platform.environment)) {
+    await runMvpRenderBenchmark();
     exit(exitCode);
   }
   if (shouldRunM4RenderBenchmark(Platform.environment)) {

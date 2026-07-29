@@ -135,6 +135,32 @@ void main() {
         tester.widget<CustomPaint>(corePaint).painter! as SignalCorePainter;
     expect(painter.faultPulse, closeTo(0, 0.01));
   });
+
+  testWidgets('idle core does not schedule continuous frames', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAgentTalkDarkTheme(),
+        home: const Scaffold(
+          body: SignalCoreView(
+            snapshot: SignalCoreSnapshot(
+              state: SignalCoreState.idle,
+              label: 'VoxHandoff idle',
+              audioLevel: 0,
+              playbackLevel: 0,
+            ),
+            dimension: 180,
+            profile: SignalRenderProfile.balanced60,
+            shaderLoader: _failedShader,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    await tester.pump(const Duration(seconds: 1));
+    expect(tester.binding.hasScheduledFrame, isFalse);
+  });
 }
 
 Future<ui.FragmentProgram> _failedShader() =>

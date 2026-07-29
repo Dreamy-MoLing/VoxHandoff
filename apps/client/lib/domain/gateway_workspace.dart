@@ -1,5 +1,6 @@
 import 'client_event.dart';
 import 'client_session.dart';
+import 'conversation_timeline.dart';
 import 'gateway_sync.dart';
 
 class GatewayWorkspaceState {
@@ -8,6 +9,7 @@ class GatewayWorkspaceState {
     this.directory,
     this.selectedConversationId,
     this.events = const [],
+    this.turns = const [],
     this.selectedEventsHydrated = false,
     this.latestLiveEvent,
     this.leases = const {},
@@ -20,6 +22,7 @@ class GatewayWorkspaceState {
   final ClientGatewayDirectory? directory;
   final String? selectedConversationId;
   final List<ClientEventRecord> events;
+  final List<ConversationTurn> turns;
   final bool selectedEventsHydrated;
   final ClientEventRecord? latestLiveEvent;
   final Map<String, ClientControlLeaseSnapshot> leases;
@@ -41,6 +44,28 @@ class GatewayWorkspaceState {
     return id == null ? null : leases[id];
   }
 
+  List<ConversationTurn> get timeline => turns.isNotEmpty || events.isEmpty
+      ? turns
+      : aggregateConversationTurns(events);
+
+  ConversationTurn? get latestTurn => timeline.isEmpty ? null : timeline.last;
+
+  ConversationTurn? get activeTurn {
+    for (final turn in timeline.reversed) {
+      if (turn.canInterrupt) return turn;
+      if (turn.isTerminal) return null;
+    }
+    return null;
+  }
+
+  ClientEventRecord? get pendingInteraction {
+    for (final turn in timeline.reversed) {
+      final pending = turn.pendingInteraction;
+      if (pending != null) return pending;
+    }
+    return null;
+  }
+
   bool ownsSelectedLease(String? deviceId, DateTime now) {
     final lease = selectedLease;
     return lease != null &&
@@ -54,6 +79,7 @@ class GatewayWorkspaceState {
     ClientGatewayDirectory? directory,
     String? selectedConversationId,
     List<ClientEventRecord>? events,
+    List<ConversationTurn>? turns,
     bool? selectedEventsHydrated,
     ClientEventRecord? latestLiveEvent,
     Map<String, ClientControlLeaseSnapshot>? leases,
@@ -71,6 +97,7 @@ class GatewayWorkspaceState {
         ? null
         : selectedConversationId ?? this.selectedConversationId,
     events: List.unmodifiable(events ?? this.events),
+    turns: List.unmodifiable(turns ?? this.turns),
     selectedEventsHydrated:
         selectedEventsHydrated ?? this.selectedEventsHydrated,
     latestLiveEvent: clearLiveEvent

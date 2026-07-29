@@ -91,9 +91,9 @@ GatewayWorkspaceState _workspaceState({
       ClientAgentDirectoryEntry(
         agentId: 'agent-1',
         nodeId: 'node-1',
-        displayName: 'Codex',
-        adapter: 'codex',
-        version: '1.0.0',
+        displayName: 'Hermes',
+        adapter: 'hermes',
+        version: '0.19.0',
         capabilityRevision: 'capability-1',
         supportsInterrupt: true,
         supportsApprovals: true,
@@ -202,7 +202,7 @@ void main() {
 
     expect(find.text('M2 delivery'), findsWidgets);
     expect(find.textContaining('complete Agent reply'), findsOneWidget);
-    expect(find.text('Approve'), findsOneWidget);
+    expect(find.text('Approve once'), findsOneWidget);
     expect(find.text('Deny'), findsOneWidget);
     expect(find.text('Send unavailable'), findsOneWidget);
     expect(tester.takeException(), isNull);

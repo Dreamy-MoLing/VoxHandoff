@@ -202,6 +202,25 @@ void main() {
     expect(snapshot.state, SignalCoreState.idle);
     expect(snapshot.audioLevel, 0);
   });
+
+  test('current recording overrides a failed previous request', () {
+    final snapshot = resolveSignalCore(
+      workspace: GatewayWorkspaceState(
+        selectedConversationId: 'conversation-1',
+        events: [_event(ClientEventKind.requestFailed)],
+      ),
+      session: const ClientSessionState(),
+      voice: const VoiceSessionState(
+        phase: VoiceInputPhase.recording,
+        sessionId: 'voice-new',
+        audioLevel: 0.6,
+      ),
+      speech: idleSpeech,
+    );
+
+    expect(snapshot.state, SignalCoreState.recording);
+    expect(snapshot.audioLevel, 0.6);
+  });
 }
 
 SignalCoreSnapshot _resolveWithEvents(
