@@ -309,7 +309,7 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
 
 [GitHub Actions run 30184413298](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30184413298) 已在包含上述真机探针修正和全部 Android 证据的 head 上通过 Node/PostgreSQL、Linux 160 项 Flutter 测试与 analyze/release/Xvfb desktop/Secret Service、Android debug APK、macOS/iOS 和 Windows 全部门。该 CI 证明代码、生成物与五平台构建门一致，但不替代已单独保存的实体 Android profile 结果。
 
-### M5 — GUI 语音聊天打通（下一阶段）
+### M5 — GUI 语音聊天打通（已实现；物理麦克风发行验收待真实设备）
 
 目标：先把已有录音、可编辑文本、聊天 UI、播放与 SignalCore 串成用户可用的语音聊天体感，不等待 Hermes 上游补齐幂等能力。
 
@@ -322,7 +322,7 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
 
 退出条件：在 Fedora 的本机用户配置中，能完成至少 10 轮文本聊天；已配置音频端口时能完成“录音—编辑—发送—回复—播放”一轮；取消和任一配置失败不丢失已确认文本或完整回复，且相关离线/Flutter 测试通过。
 
-#### 2026-07-31 增量证据（未关闭 M5）
+#### 2026-07-31 Direct LLM 增量证据
 
 本次实现了可独立审查的 direct LLM 最小路径，且不触碰 Hermes/Gateway
 的 acceptance、lease、approval、cursor 或 `uncertain` 语义：
@@ -330,8 +330,10 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
 - Client 可在 Hermes Gateway 与 Direct LLM 来源之间显式切换。Direct LLM
   使用独立视图，明确标注它没有 Agent host、tool、approval、lease 或跨设备
   command 语义；停止只取消当前本机 HTTP stream，绝不伪装 Hermes interrupt。
-- Direct LLM 只接受精确 HTTPS root origin、模型和可选 system prompt。API key
-  单独写入 OS secure storage；配置记录不含 key。本机 Drift 历史只在 confirmed
+- Direct LLM 接受精确 HTTPS API base（空路径或最多四段受限安全 path segment），因此
+  可保留 OpenRouter 的 `https://openrouter.ai/api/v1`；adapter 只在未提供 `v1`
+  的 base 后补 `/v1`，不接受 request URL、redirect、query、fragment 或 user-info。
+  API key 单独写入 OS secure storage；配置记录不含 key。本机 Drift 历史只在 confirmed
   user text 写入后保存，streaming reply 每次增量持久化；取消、失败和 TTS
   故障仍保留已确认文本与已收到的完整/部分回复。
 - `OpenAiCompatibleChatTransport` 只发送 Chat Completions 文字请求，解析
@@ -343,13 +345,7 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
   npm run flutter:check` 于本次变更后通过，包含 analyze、Drift generation、format
   和 172 项 Flutter tests。受来源切换控件影响的既有 phone/desktop golden 已重建。
 
-本机没有用户提供的 HTTPS LLM API key，也没有已配置的 faster-whisper/Piper
-服务，因此尚未执行或宣称以下真实门：10 轮用户 LLM 文本 smoke，以及录音—编辑—
-发送—回复—播放一轮。下一次运行必须由用户显式配置自己的 provider 后，在 Fedora
-记录脱敏的版本、origin 类型、10 轮结果、取消、断网和已配置音频端口结果；禁止以
-mock 或 direct LLM 成功替代 Hermes H1 纵向验收。
-
-#### 2026-07-31 设置/本机 Piper 增量（未关闭 M5）
+#### 2026-07-31 设置/本机 Piper 增量
 
 - `VoiceProviderSettingsController`、配置模型和安全存储 record 与
   `VoicePortFactory` 将 STT/TTS 配置、端口构造和 Widget state 分离。生产
@@ -373,6 +369,40 @@ mock 或 direct LLM 成功替代 Hermes H1 纵向验收。
   重建。
 
 此增量补齐 M5 结构治理第 2 项的独立设置/adapter 边界，但不取代真实服务验收。
+
+#### 2026-07-31 本机真实服务验收
+
+- 复用 Hermes 的本机 `OPENROUTER_API_KEY`，但既未打印、持久化，也未写回 Client
+  store。OpenRouter `GET /api/v1/models` 当时列出免费文本模型
+  `inclusionai/ling-3.0-flash:free`。新 API base 路径以一次 `200` SSE probe 验证，
+  随后对十条互不共享历史的已确认最小文字请求并发运行；十条均为 `200`、均收到
+  `[DONE]`，下载量为 5,036–26,728 bytes。活动中的长 SSE request 在 2 秒后被
+  显式 abort；`https://127.0.0.1:9/v1/models` 的 2 秒 connect probe 明确失败。
+  请求体、回复和凭据都未进入证据文件或终端输出。该 transport 的 provider-neutral
+  endpoint builder 另有 root/OpenRouter/unsafe-base 离线测试；
+  `live_openrouter_smoke_test.dart` 默认 skip，只有显式
+  `VOXHANDOFF_LIVE_OPENROUTER=1` 与环境 key 才执行，且为十轮外部测试设置 3 分钟
+  timeout。当前自动化终端会在约 30 秒回收前台长请求，故本次将真实 HTTP 结果记为
+  adapter endpoint 的服务验收，未把它表述为 Flutter GUI 人工操作录像。
+- 在隔离 `/tmp/voxhandoff-m5-piper` Python 3.11 environment 安装官方
+  `piper-tts[http] 1.6.0` 与免费 `en_US-lessac-medium` 声音（`63,201,294`
+  byte ONNX）；它们不在仓库、不进 release bundle。实际 loopback HTTP server 的
+  `/info` 返回 `200` JSON，`live_piper_smoke_test.dart` 以生产
+  `PiperHttpTtsPort` 完成 warm-up 和 synthesize，接收超过 WAV header 的 RIFF/WAV。
+- `services/stt` 依据既有 `uv.lock` 安装 `faster-whisper 1.2.1` 并以 tiny model
+  运行真实 JSONL。Piper 生成的短暂英文 WAV 经本机 ffmpeg 重采样为 16 kHz PCM；
+  sidecar 在 `health → warmup → start → push(sequence=1) → end` 输出非空 final
+  text，元数据报告 `audio_duration_ms=1115`。首次错误地发送 `sequence=0` 时
+  sidecar 正确返回 `stt_audio_sequence_invalid`，随后修正为 1 后成功；这同时验证
+  了 fail-closed sequence gate。生成的 WAV/PCM/JSONL 仅在 `/tmp`，记录中只保留
+  frame metadata 和“是否有文字”，不保留音频或转写正文。
+- 以上是“本地真实服务 + 合成音频”链路，证明可配置端口、受限协议、流式文本、取消、
+  离线失败和文字优先降级可组合；它不是用户对着物理麦克风完成的 GUI 录音验收，也
+  不能替代 Hermes H1 的 Flutter→Gateway→Connector→Hermes 纵向门。实际发行前仍
+  须在目标桌面实体麦克风完成录音—编辑—发送—回复—播放并记录同样脱敏的事实。
+- 最终回归在 Flutter 3.44.6 通过 analyze、Drift generation、format、golden、
+  accessibility 与 183 项 tests（另有上述两个 opt-in live tests 默认 skip）；
+  `npm test`、`npm run check` 和 `git diff --check` 同时通过。
 本机依旧没有用户配置的 HTTPS LLM、可运行 faster-whisper sidecar 或 Piper 服务，
 故 10 轮文本与一轮录音—编辑—发送—回复—播放仍是未达成的唯一 M5 退出条件；不得
 以 loopback fake 或离线测试替代。

@@ -46,7 +46,7 @@ class DirectLlmConfiguration {
       origin.scheme == 'https' &&
       origin.host.isNotEmpty &&
       origin.userInfo.isEmpty &&
-      (origin.path.isEmpty || origin.path == '/') &&
+      _hasSafeApiBasePath(origin.pathSegments) &&
       !origin.hasQuery &&
       !origin.hasFragment;
 
@@ -61,6 +61,16 @@ class DirectLlmConfiguration {
     systemPrompt: systemPrompt ?? this.systemPrompt,
   );
 }
+
+/// A provider may expose its OpenAI-compatible API beneath a stable prefix
+/// (for example OpenRouter's `/api/v1`).  Keep that prefix explicit and small:
+/// it is not a free-form request URL and cannot carry query/user-info data.
+bool _hasSafeApiBasePath(List<String> segments) =>
+    segments.length <= 4 &&
+    segments.every(
+      (segment) =>
+          segment.isNotEmpty && RegExp(r'^[A-Za-z0-9._~-]+$').hasMatch(segment),
+    );
 
 enum DirectChatPhase {
   unconfigured,

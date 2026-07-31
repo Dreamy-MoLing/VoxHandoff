@@ -394,7 +394,7 @@ Piper-compatible 本地服务是免费开源默认预设；当前实现选择官
 
 ### 10.4 用户自接 LLM API
 
-LLM API adapter 位于 Flutter infrastructure 层，直接从 OS 安全存储读取当前 provider 的 key，并使用 HTTPS 向用户配置的 origin 发出已确认文本。它只暴露 `ready`、流式文本、completed、cancelled 和明确失败；禁止把提供商返回的文本猜测成 tool、approval、执行主机或 Hermes 状态。用户改变 origin、模型或认证方式后必须重新测试；TLS 错误 fail closed，诊断和日志不得保存 Authorization、key 或完整 prompt。首版不承诺 function calling、MCP、附件、后台任务、跨端同步或 provider 代理。
+LLM API adapter 位于 Flutter infrastructure 层，直接从 OS 安全存储读取当前 provider 的 key，并使用 HTTPS 向用户配置的 API base 发出已确认文本。base 只允许空路径或最多四段无 query/fragment/user-info 的受限安全 path segment；adapter 只在 base 尚未以 `v1` 结尾时补该版本段，因此既支持 root 风格 provider，也支持 OpenRouter 的 `https://openrouter.ai/api/v1`，但绝不接受每请求 URL 或 redirect。它只暴露 `ready`、流式文本、completed、cancelled 和明确失败；禁止把提供商返回的文本猜测成 tool、approval、执行主机或 Hermes 状态。用户改变 origin、模型或认证方式后必须重新测试；TLS 错误 fail closed，诊断和日志不得保存 Authorization、key 或完整 prompt。首版不承诺 function calling、MCP、附件、后台任务、跨端同步或 provider 代理。
 
 ## 11. 视觉架构
 

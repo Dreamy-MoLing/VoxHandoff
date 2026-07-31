@@ -4,6 +4,35 @@ import 'dart:io';
 
 import '../../domain/direct_chat.dart';
 
+/// Builds a versioned OpenAI-compatible endpoint without accepting a
+/// per-request URL.  A root base gains `/v1`; a versioned base (such as
+/// `https://openrouter.ai/api/v1`) keeps its explicit prefix.
+Uri openAiCompatibleEndpoint(
+  DirectLlmConfiguration configuration,
+  List<String> resource,
+) {
+  if (!configuration.isSafe ||
+      resource.isEmpty ||
+      resource.any(
+        (segment) =>
+            segment.isEmpty ||
+            !RegExp(r'^[A-Za-z0-9._~-]+$').hasMatch(segment) ||
+            segment == '.' ||
+            segment == '..',
+      )) {
+    throw ArgumentError.value(
+      configuration,
+      'configuration',
+      'Unsafe API base',
+    );
+  }
+  final base = configuration.origin.pathSegments;
+  final suffix = base.isNotEmpty && base.last == 'v1'
+      ? resource
+      : <String>['v1', ...resource];
+  return configuration.origin.replace(pathSegments: [...base, ...suffix]);
+}
+
 class DirectChatTransportException implements Exception {
   const DirectChatTransportException(this.code, this.safeMessage);
   final String code;
@@ -39,7 +68,7 @@ class OpenAiCompatibleChatTransport implements DirectChatTransport {
     _validate(configuration, apiKey);
     try {
       final request = await _client
-          .getUrl(configuration.origin.resolve('/v1/models'))
+          .getUrl(openAiCompatibleEndpoint(configuration, const ['models']))
           .timeout(timeout);
       _active = request;
       request.followRedirects = false;
@@ -73,7 +102,12 @@ class OpenAiCompatibleChatTransport implements DirectChatTransport {
     _validate(configuration, apiKey);
     try {
       final request = await _client
-          .postUrl(configuration.origin.resolve('/v1/chat/completions'))
+          .postUrl(
+            openAiCompatibleEndpoint(configuration, const [
+              'chat',
+              'completions',
+            ]),
+          )
           .timeout(timeout);
       _active = request;
       request.followRedirects = false;

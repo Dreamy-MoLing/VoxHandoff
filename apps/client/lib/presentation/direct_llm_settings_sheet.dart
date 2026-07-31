@@ -67,13 +67,16 @@ class _DirectLlmSettingsSheetState
               ),
               const SizedBox(height: 8),
               const Text(
-                'Only confirmed text is sent directly to this HTTPS origin. The API key stays in OS secure storage.',
+                'Only confirmed text is sent directly to this HTTPS API base. The API key stays in OS secure storage.',
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _origin,
                 keyboardType: TextInputType.url,
-                decoration: const InputDecoration(labelText: 'HTTPS base URL'),
+                decoration: const InputDecoration(
+                  labelText: 'HTTPS API base URL',
+                  helperText: 'OpenRouter: https://openrouter.ai/api/v1',
+                ),
               ),
               TextField(
                 controller: _model,
