@@ -417,8 +417,8 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
   当作唯一权威 route。发送、恢复、outbox claim 和 Node event 均从账本取 route；Client
   发送任一不一致字段即 `conversation_route_mismatch`，同一 route 下的非空 session 不可
   被另一个 conversation 复用。PostgreSQL integration fixture 覆盖跨 conversation
-  session 复用、lease/route 绕过和重连 claim；本轮环境没有隔离 PostgreSQL URL，故该
-  fixture 已编译并进入 opt-in 门，但尚未在真实 PostgreSQL 服务执行。
+  session 复用、lease/route 绕过和重连 claim；本轮在临时、仅 loopback 的 PostgreSQL
+  17.10 容器中以空数据库完成 migration、acceptance、reconnect 与 convergence 验收。
 - 已按本机安装的 Hermes Agent 0.19.0 源码核对 approval resolution：上游 API 只接受
   `choice`，内部对 pending queue 执行 FIFO `pop(0)`。Connector 因而不再把 approval
   B 的决定转发给可能仍在队首的 A；它公布 approval 不可用，并以
@@ -431,13 +431,11 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
   两个 dispatch。
 
 上述四项是已实现且已通过各自离线自动化验证的安全修复；它们不改变 Hermes H1 的
-`idempotency=false` fail-closed 门。M5 实现和服务 adapter 证据仍可供后续阶段使用，
-但物理麦克风 GUI 全链路、真实 PostgreSQL fixture 执行以及 H1 真实纵向链路均必须在
-具备对应外部条件后单独记录，不能宣称为已通过。本轮桌面诊断确认 Fedora 44/Wayland
-与 PipeWire 可见两个内建麦克风和扬声器；但没有 `AGENT_TALK_POSTGRES_URL`、Live
-OpenRouter opt-in 或其 key，也没有可辨认为 STT/Piper 的验收服务监听端口，因而没有
-擅自发起外部请求或用合成输入替代人工 GUI 操作。恢复条件是由操作者提供隔离 PostgreSQL
-URL 后运行 `AGENT_TALK_POSTGRES_URL=... npm run test:postgres -w @agent-talk/gateway`，并在
+`idempotency=false` fail-closed 门。M5 实现、真实 PostgreSQL 与服务 adapter 证据仍可供
+后续阶段使用，但物理麦克风 GUI 全链路和 H1 真实纵向链路必须在具备对应外部条件后
+单独记录，不能宣称为已通过。本轮桌面诊断确认 Fedora 44/Wayland 与 PipeWire 可见两个
+内建麦克风和扬声器；没有 Live OpenRouter opt-in/key，也没有可辨认为 STT/Piper 的验收
+服务监听端口，因而没有擅自发起外部请求或用合成输入替代人工 GUI 操作。恢复条件是在
 用户配置的 HTTPS LLM、STT、Piper 和实体麦克风均可用时人工执行一轮完整 GUI 流程，
 只保存脱敏阶段/结果证据。
 
