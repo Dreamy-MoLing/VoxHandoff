@@ -41,4 +41,3 @@ def main(argv: list[str] | None = None) -> int:
         temp_root=args.temp_root,
     )
     return service.serve(sys.stdin.buffer)
-

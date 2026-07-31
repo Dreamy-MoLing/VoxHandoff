@@ -75,4 +75,3 @@ def decode_chunk(params: dict[str, Any]) -> bytes:
 
 def envelope(**values: Any) -> dict[str, Any]:
     return {"protocol": {"major": PROTOCOL_MAJOR, "minor": PROTOCOL_MINOR}, **values}
-
