@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { AgentCapabilities, AgentEvent } from "@agent-talk/core";
-import type { HermesRun } from "@agent-talk/adapters";
+import type { HermesApprovalResolutionMode, HermesRun } from "@agent-talk/adapters";
 import { create } from "@bufbuild/protobuf";
 import { createClient, createRouterTransport } from "@connectrpc/connect";
 import {
@@ -70,6 +70,10 @@ class IntegrationHermes implements HermesAgentPort {
   async stopRun(): Promise<void> {}
 
   async resolveApproval(): Promise<void> {}
+
+  approvalResolutionMode(): HermesApprovalResolutionMode {
+    return "fifo";
+  }
 }
 
 class IntegrationVerifier implements StreamIdentityVerifier {

@@ -4,6 +4,7 @@ import process from "node:process";
 import type { AgentCapabilities as CoreCapabilities, AgentEvent as CoreEvent } from "@agent-talk/core";
 import {
   HermesHttpError,
+  type HermesApprovalResolutionMode,
   type HermesEventStreamOptions,
   type HermesRun,
 } from "@agent-talk/adapters";
@@ -59,6 +60,7 @@ export interface HermesAgentPort {
     approved: boolean,
     commandId?: string,
   ): Promise<void>;
+  approvalResolutionMode(): HermesApprovalResolutionMode;
 }
 
 export interface HermesNodeIdentity {
@@ -138,7 +140,7 @@ export class HermesNodeConnector {
   }
 
   registration(): ConnectNodeRequest {
-    const capabilities = this.#requiredCapabilities();
+    const capabilities = this.#advertisedCapabilities();
     return create(ConnectNodeRequestSchema, {
       body: {
         case: "registration",
@@ -163,7 +165,7 @@ export class HermesNodeConnector {
   }
 
   capabilityRevision(): string {
-    const capabilities = this.#requiredCapabilities();
+    const capabilities = this.#advertisedCapabilities();
     const canonical = JSON.stringify(
       Object.fromEntries(
         Object.entries(capabilities).sort(([left], [right]) =>
@@ -474,6 +476,15 @@ export class HermesNodeConnector {
       ));
       return;
     }
+    if (this.hermes.approvalResolutionMode() !== "exact") {
+      output.push(rejectedAck(
+        dispatch.dispatchId,
+        dispatch.requestId,
+        "hermes_approval_resolution_ambiguous",
+        "Hermes cannot bind this decision to the displayed approval identity.",
+      ));
+      return;
+    }
     try {
       await this.hermes.resolveApproval(
         active.run.runId,
@@ -497,6 +508,14 @@ export class HermesNodeConnector {
       throw new Error("Hermes Node Connector must be initialized first");
     }
     return this.#capabilities;
+  }
+
+  #advertisedCapabilities(): CoreCapabilities {
+    const capabilities = this.#requiredCapabilities();
+    return {
+      ...capabilities,
+      approval: capabilities.approval && this.hermes.approvalResolutionMode() === "exact",
+    };
   }
 }
 

@@ -4,6 +4,7 @@ import test from "node:test";
 import type { AgentCapabilities, AgentEvent } from "@agent-talk/core";
 import {
   HermesHttpError,
+  type HermesApprovalResolutionMode,
   type HermesEventStreamOptions,
   type HermesRun,
 } from "@agent-talk/adapters";
@@ -96,6 +97,10 @@ class FakeHermes implements HermesAgentPort {
   ): Promise<void> {
     this.calls.push(`approval:${runId}:${approvalId}:${approved}:${commandId}`);
   }
+
+  approvalResolutionMode(): HermesApprovalResolutionMode {
+    return "fifo";
+  }
 }
 
 test("bridges send, session, SSE, approval, and stop without bypassing Gateway dispatch", async () => {
@@ -160,7 +165,12 @@ test("bridges send, session, SSE, approval, and stop without bypassing Gateway d
       },
     },
   }), output);
-  assert.equal((await iterator.next()).value?.body.case, "dispatchAck");
+  const approvalAck = (await iterator.next()).value?.body;
+  assert.equal(approvalAck?.case, "dispatchAck");
+  if (approvalAck?.case === "dispatchAck") {
+    assert.equal(approvalAck.value.accepted, false);
+    assert.equal(approvalAck.value.failure?.code, "hermes_approval_resolution_ambiguous");
+  }
 
   connector.handle(create(ConnectNodeResponseSchema, {
     body: {
@@ -178,9 +188,81 @@ test("bridges send, session, SSE, approval, and stop without bypassing Gateway d
   assert.deepEqual(hermes.calls, [
     "session",
     "start:hermes-session-1:request-1",
-    "approval:hermes-run-1:approval-1:true:approval-idempotency-1",
     "stop:hermes-run-1:stop-idempotency-1",
   ]);
+});
+
+test("rejects approval B without resolving FIFO approval A", async () => {
+  const hermes = new FakeHermes();
+  let releaseStream!: () => void;
+  const streamGate = new Promise<void>((resolve) => {
+    releaseStream = resolve;
+  });
+  hermes.streamRunEvents = async function* (run: HermesRun): AsyncGenerator<AgentEvent> {
+    yield event(run, 2, "approval.required", {
+      approvalId: "approval-a",
+      safeSummary: "Approval A",
+      operationSummarySha256: "a".repeat(64),
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+    yield event(run, 4, "approval.required", {
+      approvalId: "approval-b",
+      safeSummary: "Approval B",
+      operationSummarySha256: "b".repeat(64),
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+    await streamGate;
+  };
+  const connector = new HermesNodeConnector(hermes, {
+    nodeId: "node-1",
+    agentId: "agent-1",
+    nodeDisplayName: "Node",
+    agentDisplayName: "Hermes",
+  });
+  await connector.initialize();
+  const output = new AsyncQueue<ConnectNodeRequest>();
+  const iterator = output[Symbol.asyncIterator]();
+
+  connector.handle(create(ConnectNodeResponseSchema, {
+    body: {
+      case: "dispatchRequest",
+      value: {
+        dispatchId: "dispatch-approval-b-send",
+        requestId: "request-approval-b",
+        idempotencyKey: "idempotency-approval-b-send",
+        conversationId: "conversation-approval-b",
+        nodeId: "node-1",
+        agentId: "agent-1",
+        capabilityRevision: connector.capabilityRevision(),
+        confirmedText: "Confirmed safe text",
+      },
+    },
+  }), output);
+  assert.equal((await iterator.next()).value?.body.case, "dispatchAck");
+  assert.equal(eventType(await iterator.next()), AgentEventType.APPROVAL_REQUIRED);
+  assert.equal(eventType(await iterator.next()), AgentEventType.APPROVAL_REQUIRED);
+
+  connector.handle(create(ConnectNodeResponseSchema, {
+    body: {
+      case: "dispatchApproval",
+      value: {
+        dispatchId: "dispatch-approval-b",
+        requestId: "request-approval-b",
+        approvalId: "approval-b",
+        idempotencyKey: "idempotency-approval-b",
+        decision: ApprovalDecision.APPROVE,
+        operationSummarySha256: "b".repeat(64),
+      },
+    },
+  }), output);
+  const acknowledgement = (await iterator.next()).value?.body;
+  assert.equal(acknowledgement?.case, "dispatchAck");
+  if (acknowledgement?.case === "dispatchAck") {
+    assert.equal(acknowledgement.value.accepted, false);
+    assert.equal(acknowledgement.value.failure?.code, "hermes_approval_resolution_ambiguous");
+  }
+  assert.equal(hermes.calls.some((call) => call.startsWith("approval:")), false);
+  releaseStream();
 });
 
 test("fails initialization closed when Hermes omits idempotency", async () => {

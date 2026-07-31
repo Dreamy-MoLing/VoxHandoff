@@ -220,6 +220,7 @@ test("Hermes approval, stop, and client recreation preserve explicit command ide
     token: "test",
     fetch: fakeFetch,
   });
+  assert.equal(firstClient.approvalResolutionMode(), "fifo");
 
   const firstEvents = [];
   for await (const event of firstClient.streamRunEvents(run)) firstEvents.push(event);

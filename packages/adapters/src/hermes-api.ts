@@ -19,6 +19,8 @@ export interface HermesRun {
   sessionId?: string;
 }
 
+export type HermesApprovalResolutionMode = "exact" | "fifo";
+
 export interface HermesEventStreamOptions {
   signal?: AbortSignal;
   lastEventId?: string;
@@ -227,6 +229,12 @@ export class HermesApiClient {
       // to the exact fact shown to the user.
       body: JSON.stringify({ choice: approved ? "once" : "deny" }),
     });
+  }
+
+  /// Hermes 0.19 resolves only the oldest pending approval for a run.  The
+  /// endpoint has no immutable approval-id parameter to bind a user decision.
+  approvalResolutionMode(): HermesApprovalResolutionMode {
+    return "fifo";
   }
 
   async #json(path: string, init: RequestInit = {}): Promise<unknown> {
