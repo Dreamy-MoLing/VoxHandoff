@@ -260,7 +260,7 @@ export async function acceptRequest(
       dispatchOutbox: {
         outboxId: dependencies.newOpaqueId(),
         requestId: input.requestId,
-        nodeId: input.nodeId,
+        nodeId: route.nodeId,
         createdAt: occurredAt,
       },
       eventOutbox: {
