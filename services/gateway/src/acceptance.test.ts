@@ -11,6 +11,7 @@ import type {
   AcceptanceFacts,
   AcceptedRequestRecord,
   AgentTargetRecord,
+  ConversationRouteRecord,
   ControlLeaseRecord,
   DeviceRecord,
   GatewayLedger,
@@ -24,6 +25,7 @@ interface MemoryState {
   requests: Map<string, AcceptedRequestRecord>;
   idempotency: Map<string, string>;
   sequences: Map<string, bigint>;
+  routes: Map<string, ConversationRouteRecord>;
   acceptances: AcceptanceFacts[];
 }
 
@@ -72,6 +74,13 @@ class MemoryLedger implements GatewayLedger, GatewayLedgerTransaction {
       requests: new Map(),
       idempotency: new Map(),
       sequences: new Map([["conversation-1", 0n]]),
+      routes: new Map([["conversation-1", {
+        conversationId: "conversation-1",
+        nodeId: "node-1",
+        agentId: "agent-1",
+        capabilityRevision: "cap-1",
+        sessionId: "session-1",
+      }]]),
       acceptances: [],
     };
   }
@@ -109,6 +118,10 @@ class MemoryLedger implements GatewayLedger, GatewayLedgerTransaction {
 
   async lockConversation(conversationId: string): Promise<boolean> {
     return this.state.sequences.has(conversationId);
+  }
+
+  async lockConversationRoute(conversationId: string): Promise<ConversationRouteRecord | undefined> {
+    return this.state.routes.get(conversationId);
   }
 
   async findRequestById(requestId: string): Promise<AcceptedRequestRecord | undefined> {
@@ -301,7 +314,7 @@ test("enforces device, scope, lease, target, capability, and request size before
     },
     {
       name: "unknown conversation",
-      arrange: (ledger) => ledger.state.sequences.clear(),
+      arrange: (ledger) => ledger.state.routes.clear(),
       code: "conversation_not_found",
     },
     {
@@ -319,8 +332,9 @@ test("enforces device, scope, lease, target, capability, and request size before
     },
     {
       name: "changed capability",
-      arrange: () => {},
-      overrides: { capabilityRevision: "cap-stale" },
+      arrange: (ledger) => {
+        ledger.state.targets.get(targetKey("node-1", "agent-1"))!.capabilityRevision = "cap-stale";
+      },
       code: "capability_revision_changed",
     },
     {
@@ -340,6 +354,28 @@ test("enforces device, scope, lease, target, capability, and request size before
       await expectCode(acceptRequest(ledger, input(entry.overrides), dependencies()), entry.code);
       assert.equal(ledger.state.acceptances.length, 0);
       assert.equal(ledger.state.sequences.get("conversation-1") ?? 0n, 0n);
+    });
+  }
+});
+
+test("rejects a client route that differs from the persisted conversation route", async (context) => {
+  const variants: ReadonlyArray<{ overrides: Partial<AcceptRequestInput>; omitSession?: true }> = [
+    { overrides: { nodeId: "node-2" } },
+    { overrides: { agentId: "agent-2" } },
+    { overrides: { capabilityRevision: "cap-2" } },
+    { overrides: { sessionId: "session-2" } },
+    { overrides: {}, omitSession: true },
+  ];
+  for (const variant of variants) {
+    await context.test(JSON.stringify(variant), async () => {
+      const ledger = new MemoryLedger();
+      const submitted = input(variant.overrides);
+      if (variant.omitSession) delete submitted.sessionId;
+      await expectCode(
+        acceptRequest(ledger, submitted, dependencies()),
+        "conversation_route_mismatch",
+      );
+      assert.equal(ledger.state.acceptances.length, 0);
     });
   }
 });

@@ -28,6 +28,7 @@ import {
 } from "./interaction-commands.js";
 import { MigrationError, runMigrations } from "./migrations.js";
 import { PostgresGatewayLedger } from "./postgres-ledger.js";
+import { DirectoryLedgerError } from "./directory-ledger.js";
 import { NodeLedgerError } from "./node-ledger.js";
 import { BoundedLiveEventHub } from "./live-events.js";
 import { normalizeEd25519PublicKey, sha256 } from "./device-crypto.js";
@@ -64,6 +65,7 @@ test(
         "0006_device_pairing.sql",
         "0007_credential_rotation.sql",
         "0008_conversation_directory.sql",
+        "0009_conversation_route_authority.sql",
       ]);
       assert.deepEqual(await runMigrations(pool, migrationDirectory), []);
 
@@ -347,9 +349,10 @@ test(
       );
       await pool.query(
         `INSERT INTO agent_talk.conversations (
-           conversation_id, created_by_device_id, created_at, updated_at
-         ) VALUES ($1, $2, $3, $3)`,
-        [conversationId, deviceId, pairedAt],
+           conversation_id, created_by_device_id, created_at, updated_at,
+           node_id, agent_id, capability_revision, session_id
+         ) VALUES ($1, $2, $3, $3, $4, $5, 'cap-1', $6)`,
+        [conversationId, deviceId, pairedAt, nodeId, agentId, `session-${suffix}`],
       );
       const dependencies = {
         now: () => new Date("2030-01-01T00:00:10.000Z"),
@@ -396,6 +399,23 @@ test(
           conversationId: `${directoryConversationId}-conflict`,
         }),
       );
+      const sessionBoundConversation = await ledger.createConversation({
+        ...createDirectoryInput,
+        conversationId: `${directoryConversationId}-session-bound`,
+        commandId: `directory-session-command-${suffix}`,
+        idempotencyKey: `directory-session-idempotency-${suffix}`,
+        sessionId: `directory-session-${suffix}`,
+      });
+      await assert.rejects(
+        ledger.createConversation({
+          ...createDirectoryInput,
+          conversationId: `${directoryConversationId}-session-reuse`,
+          commandId: `directory-session-reuse-command-${suffix}`,
+          idempotencyKey: `directory-session-reuse-idempotency-${suffix}`,
+          sessionId: sessionBoundConversation.sessionId,
+        }),
+        (error: unknown) => error instanceof DirectoryLedgerError && error.code === "session_route_conflict",
+      );
       const acquired = await acquireControlLease(
         ledger,
         { deviceId, conversationId, explicitTakeover: false },
@@ -434,6 +454,20 @@ test(
       assert.deepEqual(
         duplicateResults.map((result) => result.kind).sort(),
         ["accepted", "existing"],
+      );
+      await assert.rejects(
+        acceptRequest(ledger, {
+          ...makeInput(3),
+          nodeId: `other-node-${suffix}`,
+        }, dependencies),
+        (error: unknown) => error instanceof GatewayCommandError && error.code === "conversation_route_mismatch",
+      );
+      await assert.rejects(
+        acceptRequest(ledger, {
+          ...makeInput(3),
+          sessionId: `other-session-${suffix}`,
+        }, dependencies),
+        (error: unknown) => error instanceof GatewayCommandError && error.code === "conversation_route_mismatch",
       );
 
       const recreatedGatewayLedger = new PostgresGatewayLedger(pool);

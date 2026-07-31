@@ -22,6 +22,14 @@ export interface AgentTargetRecord {
   maxRequestBytes: bigint | null;
 }
 
+export interface ConversationRouteRecord {
+  conversationId: string;
+  nodeId: string;
+  agentId: string;
+  capabilityRevision: string;
+  sessionId: string | null;
+}
+
 export interface AcceptedRequestRecord {
   requestId: string;
   commandId: string;
@@ -76,6 +84,7 @@ export interface AcceptanceFacts {
 export interface GatewayLedgerTransaction {
   lockDevice(deviceId: string): Promise<DeviceRecord | undefined>;
   lockConversation(conversationId: string): Promise<boolean>;
+  lockConversationRoute(conversationId: string): Promise<ConversationRouteRecord | undefined>;
   findRequestByIdempotency(deviceId: string, idempotencyKey: string): Promise<AcceptedRequestRecord | undefined>;
   findRequestByCommand(deviceId: string, commandId: string): Promise<AcceptedRequestRecord | undefined>;
   findRequestById(requestId: string): Promise<AcceptedRequestRecord | undefined>;

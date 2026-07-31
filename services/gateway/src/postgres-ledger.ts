@@ -18,6 +18,7 @@ import type {
   AcceptanceFacts,
   AcceptedRequestRecord,
   AgentTargetRecord,
+  ConversationRouteRecord,
   ControlLeaseRecord,
   DeviceRecord,
   GatewayLedger,
@@ -216,6 +217,31 @@ class PostgresGatewayTransaction implements GatewayLedgerTransaction, ControlLea
       [conversationId],
     );
     return result.rowCount === 1;
+  }
+
+  async lockConversationRoute(conversationId: string): Promise<ConversationRouteRecord | undefined> {
+    const result = await this.client.query<UnknownRow>(
+      `SELECT conversation_id, node_id, agent_id, capability_revision, session_id
+       FROM agent_talk.conversations
+       WHERE conversation_id = $1
+       FOR UPDATE`,
+      [conversationId],
+    );
+    if (result.rows[0] === undefined) return undefined;
+    const data = row(result.rows[0]);
+    const nodeId = nullableStringAt(data, "node_id");
+    const agentId = nullableStringAt(data, "agent_id");
+    const capabilityRevision = nullableStringAt(data, "capability_revision");
+    if (nodeId === null || agentId === null || capabilityRevision === null) {
+      throw new Error("conversation has no authoritative Agent route");
+    }
+    return {
+      conversationId: stringAt(data, "conversation_id"),
+      nodeId,
+      agentId,
+      capabilityRevision,
+      sessionId: nullableStringAt(data, "session_id"),
+    };
   }
 
   async findRequestByIdempotency(
@@ -876,6 +902,20 @@ export class PostgresGatewayLedger implements
       if (stringAt(row(target.rows[0]), "capability_revision") !== input.capabilityRevision) {
         throw new DirectoryLedgerError("capability_revision_changed", "The selected Agent capability changed.");
       }
+      if (input.sessionId !== null) {
+        const existingSession = await client.query<UnknownRow>(
+          `SELECT conversation_id FROM agent_talk.conversations
+           WHERE node_id = $1 AND agent_id = $2 AND capability_revision = $3 AND session_id = $4
+           FOR KEY SHARE`,
+          [input.nodeId, input.agentId, input.capabilityRevision, input.sessionId],
+        );
+        if (existingSession.rowCount !== 0) {
+          throw new DirectoryLedgerError(
+            "session_route_conflict",
+            "The Hermes session is already bound to another conversation route.",
+          );
+        }
+      }
       const inserted = await client.query<UnknownRow>(
         `INSERT INTO agent_talk.conversations (
            conversation_id, created_by_device_id, last_sequence, revision,
@@ -906,6 +946,19 @@ export class PostgresGatewayLedger implements
       );
       const racedResult = reconcileExisting(raced.rows);
       if (racedResult !== undefined) return racedResult;
+      if (input.sessionId !== null) {
+        const sessionOwner = await client.query<UnknownRow>(
+          `SELECT conversation_id FROM agent_talk.conversations
+           WHERE node_id = $1 AND agent_id = $2 AND capability_revision = $3 AND session_id = $4`,
+          [input.nodeId, input.agentId, input.capabilityRevision, input.sessionId],
+        );
+        if (sessionOwner.rowCount !== 0) {
+          throw new DirectoryLedgerError(
+            "session_route_conflict",
+            "The Hermes session is already bound to another conversation route.",
+          );
+        }
+      }
       throw new DirectoryLedgerError("idempotency_conflict", "The conversation identity could not be reconciled.");
     });
   }
@@ -1190,6 +1243,7 @@ export class PostgresGatewayLedger implements
            SELECT d.outbox_id
            FROM agent_talk.gateway_dispatch_outbox d
            JOIN agent_talk.requests r ON r.request_id = d.request_id
+           JOIN agent_talk.conversations c ON c.conversation_id = r.conversation_id
            JOIN agent_talk.agents a ON a.agent_id = r.agent_id AND a.node_id = r.node_id
            JOIN agent_talk.nodes n ON n.node_id = d.node_id
            WHERE d.node_id = $1
@@ -1199,6 +1253,10 @@ export class PostgresGatewayLedger implements
              AND d.available_at <= $2
              AND a.status = 'online'
              AND a.capability_revision = r.capability_revision
+             AND r.node_id = c.node_id
+             AND r.agent_id = c.agent_id
+             AND r.capability_revision = c.capability_revision
+             AND r.session_id IS NOT DISTINCT FROM c.session_id
            ORDER BY d.created_at, d.outbox_id
            FOR UPDATE OF d SKIP LOCKED
            LIMIT $3
@@ -1215,7 +1273,7 @@ export class PostgresGatewayLedger implements
                 cc.target_id, ap.resolution_decision, ap.operation_summary_sha256,
                 cl.confirmed_text AS clarification_confirmed_text,
                 r.conversation_id,
-                r.session_id, r.node_id, r.agent_id, r.capability_revision, r.confirmed_text
+                c.session_id, c.node_id, c.agent_id, c.capability_revision, r.confirmed_text
          FROM claimed c
          JOIN agent_talk.gateway_dispatch_outbox d ON d.outbox_id = c.outbox_id
          JOIN agent_talk.requests r ON r.request_id = c.request_id
@@ -1476,22 +1534,46 @@ export class PostgresGatewayLedger implements
       }
 
       const requestResult = await client.query<UnknownRow>(
-        `SELECT r.request_id, r.device_id, r.conversation_id, r.session_id, r.node_id, r.agent_id, r.state,
-                n.current_connection_id
+        `SELECT r.request_id, r.device_id, r.conversation_id, r.session_id, r.node_id, r.agent_id,
+                r.capability_revision, r.state, c.node_id AS conversation_node_id,
+                c.agent_id AS conversation_agent_id, c.capability_revision AS conversation_capability_revision,
+                c.session_id AS conversation_session_id, n.current_connection_id
          FROM agent_talk.requests r
+         JOIN agent_talk.conversations c ON c.conversation_id = r.conversation_id
          JOIN agent_talk.nodes n ON n.node_id = r.node_id
          WHERE r.request_id = $1
-         FOR UPDATE OF r, n`,
+         FOR UPDATE OF r, c, n`,
         [event.requestId],
       );
       if (requestResult.rows[0] === undefined) {
         throw new NodeLedgerError("request_not_found", "The event request was not found.");
       }
       const request = row(requestResult.rows[0]);
+      const conversationSessionId = nullableStringAt(request, "conversation_session_id");
+      if (conversationSessionId === null && event.sessionId !== null) {
+        await client.query(
+          `UPDATE agent_talk.conversations
+           SET session_id = $2, revision = revision + 1, updated_at = clock_timestamp()
+           WHERE conversation_id = $1 AND session_id IS NULL`,
+          [event.conversationId, event.sessionId],
+        );
+        await client.query(
+          `UPDATE agent_talk.requests
+           SET session_id = $2
+           WHERE conversation_id = $1 AND session_id IS NULL
+             AND state NOT IN ('completed', 'failed', 'cancelled', 'interrupted')`,
+          [event.conversationId, event.sessionId],
+        );
+      }
+      const effectiveSessionId = conversationSessionId ?? event.sessionId;
       if (
         stringAt(request, "node_id") !== event.nodeId ||
         stringAt(request, "conversation_id") !== event.conversationId ||
-        nullableStringAt(request, "session_id") !== event.sessionId
+        stringAt(request, "node_id") !== nullableStringAt(request, "conversation_node_id") ||
+        stringAt(request, "agent_id") !== nullableStringAt(request, "conversation_agent_id") ||
+        stringAt(request, "capability_revision") !== nullableStringAt(request, "conversation_capability_revision") ||
+        (conversationSessionId !== null && nullableStringAt(request, "session_id") !== conversationSessionId) ||
+        effectiveSessionId !== event.sessionId
       ) {
         throw new NodeLedgerError("event_identity_conflict", "The event does not match the accepted request route.");
       }

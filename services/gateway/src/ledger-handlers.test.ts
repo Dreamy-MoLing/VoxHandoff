@@ -20,6 +20,7 @@ import type {
   AcceptanceFacts,
   AcceptedRequestRecord,
   AgentTargetRecord,
+  ConversationRouteRecord,
   ControlLeaseRecord,
   DeviceRecord,
   GatewayLedger,
@@ -51,6 +52,10 @@ class StubStore implements GatewayLedger, ControlLeaseLedger, ClientLedger, Inte
 
   async lockConversation(): Promise<boolean> {
     return true;
+  }
+
+  async lockConversationRoute(): Promise<ConversationRouteRecord | undefined> {
+    return undefined;
   }
 
   async findRequestByIdempotency(): Promise<AcceptedRequestRecord | undefined> {

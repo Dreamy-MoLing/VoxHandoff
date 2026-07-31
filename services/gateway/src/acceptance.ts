@@ -43,6 +43,7 @@ export type GatewayCommandErrorCode =
   | "command_id_conflict"
   | "request_id_conflict"
   | "conversation_not_found"
+  | "conversation_route_mismatch"
   | "control_lease_lost"
   | "control_lease_conflict"
   | "control_lease_takeover_required"
@@ -79,6 +80,7 @@ const errorClassifications: Record<
   command_id_conflict: { stage: "protocol", category: "validation" },
   request_id_conflict: { stage: "protocol", category: "validation" },
   conversation_not_found: { stage: "storage", category: "storage" },
+  conversation_route_mismatch: { stage: "authorization", category: "authorization" },
   control_lease_lost: { stage: "authorization", category: "authorization" },
   control_lease_conflict: { stage: "authorization", category: "authorization" },
   control_lease_takeover_required: { stage: "authorization", category: "authorization" },
@@ -181,8 +183,20 @@ export async function acceptRequest(
       commandError("scope_missing", "The device is not allowed to send Agent requests.");
     }
 
-    if (!(await transaction.lockConversation(input.conversationId))) {
+    const route = await transaction.lockConversationRoute(input.conversationId);
+    if (route === undefined) {
       commandError("conversation_not_found", "The selected conversation does not exist.");
+    }
+    if (
+      route.nodeId !== input.nodeId ||
+      route.agentId !== input.agentId ||
+      route.capabilityRevision !== input.capabilityRevision ||
+      route.sessionId !== (input.sessionId ?? null)
+    ) {
+      commandError(
+        "conversation_route_mismatch",
+        "The submitted route does not match the conversation's authoritative route.",
+      );
     }
 
     const lease = await transaction.getControlLease(input.conversationId);
@@ -197,11 +211,11 @@ export async function acceptRequest(
       commandError("control_lease_lost", "The conversation control lease is no longer current.");
     }
 
-    const target = await transaction.getAgentTarget(input.nodeId, input.agentId);
+    const target = await transaction.getAgentTarget(route.nodeId, route.agentId);
     if (target === undefined || !target.available) {
       commandError("agent_unavailable", "The selected Agent target is unavailable.");
     }
-    if (target.capabilityRevision !== input.capabilityRevision) {
+    if (target.capabilityRevision !== route.capabilityRevision) {
       commandError("capability_revision_changed", "The selected Agent capabilities changed before acceptance.");
     }
 
@@ -224,10 +238,10 @@ export async function acceptRequest(
         deviceId: input.deviceId,
         connectionId: input.connectionId,
         conversationId: input.conversationId,
-        sessionId: input.sessionId ?? null,
-        nodeId: input.nodeId,
-        agentId: input.agentId,
-        capabilityRevision: input.capabilityRevision,
+        sessionId: route.sessionId,
+        nodeId: route.nodeId,
+        agentId: route.agentId,
+        capabilityRevision: route.capabilityRevision,
         confirmedTextSha256,
         acceptedSequence: sequence,
         acceptedAt: occurredAt,
@@ -237,7 +251,7 @@ export async function acceptRequest(
         connectionId: input.connectionId,
         deviceId: input.deviceId,
         conversationId: input.conversationId,
-        sessionId: input.sessionId ?? null,
+        sessionId: route.sessionId,
         requestId: input.requestId,
         sequence,
         type: "request.accepted",

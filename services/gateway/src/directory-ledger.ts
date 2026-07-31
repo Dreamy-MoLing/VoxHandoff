@@ -49,6 +49,7 @@ export type DirectoryLedgerErrorCode =
   | "conversation_identity_conflict"
   | "command_id_conflict"
   | "idempotency_conflict"
+  | "session_route_conflict"
   | "agent_not_found"
   | "capability_revision_changed";
 
