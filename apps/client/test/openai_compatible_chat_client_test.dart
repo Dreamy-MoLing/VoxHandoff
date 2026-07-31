@@ -51,29 +51,32 @@ void main() {
     },
   );
 
-  test('caps continuous no-newline bytes before decoding or line buffering', () async {
-    final controller = StreamController<List<int>>();
-    final values = controller.stream
-        .transform(const ResponseByteLimitTransformer(8))
-        .transform(utf8.decoder)
-        .transform(const LineSplitter());
-    final result = values.toList();
-    controller
-      ..add(utf8.encode('data: '))
-      ..add(utf8.encode('abcdefghi'))
-      ..close();
+  test(
+    'caps continuous no-newline bytes before decoding or line buffering',
+    () async {
+      final controller = StreamController<List<int>>();
+      final values = controller.stream
+          .transform(const ResponseByteLimitTransformer(8))
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+      final result = values.toList();
+      controller
+        ..add(utf8.encode('data: '))
+        ..add(utf8.encode('abcdefghi'))
+        ..close();
 
-    await expectLater(
-      result,
-      throwsA(
-        isA<DirectChatTransportException>().having(
-          (error) => error.code,
-          'code',
-          'llm_stream_too_large',
+      await expectLater(
+        result,
+        throwsA(
+          isA<DirectChatTransportException>().having(
+            (error) => error.code,
+            'code',
+            'llm_stream_too_large',
+          ),
         ),
-      ),
-    );
-  });
+      );
+    },
+  );
 
   test('caps a single oversized SSE line by wire bytes', () async {
     final oversizedLine = utf8.encode('data: ${'x' * 32}\n\n');
@@ -94,14 +97,15 @@ void main() {
   });
 
   test('preserves normal fragmented SSE bytes', () async {
-    final values = await Stream<List<int>>.fromIterable([
-      utf8.encode('data: {"choices":[{"delta":{"content":"hel'),
-      utf8.encode('lo"}}]}\n\n'),
-    ])
-        .transform(const ResponseByteLimitTransformer(1024))
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())
-        .toList();
+    final values =
+        await Stream<List<int>>.fromIterable([
+              utf8.encode('data: {"choices":[{"delta":{"content":"hel'),
+              utf8.encode('lo"}}]}\n\n'),
+            ])
+            .transform(const ResponseByteLimitTransformer(1024))
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .toList();
     expect(values, ['data: {"choices":[{"delta":{"content":"hello"}}]}', '']);
   });
 
