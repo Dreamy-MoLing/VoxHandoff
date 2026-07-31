@@ -139,19 +139,12 @@ class OpenAiCompatibleChatTransport implements DirectChatTransport {
           'The LLM API rejected the message.',
         );
       }
-      var total = 0;
       await for (final line
           in response
+              .transform(ResponseByteLimitTransformer(_maximumResponseBytes))
               .transform(utf8.decoder)
               .transform(const LineSplitter())
               .timeout(timeout)) {
-        total += line.length;
-        if (total > 4 * 1024 * 1024) {
-          throw const DirectChatTransportException(
-            'llm_stream_too_large',
-            'The LLM response exceeded the safe size limit.',
-          );
-        }
         if (!line.startsWith('data:')) continue;
         final data = line.substring(5).trim();
         if (data == '[DONE]') {
@@ -207,6 +200,32 @@ class OpenAiCompatibleChatTransport implements DirectChatTransport {
         'llm_configuration_invalid',
         'The LLM configuration is incomplete or unsafe.',
       );
+    }
+  }
+}
+
+const _maximumResponseBytes = 4 * 1024 * 1024;
+
+/// Counts wire bytes before UTF-8 decoding or line buffering.  This keeps a
+/// peer from making [LineSplitter] retain an unbounded no-newline response.
+class ResponseByteLimitTransformer
+    extends StreamTransformerBase<List<int>, List<int>> {
+  const ResponseByteLimitTransformer(this.maximumBytes);
+
+  final int maximumBytes;
+
+  @override
+  Stream<List<int>> bind(Stream<List<int>> stream) async* {
+    var total = 0;
+    await for (final chunk in stream) {
+      total += chunk.length;
+      if (total > maximumBytes) {
+        throw const DirectChatTransportException(
+          'llm_stream_too_large',
+          'The LLM response exceeded the safe size limit.',
+        );
+      }
+      yield chunk;
     }
   }
 }

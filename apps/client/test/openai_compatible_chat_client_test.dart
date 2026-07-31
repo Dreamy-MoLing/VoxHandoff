@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:agent_talk_client/domain/direct_chat.dart';
 import 'package:agent_talk_client/infrastructure/chat/openai_compatible_chat_client.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -47,6 +50,81 @@ void main() {
       );
     },
   );
+
+  test('caps continuous no-newline bytes before decoding or line buffering', () async {
+    final controller = StreamController<List<int>>();
+    final values = controller.stream
+        .transform(const ResponseByteLimitTransformer(8))
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
+    final result = values.toList();
+    controller
+      ..add(utf8.encode('data: '))
+      ..add(utf8.encode('abcdefghi'))
+      ..close();
+
+    await expectLater(
+      result,
+      throwsA(
+        isA<DirectChatTransportException>().having(
+          (error) => error.code,
+          'code',
+          'llm_stream_too_large',
+        ),
+      ),
+    );
+  });
+
+  test('caps a single oversized SSE line by wire bytes', () async {
+    final oversizedLine = utf8.encode('data: ${'x' * 32}\n\n');
+    await expectLater(
+      Stream<List<int>>.value(oversizedLine)
+          .transform(const ResponseByteLimitTransformer(16))
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .toList(),
+      throwsA(
+        isA<DirectChatTransportException>().having(
+          (error) => error.code,
+          'code',
+          'llm_stream_too_large',
+        ),
+      ),
+    );
+  });
+
+  test('preserves normal fragmented SSE bytes', () async {
+    final values = await Stream<List<int>>.fromIterable([
+      utf8.encode('data: {"choices":[{"delta":{"content":"hel'),
+      utf8.encode('lo"}}]}\n\n'),
+    ])
+        .transform(const ResponseByteLimitTransformer(1024))
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .toList();
+    expect(values, ['data: {"choices":[{"delta":{"content":"hello"}}]}', '']);
+  });
+
+  test('allows cancellation without retaining later chunks', () async {
+    final controller = StreamController<List<int>>();
+    final subscription = controller.stream
+        .transform(const ResponseByteLimitTransformer(1024))
+        .listen((_) {});
+    controller.add(utf8.encode('data: partial'));
+    await subscription.cancel();
+    expect(() => controller.add(utf8.encode('data: ignored')), returnsNormally);
+    await controller.close();
+  });
+
+  test('does not suppress timeout after byte limiting', () async {
+    await expectLater(
+      Stream<List<int>>.fromFuture(Completer<List<int>>().future)
+          .transform(const ResponseByteLimitTransformer(1024))
+          .timeout(const Duration(milliseconds: 1))
+          .toList(),
+      throwsA(isA<TimeoutException>()),
+    );
+  });
 }
 
 DirectLlmConfiguration _configuration(String value) => DirectLlmConfiguration(
