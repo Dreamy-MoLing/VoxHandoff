@@ -6,6 +6,26 @@ export interface HermesSessionStore {
   set(conversationId: string, sessionId: string): Promise<void>;
 }
 
+export interface HermesSessionStoreFileSystem {
+  readFile(filePath: string, encoding: "utf8"): Promise<string>;
+  mkdir(directory: string, options: { recursive: true; mode: number }): Promise<string | undefined>;
+  chmod(filePath: string, mode: number): Promise<void>;
+  writeFile(
+    filePath: string,
+    body: string,
+    options: { encoding: "utf8"; mode: number },
+  ): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
+}
+
+const defaultFileSystem: HermesSessionStoreFileSystem = {
+  readFile,
+  mkdir,
+  chmod,
+  writeFile,
+  rename,
+};
+
 export class MemoryHermesSessionStore implements HermesSessionStore {
   readonly #sessions = new Map<string, string>();
 
@@ -21,9 +41,13 @@ export class MemoryHermesSessionStore implements HermesSessionStore {
 export class JsonHermesSessionStore implements HermesSessionStore {
   readonly #sessions = new Map<string, string>();
   #loaded = false;
+  #loadPromise: Promise<void> | undefined;
   #writeChain = Promise.resolve();
 
-  constructor(private readonly filePath: string) {
+  constructor(
+    private readonly filePath: string,
+    private readonly fileSystem: HermesSessionStoreFileSystem = defaultFileSystem,
+  ) {
     if (!path.isAbsolute(filePath)) {
       throw new Error("Hermes session state path must be absolute");
     }
@@ -43,12 +67,21 @@ export class JsonHermesSessionStore implements HermesSessionStore {
 
   async #load(): Promise<void> {
     if (this.#loaded) return;
-    this.#loaded = true;
+    if (this.#loadPromise === undefined) {
+      this.#loadPromise = this.#loadFromDisk();
+    }
+    await this.#loadPromise;
+  }
+
+  async #loadFromDisk(): Promise<void> {
     let text: string;
     try {
-      text = await readFile(this.filePath, "utf8");
+      text = await this.fileSystem.readFile(this.filePath, "utf8");
     } catch (error) {
-      if (isNodeError(error) && error.code === "ENOENT") return;
+      if (isNodeError(error) && error.code === "ENOENT") {
+        this.#loaded = true;
+        return;
+      }
       throw error;
     }
     const decoded: unknown = JSON.parse(text);
@@ -66,17 +99,18 @@ export class JsonHermesSessionStore implements HermesSessionStore {
         throw new Error("Hermes session state contains an invalid identity");
       }
     }
+    this.#loaded = true;
   }
 
   async #persist(): Promise<void> {
     const parent = path.dirname(this.filePath);
-    await mkdir(parent, { recursive: true, mode: 0o700 });
-    await chmod(parent, 0o700);
+    await this.fileSystem.mkdir(parent, { recursive: true, mode: 0o700 });
+    await this.fileSystem.chmod(parent, 0o700);
     const temporary = `${this.filePath}.tmp`;
     const body = `${JSON.stringify(Object.fromEntries(this.#sessions), null, 2)}\n`;
-    await writeFile(temporary, body, { encoding: "utf8", mode: 0o600 });
-    await chmod(temporary, 0o600);
-    await rename(temporary, this.filePath);
+    await this.fileSystem.writeFile(temporary, body, { encoding: "utf8", mode: 0o600 });
+    await this.fileSystem.chmod(temporary, 0o600);
+    await this.fileSystem.rename(temporary, this.filePath);
   }
 }
 

@@ -92,6 +92,7 @@ export class HermesNodeConnector {
   readonly #runs = new Map<string, ActiveRun>();
   readonly #dispatchStates = new Map<string, DispatchState>();
   readonly #tasks = new Set<Promise<void>>();
+  readonly #sessionResolutions = new Map<string, Promise<string>>();
   #capabilities: CoreCapabilities | undefined;
 
   constructor(
@@ -284,17 +285,8 @@ export class HermesNodeConnector {
       return;
     }
 
-    let sessionId = dispatch.sessionId;
     try {
-      if (sessionId.length === 0) {
-        sessionId = await this.sessions.get(dispatch.conversationId) ?? "";
-      }
-      if (sessionId.length === 0 && this.#requiredCapabilities().createSession) {
-        sessionId = await this.hermes.createSession(
-          `VoxHandoff ${dispatch.conversationId}`,
-        );
-        await this.sessions.set(dispatch.conversationId, sessionId);
-      }
+      const sessionId = await this.#resolveSession(dispatch);
       const run = await this.hermes.startRun(dispatch.confirmedText, {
         requestId: dispatch.requestId,
         ...(sessionId.length === 0 ? {} : { sessionId }),
@@ -302,7 +294,7 @@ export class HermesNodeConnector {
       const active: ActiveRun = {
         run,
         conversationId: dispatch.conversationId,
-        routeSessionId: dispatch.sessionId,
+        routeSessionId: sessionId,
         abortController: new AbortController(),
         lastSequence: 0,
         eventIds: new Map(),
@@ -331,6 +323,40 @@ export class HermesNodeConnector {
         if (active !== undefined && !active.abortController.signal.aborted) {
           output.push(streamLostEvent(active));
         }
+      }
+    }
+  }
+
+  async #resolveSession(dispatch: DispatchRequest): Promise<string> {
+    const persisted = await this.sessions.get(dispatch.conversationId);
+    if (dispatch.sessionId.length > 0) {
+      if (persisted !== undefined && persisted !== dispatch.sessionId) {
+        throw new Error("Hermes dispatch session conflicts with the durable conversation session");
+      }
+      if (persisted === undefined) {
+        await this.sessions.set(dispatch.conversationId, dispatch.sessionId);
+      }
+      return dispatch.sessionId;
+    }
+    if (persisted !== undefined) return persisted;
+    if (!this.#requiredCapabilities().createSession) return "";
+
+    let resolution = this.#sessionResolutions.get(dispatch.conversationId);
+    if (resolution === undefined) {
+      resolution = (async () => {
+        const rechecked = await this.sessions.get(dispatch.conversationId);
+        if (rechecked !== undefined) return rechecked;
+        const created = await this.hermes.createSession(`VoxHandoff ${dispatch.conversationId}`);
+        await this.sessions.set(dispatch.conversationId, created);
+        return created;
+      })();
+      this.#sessionResolutions.set(dispatch.conversationId, resolution);
+    }
+    try {
+      return await resolution;
+    } finally {
+      if (this.#sessionResolutions.get(dispatch.conversationId) === resolution) {
+        this.#sessionResolutions.delete(dispatch.conversationId);
       }
     }
   }

@@ -195,6 +195,68 @@ test("fails initialization closed when Hermes omits idempotency", async () => {
   await assert.rejects(() => connector.initialize(), /explicitly advertise/u);
 });
 
+test("serializes concurrent cold dispatches onto one durable Hermes session", async () => {
+  const hermes = new FakeHermes();
+  let signalSessionCreation!: () => void;
+  const sessionCreationStarted = new Promise<void>((resolve) => {
+    signalSessionCreation = resolve;
+  });
+  let releaseSessionCreation!: () => void;
+  const sessionCreationGate = new Promise<void>((resolve) => {
+    releaseSessionCreation = resolve;
+  });
+  hermes.createSession = async () => {
+    hermes.calls.push("session");
+    signalSessionCreation();
+    await sessionCreationGate;
+    return "hermes-session-1";
+  };
+  hermes.streamRunEvents = async function* (run: HermesRun): AsyncGenerator<AgentEvent> {
+    yield event(run, 2, "request.completed", {});
+  };
+  const connector = new HermesNodeConnector(hermes, {
+    nodeId: "node-1",
+    agentId: "agent-1",
+    nodeDisplayName: "Node",
+    agentDisplayName: "Hermes",
+  });
+  await connector.initialize();
+  const output = new AsyncQueue<ConnectNodeRequest>();
+  const iterator = output[Symbol.asyncIterator]();
+
+  for (const suffix of ["a", "b"]) {
+    connector.handle(create(ConnectNodeResponseSchema, {
+      body: {
+        case: "dispatchRequest",
+        value: {
+          dispatchId: `dispatch-concurrent-${suffix}`,
+          requestId: `request-concurrent-${suffix}`,
+          idempotencyKey: `idempotency-concurrent-${suffix}`,
+          conversationId: "conversation-concurrent-1",
+          nodeId: "node-1",
+          agentId: "agent-1",
+          capabilityRevision: connector.capabilityRevision(),
+          confirmedText: "Confirmed safe text",
+        },
+      },
+    }), output);
+  }
+
+  await sessionCreationStarted;
+  await Promise.resolve();
+  assert.deepEqual(hermes.calls, ["session"]);
+  releaseSessionCreation();
+  await Promise.all(Array.from({ length: 4 }, () => iterator.next()));
+  assert.equal(hermes.calls.filter((call) => call === "session").length, 1);
+  assert.deepEqual(
+    hermes.calls.filter((call) => call.startsWith("start:")),
+    [
+      "start:hermes-session-1:request-concurrent-a",
+      "start:hermes-session-1:request-concurrent-b",
+    ],
+  );
+});
+
 test("distinguishes a confirmed Hermes HTTP rejection from uncertain acceptance", async () => {
   const hermes = new FakeHermes();
   hermes.startRun = async () => {
