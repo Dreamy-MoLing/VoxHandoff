@@ -337,7 +337,8 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
   user text 写入后保存，streaming reply 每次增量持久化；取消、失败和 TTS
   故障仍保留已确认文本与已收到的完整/部分回复。
 - `OpenAiCompatibleChatTransport` 只发送 Chat Completions 文字请求，解析
-  `choices[].delta.content` SSE 与 `[DONE]`；禁用 redirect、限制 stream 总量，
+  `choices[].delta.content` SSE 与 `[DONE]`；禁用 redirect，并在 UTF-8 解码和
+  `LineSplitter` 之前逐 chunk 限制原始响应字节总量，
   且不把 Authorization、key、prompt 或 upstream error body 写进公开错误。
   这与 Chat Completions 的 `POST /chat/completions` 和 SSE streaming 事实一致。
 - `apps/client/test/direct_chat_controller_test.dart` 覆盖确认文本、增量流、
@@ -370,7 +371,7 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
 
 此增量补齐 M5 结构治理第 2 项的独立设置/adapter 边界，但不取代真实服务验收。
 
-#### 2026-07-31 本机真实服务验收
+#### 2026-07-31 本机真实服务验收（历史脱敏证据）
 
 - 复用 Hermes 的本机 `OPENROUTER_API_KEY`，但既未打印、持久化，也未写回 Client
   store。OpenRouter `GET /api/v1/models` 当时列出免费文本模型
@@ -403,9 +404,42 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
 - 最终回归在 Flutter 3.44.6 通过 analyze、Drift generation、format、golden、
   accessibility 与 183 项 tests（另有上述两个 opt-in live tests 默认 skip）；
   `npm test`、`npm run check` 和 `git diff --check` 同时通过。
-本机依旧没有用户配置的 HTTPS LLM、可运行 faster-whisper sidecar 或 Piper 服务，
-故 10 轮文本与一轮录音—编辑—发送—回复—播放仍是未达成的唯一 M5 退出条件；不得
-以 loopback fake 或离线测试替代。
+
+这组证据证明的是当日真实服务 adapter/sidecar 的受限接口，不是完整 GUI 发行验收；
+不能与“当前机器是否已配置这些服务”混用。本轮收尾时，只有在目标桌面存在可授权的
+实体麦克风、用户配置的 HTTPS LLM、可运行 STT 与 Piper 服务，并能由人工完成一轮
+“录音—编辑—明确发送—流式回复—播放”后，才能关闭 M5 的物理设备退出条件；任何
+fake、合成音频、transport smoke 或离线测试都不能替代它。
+
+#### 2026-07-31 M5 安全修复收尾
+
+- Gateway 现在把 conversation 的持久化 `(node, agent, capability revision, session)`
+  当作唯一权威 route。发送、恢复、outbox claim 和 Node event 均从账本取 route；Client
+  发送任一不一致字段即 `conversation_route_mismatch`，同一 route 下的非空 session 不可
+  被另一个 conversation 复用。PostgreSQL integration fixture 覆盖跨 conversation
+  session 复用、lease/route 绕过和重连 claim；本轮环境没有隔离 PostgreSQL URL，故该
+  fixture 已编译并进入 opt-in 门，但尚未在真实 PostgreSQL 服务执行。
+- 已按本机安装的 Hermes Agent 0.19.0 源码核对 approval resolution：上游 API 只接受
+  `choice`，内部对 pending queue 执行 FIFO `pop(0)`。Connector 因而不再把 approval
+  B 的决定转发给可能仍在队首的 A；它公布 approval 不可用，并以
+  `hermes_approval_resolution_ambiguous` 拒绝任何此类 decision。fake Hermes 回归断言
+  两个 pending approval 时，对 B 的拒绝不会调用 upstream resolution。
+- Direct LLM SSE 在 UTF-8/分行之前限制原始字节：持续无换行、超长单行、正常分片、
+  取消和 timeout 都有独立 Flutter 回归，防止 `LineSplitter` 前无界累积。
+- Node 的 JSON Hermes session store 以共享加载 promise 串行冷启动；同一 conversation
+  的并发 dispatch 只会创建/持久化一个 session，受控并发回归覆盖磁盘加载未完成时的
+  两个 dispatch。
+
+上述四项是已实现且已通过各自离线自动化验证的安全修复；它们不改变 Hermes H1 的
+`idempotency=false` fail-closed 门。M5 实现和服务 adapter 证据仍可供后续阶段使用，
+但物理麦克风 GUI 全链路、真实 PostgreSQL fixture 执行以及 H1 真实纵向链路均必须在
+具备对应外部条件后单独记录，不能宣称为已通过。本轮桌面诊断确认 Fedora 44/Wayland
+与 PipeWire 可见两个内建麦克风和扬声器；但没有 `AGENT_TALK_POSTGRES_URL`、Live
+OpenRouter opt-in 或其 key，也没有可辨认为 STT/Piper 的验收服务监听端口，因而没有
+擅自发起外部请求或用合成输入替代人工 GUI 操作。恢复条件是由操作者提供隔离 PostgreSQL
+URL 后运行 `AGENT_TALK_POSTGRES_URL=... npm run test:postgres -w @agent-talk/gateway`，并在
+用户配置的 HTTPS LLM、STT、Piper 和实体麦克风均可用时人工执行一轮完整 GUI 流程，
+只保存脱敏阶段/结果证据。
 
 #### M5 结构治理 — 解耦计划（在最小闭环稳定后执行）
 
