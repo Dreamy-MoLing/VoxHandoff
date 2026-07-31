@@ -121,13 +121,18 @@ void main() {
   });
 
   test('does not suppress timeout after byte limiting', () async {
-    await expectLater(
-      Stream<List<int>>.fromFuture(Completer<List<int>>().future)
-          .transform(const ResponseByteLimitTransformer(1024))
-          .timeout(const Duration(milliseconds: 1))
-          .toList(),
-      throwsA(isA<TimeoutException>()),
-    );
+    final source = StreamController<List<int>>();
+    try {
+      await expectLater(
+        source.stream
+            .transform(const ResponseByteLimitTransformer(1024))
+            .timeout(const Duration(milliseconds: 1))
+            .first,
+        throwsA(isA<TimeoutException>()),
+      );
+    } finally {
+      await source.close();
+    }
   });
 }
 
