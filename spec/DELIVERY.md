@@ -322,6 +322,22 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
 
 退出条件：在 Fedora 的本机用户配置中，能完成至少 10 轮文本聊天；已配置音频端口时能完成“录音—编辑—发送—回复—播放”一轮；取消和任一配置失败不丢失已确认文本或完整回复，且相关离线/Flutter 测试通过。
 
+#### M5 结构治理 — 解耦计划（在最小闭环稳定后执行）
+
+触发条件：M5 的来源选择、用户自接 LLM API 的一轮文字/流式回复，以及录音到可编辑终稿的主路径均已有契约测试。它是 M5 的维护性门，不应抢在主路径可用之前，也不与 Hermes H1 的上游能力阻断混在同一变更中。
+
+执行原则：一次只移动一个职责边界；先为旧行为补齐单元/契约测试，再移动实现；每个切片保持 wire schema、数据库 migration、公开 UI 语义和安全语义不变。生成的 `*.g.dart`、Protobuf binding 与 `dist/` 不作为手工解耦对象。任何拆分造成 `uncertain`、审批、秘密隔离、cursor 或完整回复语义变化，必须停止并单独走规格变更。
+
+优先顺序：
+
+1. `apps/client/lib/presentation/home_screen.dart`：按导航、会话选择、空状态、会话工作台拆出纯展示 Widget；Widget/golden/accessibility 测试保持覆盖。这是低风险第一切片，可与来源选择 UI 同步完成。
+2. 用户自接 LLM API、STT/TTS 设置：将 provider 配置模型、OS 安全存储、连接测试和 UI form 保持为独立层；界面不直接读取 key，adapter 不持有 Widget state。该边界随 M5 新功能建立，避免形成新的聚合文件。
+3. `services/node/src/hermes-node-connector.ts`：在 H1 之前按 session 映射、dispatch、SSE 翻译和 interaction command 拆分；保留一个薄的 lifecycle coordinator，并以 fake Hermes/Gateway stream 契约测试保护。
+4. `services/gateway/src/postgres-ledger.ts`：在 M5 闭环验收后、任何新的 Gateway 特性之前，按 request/event、lease、approval/clarification 与事务基础设施拆分；共享 transaction 保持单一提交边界，真实 PostgreSQL integration tests 不得降级。
+5. `apps/client/lib/infrastructure/storage/drift_client_event_ledger.dart`：最后分离 schema/SQL、事件映射、读模型与清理策略，保留事件与 cursor 的原子提交和重启恢复门。
+
+完成条件：上述每个切片独立提交、独立通过相关质量门；不以行数为目标，不做跨模块“顺手清理”。M5 结束时至少完成第 1、2 项并记录其余项的现状；第 3–5 项可在不阻塞 H1 或发布门的前提下继续推进。
+
 ### H1 — Hermes 单一纵向链路（实现完成，上游幂等能力阻断真实端到端门）
 
 目标：只把 Hermes 做成可真实使用的首发 Agent。
