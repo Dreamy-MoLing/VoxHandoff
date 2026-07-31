@@ -322,6 +322,33 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
 
 退出条件：在 Fedora 的本机用户配置中，能完成至少 10 轮文本聊天；已配置音频端口时能完成“录音—编辑—发送—回复—播放”一轮；取消和任一配置失败不丢失已确认文本或完整回复，且相关离线/Flutter 测试通过。
 
+#### 2026-07-31 增量证据（未关闭 M5）
+
+本次实现了可独立审查的 direct LLM 最小路径，且不触碰 Hermes/Gateway
+的 acceptance、lease、approval、cursor 或 `uncertain` 语义：
+
+- Client 可在 Hermes Gateway 与 Direct LLM 来源之间显式切换。Direct LLM
+  使用独立视图，明确标注它没有 Agent host、tool、approval、lease 或跨设备
+  command 语义；停止只取消当前本机 HTTP stream，绝不伪装 Hermes interrupt。
+- Direct LLM 只接受精确 HTTPS root origin、模型和可选 system prompt。API key
+  单独写入 OS secure storage；配置记录不含 key。本机 Drift 历史只在 confirmed
+  user text 写入后保存，streaming reply 每次增量持久化；取消、失败和 TTS
+  故障仍保留已确认文本与已收到的完整/部分回复。
+- `OpenAiCompatibleChatTransport` 只发送 Chat Completions 文字请求，解析
+  `choices[].delta.content` SSE 与 `[DONE]`；禁用 redirect、限制 stream 总量，
+  且不把 Authorization、key、prompt 或 upstream error body 写进公开错误。
+  这与 Chat Completions 的 `POST /chat/completions` 和 SSE streaming 事实一致。
+- `apps/client/test/direct_chat_controller_test.dart` 覆盖确认文本、增量流、
+  本地历史、取消和不重发；`AGENT_TALK_FLUTTER_ROOT=/home/roco/develop/flutter-3.44.6
+  npm run flutter:check` 于本次变更后通过，包含 analyze、Drift generation、format
+  和 172 项 Flutter tests。受来源切换控件影响的既有 phone/desktop golden 已重建。
+
+本机没有用户提供的 HTTPS LLM API key，也没有已配置的 faster-whisper/Piper
+服务，因此尚未执行或宣称以下真实门：10 轮用户 LLM 文本 smoke，以及录音—编辑—
+发送—回复—播放一轮。下一次运行必须由用户显式配置自己的 provider 后，在 Fedora
+记录脱敏的版本、origin 类型、10 轮结果、取消、断网和已配置音频端口结果；禁止以
+mock 或 direct LLM 成功替代 Hermes H1 纵向验收。
+
 #### M5 结构治理 — 解耦计划（在最小闭环稳定后执行）
 
 触发条件：M5 的来源选择、用户自接 LLM API 的一轮文字/流式回复，以及录音到可编辑终稿的主路径均已有契约测试。它是 M5 的维护性门，不应抢在主路径可用之前，也不与 Hermes H1 的上游能力阻断混在同一变更中。

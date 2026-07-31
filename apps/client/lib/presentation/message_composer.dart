@@ -22,6 +22,7 @@ class MessageComposer extends StatelessWidget {
     required this.onStopVoice,
     required this.onCancelVoice,
     required this.onDiscardVoice,
+    this.sendLabel = 'Handoff to Hermes',
     super.key,
   });
 
@@ -38,6 +39,7 @@ class MessageComposer extends StatelessWidget {
   final Future<void> Function() onStopVoice;
   final Future<void> Function() onCancelVoice;
   final Future<void> Function() onDiscardVoice;
+  final String sendLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -113,7 +115,7 @@ class MessageComposer extends StatelessWidget {
                         : session.draftPhase == DraftPhase.submitting
                         ? 'Awaiting acceptance'
                         : canSend
-                        ? 'Handoff to Hermes'
+                        ? sendLabel
                         : 'Send unavailable',
                   ),
                 );

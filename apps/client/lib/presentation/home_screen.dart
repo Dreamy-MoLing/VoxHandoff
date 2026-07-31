@@ -6,11 +6,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/client_session_controller.dart';
+import '../application/chat_source_controller.dart';
 import '../application/desktop_integration_controller.dart';
+import '../application/direct_chat_controller.dart';
 import '../application/device_pairing_controller.dart';
 import '../application/gateway_workspace_controller.dart';
 import '../application/voice_session_controller.dart';
 import '../domain/client_session.dart';
+import '../domain/direct_chat.dart';
 import '../domain/desktop_capabilities.dart';
 import '../domain/device_pairing.dart';
 import '../domain/gateway_sync.dart';
@@ -19,6 +22,8 @@ import '../domain/signal_core.dart';
 import '../domain/speech.dart';
 import '../domain/voice.dart';
 import 'conversation_view.dart';
+import 'direct_chat_view.dart';
+import 'direct_llm_settings_sheet.dart';
 import 'design/agent_talk_theme.dart';
 import 'message_composer.dart';
 import 'pairing_dialog.dart';
@@ -70,7 +75,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _send() async {
     final text = ref.read(clientSessionProvider).draftText;
-    await ref.read(gatewayWorkspaceProvider.notifier).sendConfirmedText(text);
+    if (ref.read(chatSourceProvider) == ChatSource.directLlm) {
+      await ref.read(directChatProvider.notifier).sendConfirmedText(text);
+    } else {
+      await ref.read(gatewayWorkspaceProvider.notifier).sendConfirmedText(text);
+    }
   }
 
   void _startNextDraft() {
@@ -112,6 +121,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final session = ref.watch(clientSessionProvider);
     final controller = ref.read(clientSessionProvider.notifier);
     final pairing = ref.watch(devicePairingProvider);
+    final source = ref.watch(chatSourceProvider);
+    final directChat = ref.watch(directChatProvider);
     final workspace = ref.watch(gatewayWorkspaceProvider);
     ref.listen(gatewayWorkspaceProvider, (_, next) {
       unawaited(
@@ -137,6 +148,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       DateTime.now(),
     );
     final compactAppBar = MediaQuery.sizeOf(context).width < 480;
+    final isDirect = source == ChatSource.directLlm;
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(
@@ -157,6 +169,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
           actions: [
+            PopupMenuButton<ChatSource>(
+              tooltip: 'Choose chat source',
+              initialValue: source,
+              onSelected: (value) =>
+                  ref.read(chatSourceProvider.notifier).select(value),
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: ChatSource.hermes,
+                  child: Text('Hermes via Gateway'),
+                ),
+                PopupMenuItem(
+                  value: ChatSource.directLlm,
+                  child: Text('Direct LLM API'),
+                ),
+              ],
+              child: IconButton(
+                onPressed: null,
+                icon: Icon(
+                  isDirect ? Icons.forum_outlined : Icons.hub_outlined,
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: isDirect ? 'Direct LLM settings' : 'Source settings',
+              onPressed: isDirect
+                  ? () => showDirectLlmSettingsSheet(context)
+                  : null,
+              icon: const Icon(Icons.tune_outlined),
+            ),
             if (desktop.isDesktop) _DesktopCapabilityIcon(snapshot: desktop),
             Padding(
               padding: const EdgeInsets.only(right: 16),
@@ -169,14 +210,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         body: LayoutBuilder(
           builder: (context, constraints) {
             final showNavigation = constraints.maxWidth >= 900;
-            final banner = _LocalOnlyBanner(
-              pairing: pairing,
-              workspace: workspace,
-              onOpenPairing: _openPairing,
-              onConnect: workspaceController.connect,
-              onDisconnect: workspaceController.disconnect,
-            );
-            final conversation = workspace.selectedConversation == null
+            final banner = isDirect
+                ? _DirectLlmBanner(
+                    state: directChat,
+                    onConfigure: () => showDirectLlmSettingsSheet(context),
+                  )
+                : _LocalOnlyBanner(
+                    pairing: pairing,
+                    workspace: workspace,
+                    onOpenPairing: _openPairing,
+                    onConnect: workspaceController.connect,
+                    onDisconnect: workspaceController.disconnect,
+                  );
+            final conversation = isDirect
+                ? DirectChatView(
+                    state: directChat,
+                    onCancel: ref.read(directChatProvider.notifier).cancel,
+                  )
+                : workspace.selectedConversation == null
                 ? const _EmptyConversation()
                 : ConversationView(
                     workspace: workspace,
@@ -197,13 +248,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               onReopen: controller.reopenDraft,
               onSend: _send,
               onNextDraft: _startNextDraft,
-              sendEnabled: ownsLease,
+              sendEnabled: isDirect
+                  ? directChat.isConfigured &&
+                        directChat.phase != DirectChatPhase.sending
+                  : ownsLease,
+              sendLabel: isDirect ? 'Send to LLM' : 'Handoff to Hermes',
               onStartVoice: _startVoice,
               onStopVoice: _stopVoice,
               onCancelVoice: _cancelVoice,
               onDiscardVoice: _discardVoice,
             );
-            if (!showNavigation) {
+            if (!showNavigation || isDirect) {
               return Column(
                 children: [
                   Expanded(
@@ -563,6 +618,40 @@ class _LocalOnlyBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DirectLlmBanner extends StatelessWidget {
+  const _DirectLlmBanner({required this.state, required this.onConfigure});
+
+  final DirectChatState state;
+  final VoidCallback onConfigure;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: context.visualTokens.panel,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          const Icon(Icons.shield_outlined),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              state.failure?.message ??
+                  (state.isConfigured
+                      ? 'Direct LLM chat is local to this device. It has no Agent tools, approvals, or cross-device commands.'
+                      : 'Configure a HTTPS OpenAI-compatible LLM API. Its key is stored only in OS secure storage.'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton(
+            onPressed: onConfigure,
+            child: Text(state.isConfigured ? 'Configure' : 'Configure LLM'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _ConversationPicker extends StatelessWidget {

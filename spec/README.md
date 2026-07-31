@@ -1,6 +1,6 @@
 # VoxHandoff 正式开发基线
 
-> 基线版本：1.56<br>
+> 基线版本：1.57<br>
 > 生效日期：2026-07-31<br>
 > 状态：Active
 
@@ -31,6 +31,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.57 | 2026-07-31 | M5 首个可审查增量：新增本机 direct LLM 的 HTTPS/SSE、OS 安全存储 key、本机 Drift 历史、取消与文字优先 UI；离线/Flutter 门通过，真实用户 provider 与音频端口 smoke 仍待显式配置后执行 |
 | 1.56 | 2026-07-31 | 将解耦列入 M5 的结构治理阶段：先完成最小语音聊天闭环，再以契约测试保护的增量方式拆分 UI、配置、Connector 与 Gateway 账本，不进行阻塞功能交付的大重写 |
 | 1.55 | 2026-07-31 | 收敛为 GUI 优先的语音聊天/数字伙伴 MVP：Hermes 保持唯一 Agent，新增用户自带 LLM API 的直接文本对话边界；STT/TTS 改为用户可配置端口并给出免费开源默认预设，近期交付改为先打通可用体验 |
 | 1.54 | 2026-07-29 | 固化 Hermes 0.19 真实 10 轮/stop/manual deny/SIGKILL/restart 证据与幂等能力阻断；关闭 Fedora Flutter 170 测试、Linux release 和 2,000 事件 HomeScreen 60 Hz 门 |

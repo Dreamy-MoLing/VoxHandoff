@@ -8,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'app/agent_talk_app.dart';
 import 'application/desktop_integration_controller.dart';
+import 'application/direct_chat_controller.dart';
 import 'application/speech_playback_controller.dart';
 import 'application/voice_session_controller.dart';
 import 'domain/speech.dart';
@@ -17,6 +18,7 @@ import 'infrastructure/audio/record_audio_capture.dart';
 import 'infrastructure/desktop/production_desktop_integration.dart';
 import 'infrastructure/security/flutter_secure_value_store.dart';
 import 'infrastructure/storage/drift_local_transcript_store.dart';
+import 'infrastructure/storage/drift_local_direct_chat_store.dart';
 import 'infrastructure/stt/bundled_stt_launcher.dart';
 import 'infrastructure/stt/stdio_stt_port.dart';
 import 'infrastructure/stt/unavailable_stt_port.dart';
@@ -48,6 +50,7 @@ Future<void> main() async {
   }
   MediaKit.ensureInitialized();
   final transcriptStore = await DriftLocalTranscriptStore.forApplication();
+  final directChatStore = await DriftLocalDirectChatStore.forApplication();
   final stt = _productionSttPort();
   final playback = MediaKitAudioPlayback();
   final tts = _productionTtsPort();
@@ -58,6 +61,7 @@ Future<void> main() async {
         audioCapturePortProvider.overrideWithValue(RecordAudioCapture()),
         sttPortProvider.overrideWithValue(stt),
         localTranscriptStoreProvider.overrideWithValue(transcriptStore),
+        directChatHistoryStoreProvider.overrideWithValue(directChatStore),
         audioPlaybackPortProvider.overrideWithValue(playback),
         if (isDesktop)
           desktopIntegrationPortProvider.overrideWithValue(

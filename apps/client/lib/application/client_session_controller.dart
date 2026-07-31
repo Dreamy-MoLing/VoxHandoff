@@ -66,6 +66,16 @@ class ClientSessionController extends Notifier<ClientSessionState> {
     state = state.copyWith(draftPhase: DraftPhase.accepted);
   }
 
+  /// A directly configured LLM has no Gateway acceptance proof. Its request is
+  /// intentionally single-shot and local; this only advances the editable
+  /// draft after the controller has durably recorded the confirmed text.
+  void markAcceptedLocal() {
+    if (state.draftPhase != DraftPhase.confirmed) {
+      throw StateError('Only a confirmed draft can be sent to a local LLM.');
+    }
+    state = state.copyWith(draftPhase: DraftPhase.accepted);
+  }
+
   void markAcceptanceUncertain(String requestId) {
     if (state.draftPhase != DraftPhase.submitting ||
         state.requestId != requestId) {
