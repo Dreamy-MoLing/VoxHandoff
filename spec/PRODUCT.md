@@ -2,11 +2,11 @@
 
 ## 1. 产品定义
 
-VoxHandoff 是面向本地与远程 Hermes 的跨平台语音交接客户端。它把用户语音转换为可编辑文字，通过 Hermes 的正式 HTTP/SSE 接口提交明确确认的请求，实时呈现真实执行状态和完整回复，并用独立的短文本驱动可替换 TTS。
+VoxHandoff 是 GUI 优先的跨平台语音聊天与数字伙伴客户端。它把用户语音转换为可编辑文字，连接用户选择的 Hermes 会话，或由用户自行接入兼容的 LLM API；它实时呈现回复与真实 Agent 状态，并用独立、可替换的 STT/TTS 端口形成可打断的语音体感。
 
 它不是新的 Agent 框架、公共模型中转服务、桌面 UI 自动化工具，也不是 GPT Live 式持续音频全双工服务。
 
-产品目标是形成类似虚拟主播的交互效果：回应快、持续有真实反馈、角色存在感强，但请求仍按轮次提交，审批与危险操作保持清晰可控。
+近期目标不是建设另一套 Agent 平台，而是先打通可靠、自然的 GUI 语音聊天体验：看得见、能编辑、能停止、文字不丢。Hermes 场景保留真实执行反馈和安全交互；纯 LLM 聊天场景强调陪伴感与连续对话，但不得伪装工具执行、审批或系统权限。
 
 ## 2. 支持范围
 
@@ -23,7 +23,7 @@ VoxHandoff 是面向本地与远程 Hermes 的跨平台语音交接客户端。�
 平台共享产品语义、协议、数据模型、视觉 token 和状态机。系统能力允许差异化实现：
 
 - 桌面端可以启动随应用分发的本地 sidecar、使用全局快捷键和托盘；
-- 移动端只连接 Gateway/远程 Hermes，不启动 Node 或 Hermes 进程；
+- 移动端只连接远程 Hermes Gateway 或用户配置的 LLM API，不启动 Node 或 Hermes 进程；
 - iOS/Android 第一版只承诺前台按键说话，不承诺后台常听或自定义唤醒词；
 - Linux 全局快捷键和托盘按桌面环境、portal 能力明确降级，不伪装为完全一致。
 
@@ -31,13 +31,15 @@ VoxHandoff 是面向本地与远程 Hermes 的跨平台语音交接客户端。�
 
 首个持续集成和开发目标是 Fedora 44；五端发行按 `DELIVERY.md` 的里程碑逐步验收，不能因首发顺序删减公共协议能力。
 
-### 2.2 Hermes
+### 2.2 Hermes 与自接 LLM API
 
 Hermes 是唯一首发和当前产品支持的 Agent。正式链路为 Flutter Client → VoxHandoff Gateway → Node Connector → Hermes HTTPS/SSE；Node 与 Hermes 同机部署时仍只连接显式配置的 loopback endpoint，不复用或管理用户已有的消息平台 gateway。
 
 “产品支持”不等于绕过安全门。生产 Connector 只注册明确提供事件流和幂等 run submission 的 Hermes endpoint；Hermes 0.19.0 当前真实 capability 为 `idempotency=false`，所以该版本可用于隔离 PoC，但在补齐可验证的幂等提交前不能作为已完成的生产纵向链路。UI 必须显示配置/能力阶段错误，不能退回自动重提或把直接 adapter 成功冒充 Gateway 端到端成功。
 
-仓库中既有 Codex 研究适配器和历史测试只作为已验证过的协议隔离样本保留，不进入产品目录、生产 Connector、UI、发行兼容表或后续功能承诺。Codex 扩展、OpenClaw 和通用第三方 Agent 插件均暂停；重新引入任何 Agent 类型都属于产品方向变更，必须先更新本规格、威胁模型、capability 契约和独立真链路门。
+用户还可以配置自己的 LLM API，作为不带工具执行能力的直接聊天来源。首版只承诺一个小型、版本化的 OpenAI-compatible chat-completions 风格端口：base URL、模型、认证方式和可选系统提示均由用户填写并可单独测试。API key 只保存在当前设备的 OS 安全存储，正文与 key 不经过 VoxHandoff Gateway/公共中转；默认不上传录音，只有已确认的文本才会发送给该 API。该来源没有 Agent host、tool event、approval、control lease 或跨设备 command 语义；不确定提交显示为失败/待用户重试，绝不把它映射成 Hermes 的幂等安全承诺。
+
+仓库中既有 Codex 研究适配器和历史测试只作为已验证过的协议隔离样本保留，不进入产品目录、生产 Connector、UI、发行兼容表或后续功能承诺。OpenClaw 和其他 Agent 不建立 adapter、配置入口或发行承诺。除 Hermes 外的 Agent 类型仍属于产品方向变更，必须先更新本规格、威胁模型、capability 契约和独立真链路门；用户自接的纯 LLM API 不因此成为通用 Agent 插件。
 
 ### 2.3 部署形态
 
@@ -47,7 +49,7 @@ Hermes 是唯一首发和当前产品支持的 Agent。正式链路为 Flutter C
 
 项目不运营公共中转云。所有远程部署由用户控制。
 
-当前基线采用单所有者模型：一个 Gateway 只有一个管理所有者，可以授权其多台设备。设备显示名、Agent 名和主机名只用于展示，权限判断只能使用不透明 ID、凭据、scope 和签名。多人账号、组织租户和共享审批不属于 M0-M5；逻辑数据模型可以为未来扩展保留 `userId`，但不得因此放宽当前授权边界。
+当前基线采用单所有者模型：一个 Gateway 只有一个管理所有者，可以授权其多台设备。设备显示名、Agent 名和主机名只用于展示，权限判断只能使用不透明 ID、凭据、scope 和签名。多人账号、组织租户和共享审批不属于当前 MVP；逻辑数据模型可以为未来扩展保留 `userId`，但不得因此放宽当前授权边界。
 
 ## 3. 核心用户流程
 
@@ -55,13 +57,9 @@ Hermes 是唯一首发和当前产品支持的 Agent。正式链路为 Flutter C
 
 用户可以：
 
-1. 添加本机或远程 Gateway；
-2. 配对当前设备并获得可撤销、最小权限凭据；
-3. 选择 Gateway 上已注册且 capability 已确认的 Hermes Connector；
-4. 配置本地或远程 STT；
-5. 配置 GPT-SoVITS 或其他 TTS；
-6. 分别测试录音、STT、Agent、TTS 和同步；
-7. 选择默认 Hermes 会话、麦克风、音色和播报策略。
+1. 选择 Hermes（添加本机或远程 Gateway、配对并选择已确认的 Connector），或添加自己的 LLM API；
+2. 配置 STT 与 TTS 端口，并分别测试录音、识别、聊天来源与播放；
+3. 选择默认会话/模型、麦克风、声音和播报策略。
 
 错误必须指出失败环节，不使用无法行动的统一“请求失败”。
 
@@ -74,11 +72,11 @@ Hermes 是唯一首发和当前产品支持的 Agent。正式链路为 Flutter C
 3. 流式 STT 显示临时字幕；
 4. 结束录音后生成 final transcript；
 5. 用户修改、取消或确认发送；
-6. 客户端显示目标 Agent、会话和实际执行主机；
-7. Gateway 持久化请求后返回 `request.accepted`；
-8. Client 根据真实事件持续更新角色、字幕和工具状态；
+6. 客户端显示当前来源、会话以及 Hermes 的实际执行主机（如适用）；
+7. Hermes 经 Gateway 持久化后返回 `request.accepted`；自接 LLM API 则仅在用户设备发出一次文本请求；
+8. Client 根据真实事件或 API 流式文本持续更新回复；
 9. 完整回复持久化，稳定语义句可提前进入 TTS 队列；
-10. 任务结束后跨设备收敛为同一最终记录。
+10. Hermes 任务结束后跨设备收敛为同一最终记录；自接 LLM 的历史默认只保存在配置该 key 的本机。
 
 可提供“低风险请求直接发送”，但必须由用户显式开启；审批、发布、删除、付款、授权、凭据、sudo 等动作永远不能自动批准。
 
@@ -130,7 +128,8 @@ control lease 过期只撤销发送、审批和中断能力，不改变 Agent �
 - 流式 provisional transcript 与 final transcript 必须区分；
 - final transcript 可编辑并保留原识别版本用于本地诊断；
 - 原始录音在 final transcript 产生或用户取消后立即删除，不进入同步数据库；可恢复的 STT 失败只允许在应用私有临时目录保留至用户放弃、应用下次启动或 24 小时，以最早者为准；
-- 本地 STT 通过独立 Python sidecar 接入，远程 STT 使用相同抽象；
+- STT/TTS 都是用户配置的端口；项目只维护稳定的 capability、测试、失败隔离和隐私提示，不内置模型、音色或云端账号生命周期；
+- 免费开源默认预设是本地 faster-whisper STT 与 Piper-compatible TTS 服务，均须由用户自行安装/选择模型并完成连接测试；不能运行时仍保持文字聊天可用；
 - 远程 STT 默认关闭；启用时必须显示音频将离开设备、目标服务、TLS 状态和已知保留策略，并取得用户对该 provider 的显式同意；
 - 没有 STT 时仍可输入文字使用所有 Agent 功能。
 
@@ -164,7 +163,7 @@ Gateway 可以在接受请求前因目标不可用而拒绝，但一旦返回 `r
 
 ### 4.4 TTS
 
-- GPT-SoVITS 为首个目标适配器，接口保持可替换；
+- TTS 通过 provider-neutral port 接入；Piper-compatible 本地服务是免费开源默认预设，GPT-SoVITS 等服务是可选用户配置；
 - 支持预热、流式或分段生成、播放队列和取消；
 - 第 N 段播放时可并行生成 N+1 段；
 - 每段绑定 request、message revision 和 segment index；
@@ -174,7 +173,7 @@ Gateway 可以在接受请求前因目标不可用而拒绝，但一旦返回 `r
 
 ### 4.5 设置与诊断
 
-- Agent/Gateway/STT/TTS 独立连接测试；
+- Hermes Gateway、用户 LLM API、STT/TTS 独立连接测试；
 - 麦克风、快捷键、音色、语速、自动播报和动态效果设置；
 - OS 安全存储保存密钥，普通数据库只保存引用；
 - 诊断导出前预览，认证头、令牌、密钥和敏感 payload 脱敏；
@@ -195,7 +194,7 @@ Gateway 可以在接受请求前因目标不可用而拒绝，但一旦返回 `r
 
 删除同步历史时先写入授权范围内可见的 tombstone，停止向设备分发正文，再从活动存储和对象存储清除内容；备份中的最长残留时间必须由部署者配置并在删除确认前显示。导出、删除和诊断预览不得要求 Client 获得 Gateway 管理员密钥。
 
-附件字段目前只是协议扩展点。M0-M5 不承诺上传或转发任意文件；在某个里程碑明确加入附件的产品类型、大小、扫描、授权、加密、保留和 Agent 映射规则之前，所有正式 adapter 必须协商 `attachments=false`，UI 不显示附件入口。
+附件字段目前只是协议扩展点。当前 MVP 不承诺上传或转发任意文件；在某个后续里程碑明确加入附件的产品类型、大小、扫描、授权、加密、保留和 Agent 映射规则之前，所有正式 adapter 必须协商 `attachments=false`，UI 不显示附件入口。
 
 ## 5. 视觉与交互规格
 
@@ -256,7 +255,7 @@ SignalCore 是界面的首要视觉主体，也是只读的状态表现。它以
 
 这些指标不包含 Agent 思考和工具运行。无法达成时记录实测，不隐藏等待或伪造进度。
 
-STT 与 TTS 延迟目标适用于完成 M3 capability benchmark 的推荐本地配置；设备/模型组合必须记录为具名 profile。仅 CPU 的本地 TTS 若合成成功但热首段超出目标，必须标为 `text-first degraded`，默认自动播报保持关闭且完整回复、手动文字流程和播放停止门继续可用；它不能被宣称为达到推荐语音性能，也不阻止同一客户端在合格加速配置上启用播报。该降级口径不修改上述推荐目标，M5 发布矩阵仍须在具名推荐设备上通过目标。
+STT 与 TTS 延迟目标适用于完成 M3 capability benchmark 的推荐本地配置；设备/模型组合必须记录为具名 profile。仅 CPU 的本地 TTS 若合成成功但热首段超出目标，必须标为 `text-first degraded`，默认自动播报保持关闭且完整回复、手动文字流程和播放停止门继续可用；它不能被宣称为达到推荐语音性能，也不阻止同一客户端在合格加速配置上启用播报。该降级口径不修改上述推荐目标；后续发行矩阵仍须在具名推荐设备上通过目标。
 
 ### 6.2 稳定性
 

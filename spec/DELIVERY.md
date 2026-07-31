@@ -4,7 +4,7 @@
 
 基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.19.0、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和本地 Dart `protoc_plugin` 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。M2 使用官方 stable Flutter 3.44.6 / Dart 3.12.2 用户级 SDK，Linux archive SHA-256 固定于 `toolchains/flutter.json`；Fedora 主机已安装 Clang 22.1.8、GTK 3 与 libsecret development headers，Linux release build 和 Secret Service 真读写/删除通过。M4 真机门使用 Android command-line tools、Platform Tools 37.0.0、Build Tools/API 36、NDK 28.2.13676358 与 OpenJDK 25，并已通过 `flutter doctor -v` 的 Android toolchain 和 license 检查。
 
-当前阶段：M4 历史里程碑已完成，产品现已收缩为 Hermes-only MVP；原 M5 OpenClaw、通用 Agent 扩展以及签名发行/运维工作全部暂停。新的 M5 是 Flutter → Gateway → Hermes Node Connector 纵向链路，新的 M6 是可用性、SignalCore 与真实 HomeScreen 性能收敛。既有 Codex 适配器和证据只保留为历史回归，不代表当前产品支持。任何新里程碑都不得回退完整文字、审批、lease、cursor、`uncertain`、防重提或语音失败隔离语义。
+当前阶段：M4 及原 M6 的界面/性能工作已完成。产品现在以 GUI 优先的语音聊天/数字伙伴 MVP 为目标：Hermes 是唯一 Agent；用户可在本机直接接入自己的 LLM API 作为不带工具能力的聊天来源。近期 M5 改为“可用语音聊天打通”，优先复用成熟开源能力而非自研 STT/TTS/模型服务；原 Hermes 生产纵向门改列为后续 H1，仍受 Hermes 上游幂等能力阻断。既有 Codex 适配器和证据只保留为历史回归，不代表当前产品支持。任何新里程碑都不得回退完整文字、审批、lease、cursor、`uncertain`、防重提或语音失败隔离语义。
 
 2026-07-29 的当前实现状态：
 
@@ -80,14 +80,14 @@
 - Flutter production workspace 从 OS 安全存储加载 active credential 与 Gateway trust profile，建立 TLS gRPC、Drift 与唯一中央 router；目录、会话、完整 message/tool/terminal、lease、审批和澄清都只从已映射领域状态进入 UI。发送前原子保存 route、command/idempotency 与 confirmed-text SHA-256，正文不进入提交状态表；只有本设备持有未过期 lease 且草稿已显式确认才写出一次 `Send`，并且在 wire write 前进入 submitting。已 prepare 的写出失败或断流都前向推进为 `outcomeUnknown`，只允许 status/replay 恢复；本设备精确 lease 至多每 10 秒单次续租，接管、断流和过期取消旧 timer，未收到新 revision 不用旧 revision 重试；
 - 审批按钮永不自动触发；用户明确 approve/deny 后，Client 从耐久 request route 取实际 Node host，使用 active credential key 对 credential/device/host/audience/request/approval/decision/original hash/nonce 签名，再携当前 lease 发出一次。澄清必须在独立对话框编辑并明确确认；interrupt 与其他设备接管也必须点击显式动作；
 - 两份独立 Drift 账本与中央 router 的组合验收覆盖桌面/手机共同观察同一完整事件、手机无隐式控制、带当前 revision 的显式接管、断线后从 sequence 2 启动 replay 并收敛到 4；两端无额外 `Send`。已连接工作区另有桌面/390px 手机 golden、完整回复与显式审批 widget gate；
-- CI 新增固定 Flutter 3.44.6 的 Linux analyze/test/release/Secret Service 门，以及 Android debug APK、macOS release、iOS simulator 和 Windows release 构建矩阵；根 `npm run check` 已按 workspace 依赖拓扑在 protocol `--noEmit` 校验后显式生成 `dist`，以移除 `origin/main` 干净 runner 在 Gateway 检查时找不到 `@agent-talk/protocol` 的顺序缺陷；Dart 生成一致性门则在固定 Flutter SDK 就绪后运行。这些是共享 M2 客户端的合并门，不替代 M5 的签名、安装、升级、卸载与实体设备发行验收；
+- CI 新增固定 Flutter 3.44.6 的 Linux analyze/test/release/Secret Service 门，以及 Android debug APK、macOS release、iOS simulator 和 Windows release 构建矩阵；根 `npm run check` 已按 workspace 依赖拓扑在 protocol `--noEmit` 校验后显式生成 `dist`，以移除 `origin/main` 干净 runner 在 Gateway 检查时找不到 `@agent-talk/protocol` 的顺序缺陷；Dart 生成一致性门则在固定 Flutter SDK 就绪后运行。这些是共享 M2 客户端的合并门，不替代后续签名、安装、升级、卸载与实体设备发行验收；
 - Dart protocol 依赖经真实 pub solver 将 `protobuf` 修正为与 `grpc 5.1.0` 相容的 6.x，不使用 dependency override；客户端运行依赖已固定 `drift 2.34.2`、`path_provider 2.1.6` 和传递依赖 `sqlite3 3.5.0`，开发生成器固定 `drift_dev 2.34.0` / `build_runner 2.15.1`。PowerSync 未进入依赖，仅保留通过独立许可、运维、最小授权和量化收益 gate 后的可选 adapter；
 - M4 信号生命核心以纯 Dart selector 从规范 Agent event、本地 voice/speech 和精确 identity 生成 11 个互斥主状态，固定 approval/clarification → uncertain → failed → voice → work → speech → completed → idle 优先级；GLSL 与静态 CustomPainter 共用状态几何，录音使用当前 capture level，播放使用当前 segment 的 PCM16 WAV RMS 包络，shader load failure、系统减少动态和 60/120 Hz profile 都不改变语义。桌面固定安全区、手机可滚动槽位、2 倍系统字号、审批/uncertain 高对比和桌面/手机 golden 已进入 Flutter 门；
 - M4 桌面能力由独立 port/controller/production adapter 组合 `hotkey_manager`、`tray_manager`、`local_notifier` 与 `window_manager`。启动 replay 不弹历史通知，新事件按 conversation sequence 高水位去重且通知只含固定阶段文案；全局/应用内快捷键只切换语音草稿。close-to-tray 只有托盘成功后启用，Fedora 44 niri/Wayland 真自检明确得到 hotkey/tray `degraded`、notifications/window `available`，没有伪装 X11 能力；
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
-Hermes-only MVP 尚未完成或未实测：
+Hermes 生产链路尚未完成或未实测：
 
 - Hermes 0.19.0 尚未提供生产 Connector 所需的显式幂等 run submission；在该能力补齐前，真实 Flutter/Gateway/PostgreSQL/Connector 端到端 10 轮与重启门保持阻断；
 - 120 Hz 实体手机上的新 HomeScreen 2,000 条历史、并发 delta/录音/TTS/SignalCore profile；
@@ -262,7 +262,7 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 
 退出条件：一桌面一手机对同一会话无重复、无串线，离线历史可读；cursor-sync 是必须通过的基线，PowerSync gate 失败不阻塞 UI。
 
-完成证据：Gateway directory/conversation 的追加协议、expand-first PostgreSQL migration、并发幂等创建和生产 Flutter workspace 已接通；两个独立 Client 账本/router 对共同事件、显式接管、断线与 cursor 续播收敛且没有生成 Send；完整回复、工具/审批/澄清/终态、签名审批、lease 定时续租和 uncertain 不重提均有离线门。固定 PostgreSQL 17 的 migration/并发/恢复门与真实 HTTP/2 TLS loopback 已在 Fedora 44 复验；Linux release 与 Secret Service 写/读/删真链路通过。[GitHub Actions run 29899751800](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/29899751800) 进一步通过 Node/PostgreSQL、Linux quality/keyring、Android、macOS/iOS 与 Windows 全部门；实体设备与签名发行仍按 M5 单独验收。
+完成证据：Gateway directory/conversation 的追加协议、expand-first PostgreSQL migration、并发幂等创建和生产 Flutter workspace 已接通；两个独立 Client 账本/router 对共同事件、显式接管、断线与 cursor 续播收敛且没有生成 Send；完整回复、工具/审批/澄清/终态、签名审批、lease 定时续租和 uncertain 不重提均有离线门。固定 PostgreSQL 17 的 migration/并发/恢复门与真实 HTTP/2 TLS loopback 已在 Fedora 44 复验；Linux release 与 Secret Service 写/读/删真链路通过。[GitHub Actions run 29899751800](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/29899751800) 进一步通过 Node/PostgreSQL、Linux quality/keyring、Android、macOS/iOS 与 Windows 全部门；实体设备与签名发行仍按后续发行门单独验收。
 
 ### M3 — 语音闭环（完成：2026-07-22）
 
@@ -281,7 +281,7 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 
 离线门通过 Python sidecar 8 项测试和 Flutter 125 项完整测试；覆盖 final 推理期间取消并立即解除私有 WAV 链接、stdio `end` 后取消、权限拒绝、STT/存储失败、确认隔离、乱序 provisional 拒绝、远程 provider 事实变化重同意与禁止重定向、TTS 请求取消、分段预取、stale stop、Drift 关闭重开/清理、桌面/手机 golden 与 accessibility。最终审查后生成一致性和静态分析无问题，Linux release 再次带 `record`/`media_kit` 原生插件构建成功；默认 PipeWire source 另以 `pw-record` 真采集 2 秒 16 kHz mono PCM（64,000 bytes，mean -24.4 dB/max -5.7 dB）后立即删除。release 内置的 `VOXHANDOFF_AUDIO_CAPTURE_SELF_TEST=1` 正确暴露宿主缺少 `parecord/pactl`，本轮 `pkexec` 未获管理员授权，故 record plugin 的 Fedora 真采集仍作为明确环境门，不得写成已通过；CI 已安装 `pulseaudio-utils`。本机 GPT-SoVITS WAV → PCM → sidecar 真链路返回中文终稿，证明进程和格式契约。[GitHub Actions run 30175530966](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30175530966) 进一步通过 Node/PostgreSQL、Linux quality/release/Secret Service、Android、macOS/iOS 与 Windows 全部门。
 
-脱敏基准位于 `artifacts/benchmarks/m3-fedora44-20260722/`：5 次 warmup 后 30 条合成中文技术语料的 faster-whisper base 非空 final 为 27/30，成功样本 P50 500.04 ms/P95 1953.18 ms，平均 CER 0.678；GPT-SoVITS 30/30 返回 WAV，但 CPU P50 3723.92 ms/P95 5428.33 ms；50 次 STT→确定性回复→TTS 为 44/50（88%）。失败全部保留在分母，因此该 Intel i5-1155G7 CPU/base profile 被拒绝自动语音并按 `PRODUCT.md` 标为 `text-first degraded`，不下调推荐目标。M3 接受的是可替换实现、失败隔离和经评审的降级口径；M5 启用推荐 voice release profile 前仍须以更强中文模型/加速 TTS 通过 ≥95%、10 次 cold start 和具名真人设备语料。
+脱敏基准位于 `artifacts/benchmarks/m3-fedora44-20260722/`：5 次 warmup 后 30 条合成中文技术语料的 faster-whisper base 非空 final 为 27/30，成功样本 P50 500.04 ms/P95 1953.18 ms，平均 CER 0.678；GPT-SoVITS 30/30 返回 WAV，但 CPU P50 3723.92 ms/P95 5428.33 ms；50 次 STT→确定性回复→TTS 为 44/50（88%）。失败全部保留在分母，因此该 Intel i5-1155G7 CPU/base profile 被拒绝自动语音并按 `PRODUCT.md` 标为 `text-first degraded`，不下调推荐目标。M3 接受的是可替换实现、失败隔离和经评审的降级口径；后续启用推荐 voice release profile 前仍须以更强中文模型/加速 TTS 通过 ≥95%、10 次 cold start 和具名真人设备语料。
 
 ### M4 — Fairy 动效与桌面能力（完成：2026-07-25）
 
@@ -303,13 +303,26 @@ TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖�
 
 桌面性能证据位于 `artifacts/benchmarks/m4-fedora44-20260725/`：Fedora 44 / Linux 7.1.4、i5-1155G7、Iris Xe、15 GiB RAM、niri/Wayland、power-saver、1920×1080@60.001 Hz 的 Linux release，在 5 帧 shader warmup 后对 11 个状态各采 5 帧；55/55 均低于 16,667 µs，total P50 3,570 µs、P95 7,287 µs。
 
-Android `highRefresh120` 证据位于 `artifacts/benchmarks/m4-android-vivo-x100s-20260725/`：vivo X100s / Android 16 API 36 / MediaTek MT6989 / Mali-G720-Immortalis MC12 / 15,691,500 KiB RAM / 1260×2800@120.000 Hz，低电量模式关闭且测试前后 thermal status 均为 0。刚安装 profile APK 后的首轮 cold 测量有 2/55 帧超过严格的 8,333 µs `FrameTiming.totalSpan` 门，原始结果按失败保留；随后两次不重装 APK 的独立 hot 进程重启均为 0/55 超预算，首轮 total P50/P95 1,044/2,029 µs，复验为 968/2,084 µs。结合 Fedora `balanced60`，M4 的持续渲染 60/120 Hz 门已覆盖；cold 结果只作为 M5 发行启动性能的明确观察，不得表述为 cold-start 通过。
+Android `highRefresh120` 证据位于 `artifacts/benchmarks/m4-android-vivo-x100s-20260725/`：vivo X100s / Android 16 API 36 / MediaTek MT6989 / Mali-G720-Immortalis MC12 / 15,691,500 KiB RAM / 1260×2800@120.000 Hz，低电量模式关闭且测试前后 thermal status 均为 0。刚安装 profile APK 后的首轮 cold 测量有 2/55 帧超过严格的 8,333 µs `FrameTiming.totalSpan` 门，原始结果按失败保留；随后两次不重装 APK 的独立 hot 进程重启均为 0/55 超预算，首轮 total P50/P95 1,044/2,029 µs，复验为 968/2,084 µs。结合 Fedora `balanced60`，M4 的持续渲染 60/120 Hz 门已覆盖；cold 结果只作为后续发行启动性能的明确观察，不得表述为 cold-start 通过。
 
 Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编译触发同一探针。探针改用 Flutter 同步日志输出，避免 Android 在紧接 `exit()` 时丢失 `stdout.writeln` 缓冲；汇总脚本继续安全剥离 `flutter run`/logcat 前缀。Flutter 3.44.6 的有效 Android 下限为 API 24，Gradle 配置现跟随锁定 SDK 的 `flutter.minSdkVersion`，不再在每次构建时把过时的显式 API 23 静默迁移。真机 profile、具名 exact 环境、脱敏原始测量、严格失败与两次重复通过结果均已入库，未以 emulator、debug build 或 CI APK build 替代。
 
 [GitHub Actions run 30184413298](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30184413298) 已在包含上述真机探针修正和全部 Android 证据的 head 上通过 Node/PostgreSQL、Linux 160 项 Flutter 测试与 analyze/release/Xvfb desktop/Secret Service、Android debug APK、macOS/iOS 和 Windows 全部门。该 CI 证明代码、生成物与五平台构建门一致，但不替代已单独保存的实体 Android profile 结果。
 
-### M5 — Hermes 单一纵向链路（实现完成，上游幂等能力阻断真实端到端门）
+### M5 — GUI 语音聊天打通（下一阶段）
+
+目标：先把已有录音、可编辑文本、聊天 UI、播放与 SignalCore 串成用户可用的语音聊天体感，不等待 Hermes 上游补齐幂等能力。
+
+- 完成来源选择与设置页：Hermes、用户自接 LLM API、STT、TTS 均可独立配置、测试和显示失败阶段；
+- 实现本机直接的 OpenAI-compatible LLM chat adapter，API key 仅由 OS 安全存储持有，支持流式文本、取消与本机历史；
+- 将语音控制器接入真实聊天 UI：录音 → 可编辑终稿 → 明确发送 → 流式完整回复 → 可停止的 TTS；无 STT/TTS 或任何一端失败时保留文字聊天；
+- 将 faster-whisper 与 Piper-compatible 服务作为免费开源默认预设，只提供版本化接口探测、配置引导和连接测试，不捆绑模型、音色、云账号或自动下载；
+- 完成一个用户自配 LLM API 的手工 smoke：文字、录音转写（若已配置）、流式回复、播放（若已配置）、取消和断网错误均可见且无 secret 日志；
+- 审批、工具执行、跨设备控制和 Hermes `uncertain` 只在 Hermes 路线出现，纯 LLM UI 不得伪装这些状态。
+
+退出条件：在 Fedora 的本机用户配置中，能完成至少 10 轮文本聊天；已配置音频端口时能完成“录音—编辑—发送—回复—播放”一轮；取消和任一配置失败不丢失已确认文本或完整回复，且相关离线/Flutter 测试通过。
+
+### H1 — Hermes 单一纵向链路（实现完成，上游幂等能力阻断真实端到端门）
 
 目标：只把 Hermes 做成可真实使用的首发 Agent。
 
@@ -490,7 +503,7 @@ UI 不展示虚构完成百分比。诊断页面显示最后真实事件、同�
 | protocol 滚动升级不兼容 | major/minor handshake、前一 minor fixtures、expand-first migration | N/N-1 组合失败即阻止升级 |
 | 远程 STT 泄露音频 | 默认关闭、provider 同意、目标/TLS/保留提示 | 未确认上传或目标变化后继续上传即 Critical |
 | Hermes capability 或 SSE 契约变化 | fail-closed 协商、稳定事件身份、fake 契约与隔离 live profile | 任一必需能力缺失或事件不可恢复即拒绝 Connector 上线 |
-| Hermes 当前纵向真链路未验证 | fake Hermes + 真实 Gateway stream 已覆盖 Connector 边界，不擅自复用默认 gateway | 建隔离 Hermes 0.19.0 profile 后关闭 M5 live gate |
+| Hermes 当前纵向真链路未验证 | fake Hermes + 真实 Gateway stream 已覆盖 Connector 边界，不擅自复用默认 gateway | Hermes 补齐幂等提交后关闭 H1 live gate |
 | PowerSync 引入第二同步/授权平面 | 当前采用 Drift + 已认证 cursor sync；PowerSync 仅位于可选 Sync Adapter | 只有许可、运维、最小授权和量化收益同时过门才引入 |
 | 五端插件能力不一致 | record/media/security adapter + real device tests | 单平台失败显式降级或写原生 plugin |
 | TTS 冷启动/崩溃 | 常驻预热、分段、纯文字降级 | 不达标时限制自动播报长度 |

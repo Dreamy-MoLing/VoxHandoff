@@ -2,13 +2,13 @@
 
 ## 1. 架构原则
 
-- 本地优先：录音、默认 STT、TTS 播放和离线历史尽量留在设备；
+- 本地优先：录音、STT/TTS 配置、LLM API key 和离线历史尽量留在设备；
 - 事实唯一：PostgreSQL 决定同步模式的耐久状态，Agent 原生线程决定执行上下文；
 - 实时与耐久分离：gRPC 负责低延迟事件，数据库同步负责完整历史；
 - 安全失败：状态未知时停止重试并显示 `uncertain`；
 - 协议先于框架：领域模型不依赖 Flutter、PowerSync 或 Hermes SDK 类型；
 - 社区优先：官方方案优先，其次选择成熟组件，自研只做适配和产品特有语义；
-- 可降级：视觉、STT、TTS、同步任一失败不应破坏文字 Agent 主链路。
+- 可降级：视觉、STT、TTS、同步任一失败不应破坏文字聊天主链路。
 
 ## 2. 技术栈
 
@@ -26,8 +26,9 @@
 | 实时传输 | gRPC bidirectional streaming | HTTP/2 + TLS；Client/Node 均主动连接 Gateway |
 | 权威存储 | PostgreSQL | 事务、outbox、事件序号、权限和审计 |
 | 跨端同步 | Gateway gRPC cursor sync | 复用现有认证、replay、Ack 和 PostgreSQL 权威；PowerSync 保留为通过独立许可/运维 gate 后的可选 Sync Adapter |
-| 本地 STT | Python sidecar | 优先成熟 Whisper 系后端；以版本化 stdio/loopback 契约替换 |
-| TTS | GPT-SoVITS HTTP adapter | 支持其他 TTS；不把模型生命周期写进 Client |
+| STT port | stdio/loopback/remote adapter | 默认预设为用户自装的 faster-whisper；模型与服务生命周期不进入 Client |
+| TTS port | loopback/remote adapter | 默认预设为用户自装的 Piper-compatible 服务；GPT-SoVITS 等可替换，不把模型生命周期写进 Client |
+| 自接 LLM API | 本机直接 HTTPS adapter | 小型 OpenAI-compatible chat-completions 端口；key 仅进 OS 安全存储，不经过 Gateway |
 | 多实例消息总线 | NATS JetStream（达到门槛后） | 首版 PostgreSQL outbox 足够，不自研队列 |
 
 第三方版本由 lockfile 固定。升级前检查许可证、平台覆盖、breaking changes、离线语义和安全公告。
@@ -190,7 +191,7 @@ message Envelope {
 
 - stream/history/session create-resume；
 - interrupt/clarification/approval/tool events；
-- attachment 与大小限制（M0-M5 必须协商为不支持）；
+- attachment 与大小限制（当前 MVP 必须协商为不支持）；
 - idempotency/replay/sequence recovery；
 - append-only delta 或可修订 delta；
 - Agent、adapter、protocol 版本；
@@ -227,7 +228,7 @@ Agent adapter 只输出以下规范事件；未知原生事件记录为受限诊
 
 每个事件必须有本地生成的 opaque `eventId`、connection/session/request identity、从 1 开始且连续的规范 sequence 和 UTC `occurredAt`。Hermes 提供有效数字 Unix timestamp 时适配器规范化为 UTC；缺失或非法时使用确定性本地序号时间，不能以每次重连的墙钟时间破坏事件身份。原生 sequence 只经范围和单调校验后进入规范序号空间；`final` 由规范终态类型推导，不接受上游布尔值。
 
-Capability 字段固定为：`deltaMode`（`none|append_only|revisable`）、`eventStream`、`sessionHistory`、`createSession`、`resumeSession`、`interrupt`、`steer`、`clarification`、`approval`、`toolEvents`、`attachments`、`idempotency`、`replay`、`sequenceRecovery`、请求大小和 timeout。M0-M5 `attachments=false`；UI 不使用旧名称或失败探测能力。
+Capability 字段固定为：`deltaMode`（`none|append_only|revisable`）、`eventStream`、`sessionHistory`、`createSession`、`resumeSession`、`interrupt`、`steer`、`clarification`、`approval`、`toolEvents`、`attachments`、`idempotency`、`replay`、`sequenceRecovery`、请求大小和 timeout。当前 MVP `attachments=false`；UI 不使用旧名称或失败探测能力。
 
 Hermes capability 必须保守协商：缺失、未知或类型错误一律解释为不支持。`append_only` 只有在 Hermes 同时明确声明 streaming 与 append-only delta 时成立；`sequenceRecovery` 还要求稳定事件 ID，`replay`、approval、interrupt、session create/resume 和 idempotency 均不得由版本号或成功探测推断。Connector 注册前至少要求 `eventStream=true` 与 `idempotency=true`，否则拒绝上线并报告 capability stage。
 
@@ -292,7 +293,7 @@ Gateway/Client 重启或重连时从耐久账本恢复 pending approval。Agent 
 - `device_cursors`、`control_leases`；
 - `gateway_dispatch_outbox`：已接受 request 到固定 Node 的耐久投递；
 - `gateway_event_outbox`：已提交事件到实时流/同步层的耐久投递；
-- `attachments`：仅保留未来扩展的 hash、metadata、encrypted object reference；M0-M5 capability 固定为 false；
+- `attachments`：仅保留未来扩展的 hash、metadata、encrypted object reference；当前 MVP capability 固定为 false；
 - `stage_metrics`、`diagnostic_events`。
 
 原始录音和合成音频不进入这些同步表。
@@ -365,7 +366,7 @@ PowerSync 类型和 schema 若被引入，只能存在于 `SyncAdapter`。移除
 
 ### 9.2 暂停的适配范围
 
-Codex 研究适配器可以继续留在仓库内承担历史回归，但不得被生产 Node Connector 注册或出现在客户端目录。OpenClaw 和其他 Agent 不建立 adapter、配置入口或发行承诺。恢复这些方向前必须单独完成产品决策、威胁模型、capability 映射、幂等/恢复语义与真实端到端验收。
+Codex 研究适配器可以继续留在仓库内承担历史回归，但不得被生产 Node Connector 注册或出现在客户端目录。OpenClaw 和其他 Agent 不建立 adapter、配置入口或发行承诺。用户自接 LLM API 是直接聊天 adapter，不进入 Node/Gateway 注册、Agent 目录或 approval 协议。恢复其他 Agent 方向前必须单独完成产品决策、威胁模型、capability 映射、幂等/恢复语义与真实端到端验收。
 
 ## 10. 语音架构
 
@@ -375,7 +376,7 @@ Flutter `record` 位于 AudioCapture adapter 后。统一输出 PCM/WAV 或 STT 
 
 ### 10.2 STT
 
-本地 Python sidecar 和远程 STT 共同实现：
+STT port（本地 stdio/loopback 或用户同意的远程服务）共同实现：
 
 - capability/health/warmup；
 - start/push/end/cancel；
@@ -383,13 +384,17 @@ Flutter `record` 位于 AudioCapture adapter 后。统一输出 PCM/WAV 或 STT 
 - language、timing、confidence（若后端可用）；
 - 分阶段指标和无音频错误。
 
-本地 STT 是默认路径。远程 STT adapter 只有在用户完成 provider 级显式同意后才能接收音频，并必须报告目标 origin、TLS 验证状态、是否流式上传及已知服务端保留策略；这些信息变化时暂停上传并要求重新确认。远程 STT 音频不得复用 Agent/Gateway 管理凭据。
+免费开源默认预设是用户自装的 faster-whisper sidecar；应用只探测其版本化接口与 readiness，不下载模型、管理 Python 环境或承诺模型质量。远程 STT adapter 只有在用户完成 provider 级显式同意后才能接收音频，并必须报告目标 origin、TLS 验证状态、是否流式上传及已知服务端保留策略；这些信息变化时暂停上传并要求重新确认。远程 STT 音频不得复用 Agent/Gateway 或 LLM API 凭据。
 
 首轮测试集至少 30 条中文技术请求，覆盖中英混合、路径、版本号、噪声和自我修正。
 
 ### 10.3 TTS 与播放
 
-GPT-SoVITS adapter 生成规范音频块，`media_kit` adapter 播放。TTS 队列使用稳定 segment identity；最多预生成少量片段，停止后释放旧请求。完整回复、播报文本、音频缓存是三个独立数据域。
+Piper-compatible 本地 HTTP/stdio 服务是免费开源默认预设；GPT-SoVITS 或其他用户服务可实现同一 `TtsPort`。Client 只接收规范音频块，`media_kit` adapter 只负责播放。TTS 队列使用稳定 segment identity；最多预生成少量片段，停止后释放旧请求。完整回复、播报文本、音频缓存是三个独立数据域。
+
+### 10.4 用户自接 LLM API
+
+LLM API adapter 位于 Flutter infrastructure 层，直接从 OS 安全存储读取当前 provider 的 key，并使用 HTTPS 向用户配置的 origin 发出已确认文本。它只暴露 `ready`、流式文本、completed、cancelled 和明确失败；禁止把提供商返回的文本猜测成 tool、approval、执行主机或 Hermes 状态。用户改变 origin、模型或认证方式后必须重新测试；TLS 错误 fail closed，诊断和日志不得保存 Authorization、key 或完整 prompt。首版不承诺 function calling、MCP、附件、后台任务、跨端同步或 provider 代理。
 
 ## 11. 视觉架构
 

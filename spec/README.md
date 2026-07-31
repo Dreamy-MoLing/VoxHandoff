@@ -1,7 +1,7 @@
 # VoxHandoff 正式开发基线
 
-> 基线版本：1.54<br>
-> 生效日期：2026-07-29<br>
+> 基线版本：1.55<br>
+> 生效日期：2026-07-31<br>
 > 状态：Active
 
 本目录是 VoxHandoff 唯一有效的产品与工程基线。实现、评审、测试和发布只引用这里的文档：
@@ -31,6 +31,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.55 | 2026-07-31 | 收敛为 GUI 优先的语音聊天/数字伙伴 MVP：Hermes 保持唯一 Agent，新增用户自带 LLM API 的直接文本对话边界；STT/TTS 改为用户可配置端口并给出免费开源默认预设，近期交付改为先打通可用体验 |
 | 1.54 | 2026-07-29 | 固化 Hermes 0.19 真实 10 轮/stop/manual deny/SIGKILL/restart 证据与幂等能力阻断；关闭 Fedora Flutter 170 测试、Linux release 和 2,000 事件 HomeScreen 60 Hz 门 |
 | 1.53 | 2026-07-26 | 收缩为 Hermes-only MVP，暂停 Codex/OpenClaw 与发行工作；新增生产 Connector、保守能力/恢复契约、轮次聚合、SignalCore 和真实 HomeScreen 性能门 |
 | 1.52 | 2026-07-22 | 完成 M3 录音/本地与远程 STT 同意边界、终稿确认、GPT-SoVITS 分段播报与可打断播放，并记录 CPU/base profile 的 30/30/50 降级实测 |
