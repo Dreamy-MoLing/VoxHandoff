@@ -817,7 +817,10 @@ export class PostgresGatewayLedger implements
         `SELECT conversation_id, title, node_id, agent_id, capability_revision,
                 session_id, revision, last_sequence
          FROM agent_talk.conversations
-         WHERE node_id IS NOT NULL
+         WHERE title IS NOT NULL
+           AND node_id IS NOT NULL
+           AND agent_id IS NOT NULL
+           AND capability_revision IS NOT NULL
          ORDER BY updated_at DESC, conversation_id`,
       ),
     ]);
@@ -1273,10 +1276,12 @@ export class PostgresGatewayLedger implements
                 cc.target_id, ap.resolution_decision, ap.operation_summary_sha256,
                 cl.confirmed_text AS clarification_confirmed_text,
                 r.conversation_id,
-                c.session_id, c.node_id, c.agent_id, c.capability_revision, r.confirmed_text
+                conversation.session_id, conversation.node_id, conversation.agent_id,
+                conversation.capability_revision, r.confirmed_text
          FROM claimed c
          JOIN agent_talk.gateway_dispatch_outbox d ON d.outbox_id = c.outbox_id
          JOIN agent_talk.requests r ON r.request_id = c.request_id
+         JOIN agent_talk.conversations conversation ON conversation.conversation_id = r.conversation_id
          LEFT JOIN agent_talk.control_commands cc ON cc.command_id = d.control_command_id
          LEFT JOIN agent_talk.approvals ap ON ap.approval_id = cc.target_id
          LEFT JOIN agent_talk.clarifications cl ON cl.clarification_id = cc.target_id

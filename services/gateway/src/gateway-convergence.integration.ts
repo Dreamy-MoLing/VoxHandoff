@@ -253,9 +253,18 @@ export async function runGatewayConvergenceIntegration(
 
   await pool.query(
     `INSERT INTO agent_talk.conversations (
-       conversation_id, created_by_device_id, created_at, updated_at
-     ) VALUES ($1, $2, $3, $3)`,
-    [conversationId, identity.deviceId, new Date("2030-01-01T00:05:00.000Z")],
+       conversation_id, created_by_device_id, created_at, updated_at, title,
+       node_id, agent_id, capability_revision
+     ) VALUES ($1, $2, $3, $3, $4, $5, $6, $7)`,
+    [
+      conversationId,
+      identity.deviceId,
+      new Date("2030-01-01T00:05:00.000Z"),
+      "Convergence integration",
+      identity.nodeId,
+      identity.agentId,
+      "agent-capabilities-1",
+    ],
   );
 
   const clientInput = new InputQueue<ConnectClientRequest>();

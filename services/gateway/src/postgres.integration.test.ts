@@ -393,6 +393,12 @@ test(
         ),
         true,
       );
+      assert.equal(
+        directory.conversations.some(
+          (conversation) => conversation.conversationId === conversationId,
+        ),
+        false,
+      );
       await assert.rejects(
         ledger.createConversation({
           ...createDirectoryInput,
