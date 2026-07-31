@@ -4,14 +4,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/speech.dart';
 import '../domain/voice.dart';
+import 'voice_provider_settings_controller.dart';
 
-final ttsPortProvider = Provider<TtsPort>((_) => const _UnavailableTtsPort());
+final ttsPortProvider = Provider<TtsPort>((ref) {
+  final configuration = ref.watch(
+    voiceProviderSettingsProvider.select((value) => value.settings.tts),
+  );
+  final port = ref.watch(voicePortFactoryProvider).createTts(configuration);
+  ref.onDispose(() => unawaited(port.close()));
+  return port;
+});
 
 final audioPlaybackPortProvider = Provider<AudioPlaybackPort>(
   (_) => const _UnavailableAudioPlaybackPort(),
 );
 
-final speechEnabledProvider = Provider<bool>((_) => false);
+final speechEnabledProvider = Provider<bool>((ref) {
+  final configuration = ref.watch(
+    voiceProviderSettingsProvider.select((value) => value.settings.tts),
+  );
+  return ref.watch(voicePortFactoryProvider).isTtsEnabled(configuration);
+});
 
 final speechPlaybackProvider =
     NotifierProvider<SpeechPlaybackController, SpeechPlaybackState>(
@@ -249,30 +262,6 @@ VoiceStageFailure _safeSpeechFailure(
     retryable: true,
   ),
 };
-
-class _UnavailableTtsPort implements TtsPort {
-  const _UnavailableTtsPort();
-
-  @override
-  Future<void> warmUp() async {}
-
-  @override
-  Future<SynthesizedSpeech> synthesize(SpeechSegment segment) =>
-      throw const VoicePortException(
-        VoiceStageFailure(
-          stage: VoiceFailureStage.configuration,
-          code: 'tts_not_configured',
-          safeMessage: 'Speech synthesis is not configured.',
-          retryable: false,
-        ),
-      );
-
-  @override
-  Future<void> cancel() async {}
-
-  @override
-  Future<void> close() async {}
-}
 
 class _UnavailableAudioPlaybackPort implements AudioPlaybackPort {
   const _UnavailableAudioPlaybackPort();

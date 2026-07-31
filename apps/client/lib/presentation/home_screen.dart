@@ -27,6 +27,7 @@ import 'direct_llm_settings_sheet.dart';
 import 'design/agent_talk_theme.dart';
 import 'message_composer.dart';
 import 'pairing_dialog.dart';
+import 'voice_settings_sheet.dart';
 import 'signal_core_view.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -192,10 +193,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
             IconButton(
-              tooltip: isDirect ? 'Direct LLM settings' : 'Source settings',
-              onPressed: isDirect
-                  ? () => showDirectLlmSettingsSheet(context)
-                  : null,
+              tooltip: 'Source settings',
+              onPressed: () => showVoiceSettingsSheet(context),
               icon: const Icon(Icons.tune_outlined),
             ),
             if (desktop.isDesktop) _DesktopCapabilityIcon(snapshot: desktop),

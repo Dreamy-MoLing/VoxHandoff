@@ -128,8 +128,8 @@ control lease 过期只撤销发送、审批和中断能力，不改变 Agent �
 - 流式 provisional transcript 与 final transcript 必须区分；
 - final transcript 可编辑并保留原识别版本用于本地诊断；
 - 原始录音在 final transcript 产生或用户取消后立即删除，不进入同步数据库；可恢复的 STT 失败只允许在应用私有临时目录保留至用户放弃、应用下次启动或 24 小时，以最早者为准；
-- STT/TTS 都是用户配置的端口；项目只维护稳定的 capability、测试、失败隔离和隐私提示，不内置模型、音色或云端账号生命周期；
-- 免费开源默认预设是本地 faster-whisper STT 与 Piper-compatible TTS 服务，均须由用户自行安装/选择模型并完成连接测试；不能运行时仍保持文字聊天可用；
+- STT/TTS 都是独立配置的端口；项目只维护稳定的 capability、测试、失败隔离和隐私提示，不内置模型、音色或云端账号生命周期；
+- 免费开源默认预设是应用拥有路径的本地 faster-whisper STT sidecar 与用户自装的 Piper-compatible TTS 服务：设置页只探测 readiness、不会下载模型或接受命令；Piper 必须完成连接测试。任一端不能运行时仍保持文字聊天可用；
 - 远程 STT 默认关闭；启用时必须显示音频将离开设备、目标服务、TLS 状态和已知保留策略，并取得用户对该 provider 的显式同意；
 - 没有 STT 时仍可输入文字使用所有 Agent 功能。
 

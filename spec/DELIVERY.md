@@ -349,6 +349,34 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
 记录脱敏的版本、origin 类型、10 轮结果、取消、断网和已配置音频端口结果；禁止以
 mock 或 direct LLM 成功替代 Hermes H1 纵向验收。
 
+#### 2026-07-31 设置/本机 Piper 增量（未关闭 M5）
+
+- `VoiceProviderSettingsController`、配置模型和安全存储 record 与
+  `VoicePortFactory` 将 STT/TTS 配置、端口构造和 Widget state 分离。生产
+  `ProviderScope` 才注入 OS secure storage；离线 controller 默认使用 ephemeral
+  store，因此任何纯文字/语音控制器测试不会意外访问系统 keyring。保存与恢复只接受
+  受限字段，API key 仍只属于 Direct LLM 的独立 secure-store key。
+- 来源设置页始终可从 Hermes 或 Direct LLM 路径打开：Hermes 只报告既有 paired
+  Gateway 边界；Direct LLM 跳转其单独的 key/config form；faster-whisper 只可启用
+  与测试应用拥有路径的 versioned sidecar readiness；Piper 只配置 exact loopback
+  origin、可选 voice 与 speed。任一测试只显示安全失败阶段，不记录正文、音频或凭据。
+- 新增 `PiperHttpTtsPort` 严格实现官方 Piper HTTP 表面：`GET /info` 为无文本
+  readiness probe，`POST /synthesize` 提交文字并只接受最大 16 MiB 的 RIFF/WAV。
+  redirect、远端 origin、user-info、path/query/fragment、坏 WAV、取消和服务错误均
+  fail closed；TTS 失败仍由既有文字优先路径保留完整回复。Piper 引擎保持用户安装，
+  不下载模型、不管理音色或 Python 环境。
+- 离线证据新增 Piper loopback socket 契约、设置存储/独立测试、设置 UI widget
+  测试；`npm test`、`npm run check` 和
+  `AGENT_TALK_FLUTTER_ROOT=/home/roco/develop/flutter-3.44.6 npm run flutter:check`
+  均通过。Flutter 门包含 analyze、Drift generation、格式、golden/accessibility 及
+  178 项 tests；来源设置入口的六张 desktop/phone golden 因启用状态变化已人工检查并
+  重建。
+
+此增量补齐 M5 结构治理第 2 项的独立设置/adapter 边界，但不取代真实服务验收。
+本机依旧没有用户配置的 HTTPS LLM、可运行 faster-whisper sidecar 或 Piper 服务，
+故 10 轮文本与一轮录音—编辑—发送—回复—播放仍是未达成的唯一 M5 退出条件；不得
+以 loopback fake 或离线测试替代。
+
 #### M5 结构治理 — 解耦计划（在最小闭环稳定后执行）
 
 触发条件：M5 的来源选择、用户自接 LLM API 的一轮文字/流式回复，以及录音到可编辑终稿的主路径均已有契约测试。它是 M5 的维护性门，不应抢在主路径可用之前，也不与 Hermes H1 的上游能力阻断混在同一变更中。

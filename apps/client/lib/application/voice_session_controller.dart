@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/client_session.dart';
 import '../domain/voice.dart';
+import 'voice_provider_settings_controller.dart';
 import 'client_session_controller.dart';
 import 'speech_playback_controller.dart';
 
@@ -13,9 +14,14 @@ final audioCapturePortProvider = Provider<AudioCapturePort>(
   (_) => throw StateError('No production AudioCapturePort is configured.'),
 );
 
-final sttPortProvider = Provider<SttPort>(
-  (_) => throw StateError('No production SttPort is configured.'),
-);
+final sttPortProvider = Provider<SttPort>((ref) {
+  final configuration = ref.watch(
+    voiceProviderSettingsProvider.select((value) => value.settings.stt),
+  );
+  final port = ref.watch(voicePortFactoryProvider).createStt(configuration);
+  ref.onDispose(() => unawaited(port.close()));
+  return port;
+});
 
 final speechStopPortProvider = Provider<SpeechStopPort>(
   (ref) => _SpeechControllerStopPort(ref),

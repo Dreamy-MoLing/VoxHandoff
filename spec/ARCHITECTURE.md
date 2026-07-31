@@ -26,8 +26,8 @@
 | 实时传输 | gRPC bidirectional streaming | HTTP/2 + TLS；Client/Node 均主动连接 Gateway |
 | 权威存储 | PostgreSQL | 事务、outbox、事件序号、权限和审计 |
 | 跨端同步 | Gateway gRPC cursor sync | 复用现有认证、replay、Ack 和 PostgreSQL 权威；PowerSync 保留为通过独立许可/运维 gate 后的可选 Sync Adapter |
-| STT port | stdio/loopback/remote adapter | 默认预设为用户自装的 faster-whisper；模型与服务生命周期不进入 Client |
-| TTS port | loopback/remote adapter | 默认预设为用户自装的 Piper-compatible 服务；GPT-SoVITS 等可替换，不把模型生命周期写进 Client |
+| STT port | stdio/loopback/remote adapter | 默认预设为应用拥有路径的 versioned faster-whisper sidecar；设置页只启用/探测 readiness，不接受命令或管理模型生命周期 |
+| TTS port | loopback/remote adapter | 默认预设为用户自装的 Piper HTTP 服务；精确 loopback `/info` 探测与 `/synthesize` WAV，GPT-SoVITS 等可替换，不把模型生命周期写进 Client |
 | 自接 LLM API | 本机直接 HTTPS adapter | 小型 OpenAI-compatible chat-completions 端口；key 仅进 OS 安全存储，不经过 Gateway |
 | 多实例消息总线 | NATS JetStream（达到门槛后） | 首版 PostgreSQL outbox 足够，不自研队列 |
 
@@ -390,7 +390,7 @@ STT port（本地 stdio/loopback 或用户同意的远程服务）共同实现�
 
 ### 10.3 TTS 与播放
 
-Piper-compatible 本地 HTTP/stdio 服务是免费开源默认预设；GPT-SoVITS 或其他用户服务可实现同一 `TtsPort`。Client 只接收规范音频块，`media_kit` adapter 只负责播放。TTS 队列使用稳定 segment identity；最多预生成少量片段，停止后释放旧请求。完整回复、播报文本、音频缓存是三个独立数据域。
+Piper-compatible 本地服务是免费开源默认预设；当前实现选择官方 Piper HTTP 的精确版本化表面：用户在本机启动服务后，Client 仅接受 exact loopback HTTP origin，`GET /info` 不发送文本地探测 readiness，`POST /synthesize` 只接收有界 WAV。它拒绝 redirect、认证信息、路径/query/fragment 与公网 origin；不把 Piper 的 GPL-3.0 引擎或音色打包进 Client。GPT-SoVITS 或其他用户服务可实现同一 `TtsPort`。Client 只接收规范音频块，`media_kit` adapter 只负责播放。TTS 队列使用稳定 segment identity；最多预生成少量片段，停止后释放旧请求。完整回复、播报文本、音频缓存是三个独立数据域。
 
 ### 10.4 用户自接 LLM API
 

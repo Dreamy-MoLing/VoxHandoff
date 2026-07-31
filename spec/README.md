@@ -31,6 +31,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.58 | 2026-07-31 | M5 设置增量：来源设置页将 Hermes 状态、Direct LLM、faster-whisper readiness 与 Piper 本机 HTTP 配置/测试隔离；Piper 固定官方 `/info` 与 `/synthesize` 契约、精确 loopback 限制与失败降级，Flutter 门扩至 178 项；真实用户服务 smoke 仍未关闭 |
 | 1.57 | 2026-07-31 | M5 首个可审查增量：新增本机 direct LLM 的 HTTPS/SSE、OS 安全存储 key、本机 Drift 历史、取消与文字优先 UI；离线/Flutter 门通过，真实用户 provider 与音频端口 smoke 仍待显式配置后执行 |
 | 1.56 | 2026-07-31 | 将解耦列入 M5 的结构治理阶段：先完成最小语音聊天闭环，再以契约测试保护的增量方式拆分 UI、配置、Connector 与 Gateway 账本，不进行阻塞功能交付的大重写 |
 | 1.55 | 2026-07-31 | 收敛为 GUI 优先的语音聊天/数字伙伴 MVP：Hermes 保持唯一 Agent，新增用户自带 LLM API 的直接文本对话边界；STT/TTS 改为用户可配置端口并给出免费开源默认预设，近期交付改为先打通可用体验 |

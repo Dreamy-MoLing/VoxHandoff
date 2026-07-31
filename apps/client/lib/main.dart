@@ -10,19 +10,17 @@ import 'app/agent_talk_app.dart';
 import 'application/desktop_integration_controller.dart';
 import 'application/direct_chat_controller.dart';
 import 'application/speech_playback_controller.dart';
+import 'application/voice_provider_settings_controller.dart';
 import 'application/voice_session_controller.dart';
-import 'domain/speech.dart';
 import 'domain/voice.dart';
 import 'infrastructure/audio/media_kit_audio_playback.dart';
 import 'infrastructure/audio/record_audio_capture.dart';
 import 'infrastructure/desktop/production_desktop_integration.dart';
 import 'infrastructure/security/flutter_secure_value_store.dart';
-import 'infrastructure/storage/drift_local_transcript_store.dart';
+import 'infrastructure/security/voice_provider_settings_store.dart';
 import 'infrastructure/storage/drift_local_direct_chat_store.dart';
-import 'infrastructure/stt/bundled_stt_launcher.dart';
-import 'infrastructure/stt/stdio_stt_port.dart';
-import 'infrastructure/stt/unavailable_stt_port.dart';
-import 'infrastructure/tts/gpt_sovits_tts_port.dart';
+import 'infrastructure/storage/drift_local_transcript_store.dart';
+import 'infrastructure/voice/production_voice_port_factory.dart';
 import 'presentation/m4_render_benchmark.dart';
 import 'presentation/mvp_render_benchmark.dart';
 
@@ -51,15 +49,18 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
   final transcriptStore = await DriftLocalTranscriptStore.forApplication();
   final directChatStore = await DriftLocalDirectChatStore.forApplication();
-  final stt = _productionSttPort();
   final playback = MediaKitAudioPlayback();
-  final tts = _productionTtsPort();
   final isDesktop = Platform.isLinux || Platform.isMacOS || Platform.isWindows;
   runApp(
     ProviderScope(
       overrides: [
         audioCapturePortProvider.overrideWithValue(RecordAudioCapture()),
-        sttPortProvider.overrideWithValue(stt),
+        voicePortFactoryProvider.overrideWithValue(
+          const ProductionVoicePortFactory(),
+        ),
+        voiceProviderSettingsStoreProvider.overrideWithValue(
+          VoiceProviderSettingsStore(FlutterSecureValueStore()),
+        ),
         localTranscriptStoreProvider.overrideWithValue(transcriptStore),
         directChatHistoryStoreProvider.overrideWithValue(directChatStore),
         audioPlaybackPortProvider.overrideWithValue(playback),
@@ -67,10 +68,6 @@ Future<void> main() async {
           desktopIntegrationPortProvider.overrideWithValue(
             ProductionDesktopIntegration(),
           ),
-        if (tts != null) ...[
-          ttsPortProvider.overrideWithValue(tts),
-          speechEnabledProvider.overrideWithValue(true),
-        ],
       ],
       child: const AgentTalkApp(),
     ),
@@ -144,43 +141,6 @@ Future<void> _runAudioCaptureSelfTest() async {
     await subscription?.cancel();
     await capture.close();
   }
-}
-
-TtsPort? _productionTtsPort() {
-  const baseUrl = String.fromEnvironment('VOXHANDOFF_GSV_BASE_URL');
-  const referenceAudio = String.fromEnvironment('VOXHANDOFF_GSV_REF_AUDIO');
-  const promptText = String.fromEnvironment('VOXHANDOFF_GSV_PROMPT_TEXT');
-  if (baseUrl.isEmpty || referenceAudio.isEmpty) return null;
-  final uri = Uri.tryParse(baseUrl);
-  // M3 production wiring is local-only. A future remote provider must add the
-  // same explicit provider disclosure and re-consent boundary as remote STT.
-  if (uri == null || uri.scheme != 'http' || !_isLoopback(uri.host)) {
-    return null;
-  }
-  return GptSoVitsTtsPort(
-    config: GptSoVitsConfig(
-      baseUri: uri,
-      referenceAudioPath: referenceAudio,
-      promptText: promptText,
-    ),
-  );
-}
-
-bool _isLoopback(String host) {
-  final normalized = host.toLowerCase();
-  return normalized == 'localhost' ||
-      normalized == '127.0.0.1' ||
-      normalized == '::1';
-}
-
-SttPort _productionSttPort() {
-  if (Platform.isLinux || Platform.isMacOS || Platform.isWindows) {
-    return StdioSttPort(launch: bundledSttLauncher());
-  }
-  return const UnavailableSttPort(
-    safeMessage:
-        'Local STT runs only in the desktop bundle. Configure a consented remote provider on mobile.',
-  );
 }
 
 Future<void> _runSecureStorageSelfTest() async {
