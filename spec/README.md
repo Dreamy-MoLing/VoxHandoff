@@ -1,14 +1,18 @@
 # VoxHandoff 正式开发基线
 
-> 基线版本：1.59<br>
-> 生效日期：2026-07-31<br>
+> 基线版本：1.60<br>
+> 生效日期：2026-08-01<br>
 > 状态：Active
 
 本目录是 VoxHandoff 唯一有效的产品与工程基线。实现、评审、测试和发布只引用这里的文档：
 
-1. [`PRODUCT.md`](PRODUCT.md)：产品目标、用户流程、平台范围、功能需求和验收口径；
-2. [`ARCHITECTURE.md`](ARCHITECTURE.md)：进程、协议、数据、网络、语音、视觉和安全架构；
-3. [`DELIVERY.md`](DELIVERY.md)：仓库结构、里程碑、质量门、PoC、发布与风险处置。
+1. [`PRODUCT.md`](PRODUCT.md)：回答“为谁做、用户得到什么、哪些行为必须成立”，是用户需求和可观察验收的权威来源；
+2. [`ARCHITECTURE.md`](ARCHITECTURE.md)：回答“状态与数据由谁拥有、跨边界如何保持安全一致”，是目标模型、生命周期、协议和信任边界的权威来源；
+3. [`DELIVERY.md`](DELIVERY.md)：回答“仓库现在实际做到哪里、证据是什么、下一批具体做什么”，是阶段状态、PR/CI、发布阻断和执行顺序的权威来源。
+
+下一轮开发必须按上述顺序读取，并从 `DELIVERY.md` 的“当前快照 → 已确认差异 → 后续开发批次”进入工作。`PRODUCT.md` 与 `ARCHITECTURE.md` 描述必须达到的行为；不能仅凭其中的目标态推断代码已经实现。实现状态只由 `DELIVERY.md` 中分层证据确认。
+
+证据按互不替代的轴记录：源码存在；本地自动化；远端 CI；真实服务/真实数据库；人工 GUI/实体设备；发布汇总门。它们不是一条可相互推导的等级链：CI 不能证明实体麦克风，真实服务 adapter 不能证明 GUI，本地门不能写成 GitHub Actions，直接 Hermes PoC 不能写成 Gateway/PostgreSQL 纵向链路。发布门只在适用的各轴证据都绑定同一候选版本后关闭。
 
 根目录 `docs/` 是前期分析输入，已经完成吸收和冲突消解。它不再是需求来源，不得在代码注释、Issue、测试或新文档中引用；如它与本目录冲突，以本目录为准。
 
@@ -31,6 +35,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.60 | 2026-08-01 | 重新确立统一个人助手产品基线；按当前代码与 PR #4 复核 Provider/凭据/历史隔离、确认目标绑定、Direct LLM 生命周期/终态/有界读取、长期上下文、语音配置与 H1 外部能力门，并给出 Luna Max 可直接执行的开发批次 |
 | 1.59 | 2026-07-31 | M5 真实服务证据：OpenRouter `/api/v1` 免费模型十轮 SSE、取消与离线门；官方 Piper loopback adapter 与 faster-whisper JSONL 合成音频链通过，明确保留物理麦克风 GUI 发行验收边界 |
 | 1.58 | 2026-07-31 | M5 设置增量：来源设置页将 Hermes 状态、Direct LLM、faster-whisper readiness 与 Piper 本机 HTTP 配置/测试隔离；Piper 固定官方 `/info` 与 `/synthesize` 契约、精确 loopback 限制与失败降级，Flutter 门扩至 178 项；真实用户服务 smoke 仍未关闭 |
 | 1.57 | 2026-07-31 | M5 首个可审查增量：新增本机 direct LLM 的 HTTPS/SSE、OS 安全存储 key、本机 Drift 历史、取消与文字优先 UI；离线/Flutter 门通过，真实用户 provider 与音频端口 smoke 仍待显式配置后执行 |

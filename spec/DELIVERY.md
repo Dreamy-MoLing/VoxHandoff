@@ -2,11 +2,66 @@
 
 ## 1. 当前状态
 
+### 1.1 2026-08-01 权威快照
+
+当前产品基线是“统一个人助手”：Hermes 是主要且唯一具有 Agent 语义的工作后端，用户自接 OpenAI-compatible API 是纯聊天/陪伴后端。M0–M4 的历史交付不回退；M5 已有可运行的 Direct LLM、语音端口和真实服务 adapter 证据，但本轮源码核验确认了 Provider/凭据/历史隔离、确认目标绑定、request lifecycle、消息终态和长期上下文缺口，因此 M5 不能再写成“仅差实体麦克风”。H1 独立受 Hermes 上游能力阻断，不是 M5 完成条件。
+
+阶段编号表示历史工作包，不表示严格线性顺序；M6 的界面/性能工作曾提前完成。当前映射如下：
+
+| 阶段 | 原始目标 | 当前状态 | 已完成证据 | 剩余验收/发布阻断 | 外部依赖 |
+| --- | --- | --- | --- | --- | --- |
+| M-1 | 基线、安全和交付治理 | 完成 | `spec/`、repository check、威胁模型、Git 基线 | 无重新开启项 | 无 |
+| M0 | Agent 协议核心与隔离 PoC | 历史完成 | Core taxonomy/property tests；Codex/Hermes 直接 PoC 的多轮、stop、approval、断线与恢复 | 只作协议回归，不代表当前生产 Hermes | 隔离 Agent 版本 |
+| M1 | Protobuf/Gateway/PostgreSQL 耐久控制面 | 完成 | 真实 PostgreSQL、HTTP/2、重连/重复/乱序/Gateway 重建收敛 | 发行备份恢复仍属总发布门 | PostgreSQL 运行环境 |
+| M2 | Flutter 文字客户端与多设备同步 | 完成 | Drift/cursor、配对、lease、审批、两设备恢复、五平台 CI | 实体安装/签名/非 Linux keyring 属总发布门 | 五端发行环境 |
+| M3 | 可确认、可打断的语音闭环 | 工程完成；推荐语音 profile 未达标 | 录音/STT/TTS failure isolation、125 项当时测试、真实服务合成链；CPU/base 明确 `text-first degraded` | 推荐设备真人语料、≥95%、10 次 cold start | 合格 STT/TTS 与设备 |
+| M4 | SignalCore、桌面能力与 60/120 Hz 表现 | 完成 | Fedora 60 Hz；vivo X100s 120 Hz hot profile；Wayland 明确降级 | cold-start 观察与发行设备矩阵不改写阶段结论 | 实体平台环境 |
+| M5 | GUI Direct LLM + 可配置语音聊天 | **实现基座完成，阶段未关闭** | Direct LLM/Piper/faster-whisper adapter、真实服务 smoke、四项安全修复、当前 CI 全绿 | 本节差异 1–8；连续 10 轮 GUI；实体麦克风完整 GUI；发布前复验 | 用户配置的 LLM/STT/TTS/麦克风 |
+| H1 | 真实 Flutter→Gateway/PostgreSQL→Connector→Hermes 纵向链路 | **外部阻断** | Connector/Gateway fake 边界；直接 Hermes 0.19 PoC；fail-closed 门 | 真实 10 轮、stop、断线/重启、approval 纵向门 | 首先需要幂等 run submission；完整 H1 还需不可变 approval 身份/精确 resolution |
+| M6 | Hermes 会话 UI、长历史与真实负载 | UI/Fedora 门完成 | 轮次聚合、2,000 事件、Fedora 60 Hz P95 | 新 HomeScreen 的实体移动 120 Hz profile | 实体高刷手机 |
+
+### 1.2 证据轴与 PR #4
+
+证据按独立轴记录，不能串联推导：
+
+1. 源码/adapter 存在；
+2. 本地自动化与质量门；
+3. 远端 CI；
+4. 真实数据库或真实服务 adapter；
+5. 人工 GUI/实体设备完整路径；
+6. 发布汇总门。
+
+CI 只能证明其 runner 上声明的自动化，不能证明实体麦克风、真实第三方服务或人工交互；真实 service smoke 也不能证明 production GUI。发布门是适用证据轴在同一候选版本上的汇总结论，不是一个能反向替代其他证据的“最高层”。
+
+PR [#4](https://github.com/Dreamy-MoLing/VoxHandoff/pull/4) 当前为 Open、Draft、mergeable，base `main@f4f42e6`，head `agent/m4-fairy-desktop@ba16896`。它是 46 commits、208 files、`+24066/-591` 的累计 PR，覆盖 M2/M3/M4、Hermes/H1/M6 与 M5，不是 M5-only。
+
+最新 [GitHub Actions run 30643641151](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30643641151) 的 Node、Flutter Linux、Android、Windows、Apple 五个 job 全部通过；Flutter 为 188 tests passed、2 个 opt-in live tests skipped，并通过 Linux release、desktop self-test 与 Secret Service。较早 [run 30643640922](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30643640922) 的 runner 分配前 billing/spending failure 是历史记录，**不再是当前 CI 阻断**。
+
+PR 正文当前仍把实体麦克风 GUI、H1 和未在 `spec/` 定义的 “security workbench” 列为 Draft 理由，并保留旧 billing 说明。核验结论是：实体麦克风仍是 M5 门；H1 是独立上游阻断，不是 M5/CI 失败；“security workbench” 不能在没有正式需求和验收定义时充当阶段门；billing 说明已经过时。当前合理的 Draft 理由是批次 1–2 的状态一致性修复、连续 GUI/实体麦克风验收和累计 PR 审查，后续应按本规格刷新 PR 正文。
+
+### 1.3 本轮已确认的实现差异
+
+| # | 仓库事实 | 工程结论 | 进入批次 |
+| --- | --- | --- | --- |
+| 1 | Direct LLM 只有固定 `default-direct-llm` 配置；改 origin/model 复用 ID，空 key 保留旧 key；历史按该 ID 加载并全部发送 | 可把旧 Provider key 与历史发送给新 origin，属于发布阻断 | 批次 1 |
+| 2 | `confirmDraft()` 只冻结文本；发送时才读取当前 ChatSource/Profile/Hermes conversation/route | 确认没有证明用户同意当前目标；Gateway route authority 不能弥补 Client 确认缺口 | 批次 1 |
+| 3 | source/profile/config 切换不取消旧流；test/chat 共用单一 `_active`；隐藏 Direct 页面仍可写历史和触发 TTS | 存在请求所有权和跨会话副作用竞争 | 批次 2 |
+| 4 | Direct message 只有 `completed: bool`；提前 EOF 会走成功/TTS 路径，cancel/failure/超限 partial 虽当次不播报却仍以 completed 持久化并进入后续全历史 payload | 终态失真，可能把残缺内容当可信上下文 | 批次 2 |
+| 5 | 正常 SSE 已在 UTF-8/分行前限制 4 MiB；`GET /models` 与非 2xx body 仍直接无界 `drain()` | 字节修复只覆盖正常 SSE，资源边界未闭合 | 批次 2 |
+| 6 | 每个 delta 同步写 SQLite，每轮发送全部历史；没有 conversation ID、上下文预算、固定记忆、滚动摘要或删除 API | 不满足长期助手和长期聊天语义 | 批次 3、4 |
+| 7 | Hermes 与 Direct 使用独立页面/state；没有 AssistantProfile 或共享人格/记忆模型 | 当前仍表现为两个产品，统一助手是目标态而非已实现 | 批次 3 |
+| 8 | GPT-SoVITS adapter 已有但无完整设置入口；Piper adapter/config 有 speaker 字段但 UI/测试/`/info` capability 未覆盖；远程 STT 只有隔离 adapter；bundled STT launcher 只找 `libexec/voxhandoff-stt`，当前构建未打包它且默认模型可能触发下载；无麦克风选择，STT language 未接生产，播报/打断策略不可配置 | adapter、设置、生产打包、模型来源、自动化、真实服务和 GUI 证据必须分别记录 | 批次 5 |
+| 9 | PR #4 当前 CI 已全绿，但仍为累计 Draft；H1 首先被 `idempotency=false` 阻断 | billing 不再是 blocker；M5 与 H1 必须分开关闭 | 批次 6、7 |
+
+同时确认的正向安全事实：Gateway 从持久化 `(nodeId, agentId, capabilityRevision, sessionId)` route 接受、恢复、claim 和校验 Node event；非空 Hermes session 在同一 `(nodeId, agentId, capabilityRevision)` 下只能绑定一个 conversation；Hermes 0.19 resolution 是无 immutable approval ID 的 FIFO，Connector 以 `hermes_approval_resolution_ambiguous` fail closed；Connector session store 合并冷启动加载和同 conversation 并发创建。`uncertain`、禁止静默重提、approval/CAS、control lease、完整回复与语音失败隔离继续是不可回退基线。
+
+### 1.4 历史环境与详细证据登记
+
 基线日期环境：Fedora 44、Node.js 22.22.2、npm 10.9.7、Python 3.14.6、uv 0.11.26、Codex CLI 0.144.6、Hermes Agent 0.19.0、ffmpeg 8.1.2；项目内 Buf CLI 1.72.0、Protobuf-ES 2.12.1、node-postgres 8.22.0 和本地 Dart `protoc_plugin` 25.0.0。PostgreSQL 集成基线为 17 Alpine、manifest digest `sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a`。M2 使用官方 stable Flutter 3.44.6 / Dart 3.12.2 用户级 SDK，Linux archive SHA-256 固定于 `toolchains/flutter.json`；Fedora 主机已安装 Clang 22.1.8、GTK 3 与 libsecret development headers，Linux release build 和 Secret Service 真读写/删除通过。M4 真机门使用 Android command-line tools、Platform Tools 37.0.0、Build Tools/API 36、NDK 28.2.13676358 与 OpenJDK 25，并已通过 `flutter doctor -v` 的 Android toolchain 和 license 检查。
 
-当前阶段：M4 及原 M6 的界面/性能工作已完成。产品现在以 GUI 优先的语音聊天/数字伙伴 MVP 为目标：Hermes 是唯一 Agent；用户可在本机直接接入自己的 LLM API 作为不带工具能力的聊天来源。近期 M5 改为“可用语音聊天打通”，优先复用成熟开源能力而非自研 STT/TTS/模型服务；原 Hermes 生产纵向门改列为后续 H1，仍受 Hermes 上游幂等能力阻断。既有 Codex 适配器和证据只保留为历史回归，不代表当前产品支持。任何新里程碑都不得回退完整文字、审批、lease、cursor、`uncertain`、防重提或语音失败隔离语义。
+2026-07-31 的阶段描述是：M4 及原 M6 的界面/性能工作已完成，M5 转为“可用语音聊天打通”，Hermes 生产纵向门改列 H1。该历史描述已由上方 2026-08-01 快照校准；既有 Codex 适配器和证据只保留为历史回归。任何新里程碑都不得回退完整文字、审批、lease、cursor、`uncertain`、防重提或语音失败隔离语义。
 
-2026-07-29 的当前实现状态：
+2026-07-29 的实现状态记录：
 
 - Hermes capability 已改为 fail closed；Hermes 0.19 的显式 feature/endpoint 已逐项映射，数字 Unix timestamp 被规范化为 UTC，事件 ID 可跨 client recreation 确定性重建，原生 SSE 恢复锚点进入 `Last-Event-ID`，本地补充事件与原生 sequence 保持单调且不冲突；
 - `services/node` 已实现生产 Connector：从环境变量读取 Gateway/Hermes 配置和 token，持久化不含正文/秘密的 conversation→session 映射，接通注册、会话创建/恢复、文字 run、SSE、stop、approval 与明确错误；生产边界的真实 Gateway stream + fake Hermes 集成测试覆盖 dispatch、事件和交互往返；
@@ -14,7 +69,7 @@
 - SignalCore 已扩大为状态主体并按状态改变几何、轨道、能量和音频响应；idle/completed/failed 与 reduced-motion 不持有持续 ticker，着色器已通过 Flutter runtime-effect 离线编译；
 - 新增长历史 HomeScreen widget gate（桌面 500、手机 2,000 条）和实际 HomeScreen 的并发 delta/录音/TTS/shader profile 探针。
 
-这些条目表示实现与已列出的证据，不表示真实 Hermes MVP 已全部验收。2026-07-29 在独立 `/tmp` HERMES_HOME、字面量 loopback 18642、无消息平台凭据且不接触默认 gateway 的 Hermes 0.19.0 环境中，直接 adapter PoC 已完成同一 session 10/10 轮、stop、manual approval 明确拒绝、运行中 SIGKILL→`uncertain`，以及 gateway 重启后的旧 session 恢复。真实 capability 同时明确返回 `idempotency=false`、`replay=false`、`sequenceRecovery=false`；当前 `/v1/runs` 也没有可验证的幂等提交实现，因此生产 Connector 按安全契约拒绝注册，真实 Flutter→Gateway/PostgreSQL→Connector→Hermes 纵向门仍未关闭。该门不能用 fake Hermes、直接 adapter PoC 或放宽 `uncertain` 防重提替代。
+这些条目表示实现与已列出的证据，不表示真实 Hermes MVP 已全部验收。2026-07-29 在独立 `/tmp` HERMES_HOME、字面量 loopback 18642、无消息平台凭据且不接触默认 gateway 的 Hermes 0.19.0 环境中，直接 adapter PoC 已完成同一 session 10/10 轮、stop、manual approval 明确拒绝、运行中 SIGKILL→`uncertain`，以及 gateway 重启后的旧 session 恢复。该版本未广告 idempotency、event replay 或 sequence recovery 字段，adapter 对缺失能力 fail closed，协商结果为 `idempotency=false`、`replay=false`、`sequenceRecovery=false`；当前 `/v1/runs` 也没有可验证的幂等提交实现，因此生产 Connector 按安全契约拒绝注册，真实 Flutter→Gateway/PostgreSQL→Connector→Hermes 纵向门仍未关闭。该门不能用 fake Hermes、直接 adapter PoC 或放宽 `uncertain` 防重提替代。
 
 固定 Flutter 3.44.6 / Dart 3.12.2 的 analyze、170 项 test（含 widget/golden/accessibility/长历史）、runtime-effect 编译和 Linux x64 release build 已通过。真实 release HomeScreen 在 60.001 Hz Fedora/Wayland 上以 2,000 条耐久事件测得 stress total P50/P95 8,687/12,759 µs、idle 6,056/12,964 µs，均通过 16,667 µs P95 门；完整环境、原始测量和汇总位于 `artifacts/benchmarks/mvp-fedora44-20260729/`。这不替代 120 Hz 实体手机的 MVP HomeScreen profile。
 
@@ -87,7 +142,7 @@
 - 仓库级威胁模型：关键资产、攻击者、九条信任边界、重点攻击故事和严重度校准；
 - repository consistency check 和最小权限 GitHub CI：locked install、check、offline tests。
 
-Hermes 生产链路尚未完成或未实测：
+截至 2026-07-31 尚未完成或未实测的发布项：
 
 - Hermes 0.19.0 尚未提供生产 Connector 所需的显式幂等 run submission；在该能力补齐前，真实 Flutter/Gateway/PostgreSQL/Connector 端到端 10 轮与重启门保持阻断；
 - 120 Hz 实体手机上的新 HomeScreen 2,000 条历史、并发 delta/录音/TTS/SignalCore profile；
@@ -309,18 +364,20 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
 
 [GitHub Actions run 30184413298](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30184413298) 已在包含上述真机探针修正和全部 Android 证据的 head 上通过 Node/PostgreSQL、Linux 160 项 Flutter 测试与 analyze/release/Xvfb desktop/Secret Service、Android debug APK、macOS/iOS 和 Windows 全部门。该 CI 证明代码、生成物与五平台构建门一致，但不替代已单独保存的实体 Android profile 结果。
 
-### M5 — GUI 语音聊天打通（已实现；物理麦克风发行验收待真实设备）
+### M5 — GUI 语音聊天打通（实现基座完成；正确性与 GUI 发布门未关闭）
 
 目标：先把已有录音、可编辑文本、聊天 UI、播放与 SignalCore 串成用户可用的语音聊天体感，不等待 Hermes 上游补齐幂等能力。
 
-- 完成来源选择与设置页：Hermes、用户自接 LLM API、STT、TTS 均可独立配置、测试和显示失败阶段；
+- 建立来源选择与设置页基座：Hermes、Direct LLM、本地 faster-whisper 与 Piper 可分别显示/测试；完整 Provider Profile、远程 STT、GPT-SoVITS 和策略配置仍以后续批次为准；
 - 实现本机直接的 OpenAI-compatible LLM chat adapter，API key 仅由 OS 安全存储持有，支持流式文本、取消与本机历史；
-- 将语音控制器接入真实聊天 UI：录音 → 可编辑终稿 → 明确发送 → 流式完整回复 → 可停止的 TTS；无 STT/TTS 或任何一端失败时保留文字聊天；
+- 将语音控制器接入真实聊天 UI：录音 → 可编辑终稿 → 明确发送 → 流式回复基座 → 可停止的 TTS；无 STT/TTS 或任何一端失败时保留文字聊天；Direct 完整终态缺口见 1.3 #4；
 - 将 faster-whisper 与 Piper-compatible 服务作为免费开源默认预设，只提供版本化接口探测、配置引导和连接测试，不捆绑模型、音色、云账号或自动下载；
 - 完成一个用户自配 LLM API 的手工 smoke：文字、录音转写（若已配置）、流式回复、播放（若已配置）、取消和断网错误均可见且无 secret 日志；
 - 审批、工具执行、跨设备控制和 Hermes `uncertain` 只在 Hermes 路线出现，纯 LLM UI 不得伪装这些状态。
 
 退出条件：在 Fedora 的本机用户配置中，能完成至少 10 轮文本聊天；已配置音频端口时能完成“录音—编辑—发送—回复—播放”一轮；取消和任一配置失败不丢失已确认文本或完整回复，且相关离线/Flutter 测试通过。
+
+当前判断：实现、离线自动化、真实服务 adapter smoke 和最新远端 CI 均已有证据，但 M5 尚未满足退出条件。OpenRouter 10/10 是十个互不共享历史的 transport request，不是连续 GUI conversation；Piper→faster-whisper 使用合成音频，不是 production `record` plugin 的实体麦克风 GUI。关闭 M5 前还必须完成 1.3 中的 Direct LLM 正确性修复、连续十轮 GUI 文本路径，以及“实体麦克风录音 → 编辑 → 目标确认 → 流式回复 → 有声播放/停止”人工验收。Hermes H1 不属于 M5 完成条件。
 
 #### 2026-07-31 Direct LLM 增量证据
 
@@ -329,7 +386,7 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
 
 - Client 可在 Hermes Gateway 与 Direct LLM 来源之间显式切换。Direct LLM
   使用独立视图，明确标注它没有 Agent host、tool、approval、lease 或跨设备
-  command 语义；停止只取消当前本机 HTTP stream，绝不伪装 Hermes interrupt。
+  command 语义；UI 预期语义是停止只取消当前本机 HTTP stream、绝不伪装 Hermes interrupt，但现有共享 `_active` 的 owner 竞争仍须由批次 2 修复。
 - Direct LLM 接受精确 HTTPS API base（空路径或最多四段受限安全 path segment），因此
   可保留 OpenRouter 的 `https://openrouter.ai/api/v1`；adapter 只在未提供 `v1`
   的 base 后补 `/v1`，不接受 request URL、redirect、query、fragment 或 user-info。
@@ -399,7 +456,7 @@ Android profile 仍以 `--dart-define=VOXHANDOFF_M4_RENDER_BENCHMARK=true` 编�
   frame metadata 和“是否有文字”，不保留音频或转写正文。
 - 以上是“本地真实服务 + 合成音频”链路，证明可配置端口、受限协议、流式文本、取消、
   离线失败和文字优先降级可组合；它不是用户对着物理麦克风完成的 GUI 录音验收，也
-  不能替代 Hermes H1 的 Flutter→Gateway→Connector→Hermes 纵向门。实际发行前仍
+  不能替代 Hermes H1 的 Flutter→Gateway/PostgreSQL→Connector→Hermes 纵向门。实际发行前仍
   须在目标桌面实体麦克风完成录音—编辑—发送—回复—播放并记录同样脱敏的事实。
 - 最终回归在 Flutter 3.44.6 通过 analyze、Drift generation、format、golden、
   accessibility 与 183 项 tests（另有上述两个 opt-in live tests 默认 skip）；
@@ -439,7 +496,9 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 用户配置的 HTTPS LLM、STT、Piper 和实体麦克风均可用时人工执行一轮完整 GUI 流程，
 只保存脱敏阶段/结果证据。
 
-#### M5 结构治理 — 解耦计划（在最小闭环稳定后执行）
+#### M5 结构治理 — 2026-07-31 历史解耦计划
+
+本小节保留当时的职责拆分顺序；涉及 Direct LLM 安全和统一助手的当前执行顺序，以后文“后续开发批次”为准。不能用纯结构拆分替代批次 1、2 的行为修复。
 
 触发条件：M5 的来源选择、用户自接 LLM API 的一轮文字/流式回复，以及录音到可编辑终稿的主路径均已有契约测试。它是 M5 的维护性门，不应抢在主路径可用之前，也不与 Hermes H1 的上游能力阻断混在同一变更中。
 
@@ -455,7 +514,7 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 
 完成条件：上述每个切片独立提交、独立通过相关质量门；不以行数为目标，不做跨模块“顺手清理”。M5 结束时至少完成第 1、2 项并记录其余项的现状；第 3–5 项可在不阻塞 H1 或发布门的前提下继续推进。
 
-### H1 — Hermes 单一纵向链路（实现完成，上游幂等能力阻断真实端到端门）
+### H1 — Hermes 单一纵向链路（内部链路已实现；上游能力阻断真实端到端门）
 
 目标：只把 Hermes 做成可真实使用的首发 Agent。
 
@@ -463,13 +522,13 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 - 生产 Node Connector 接通配置/secret、Gateway 注册、session、run、SSE、stop、approval 和错误；
 - Gateway 接受后的 start 结果不明不得再次调用 run，只允许状态/事件恢复；
 - 审批字段不完整时 fail closed，所有决定继续受 device signature、scope、lease、expiry、operation hash 和 idempotency 保护；
-- 以真实 Flutter 客户端、Gateway/PostgreSQL、Connector 和隔离 Hermes 0.19.0 完成 10 轮、stop、approval、非优雅断线与 Connector/Gateway 重启。
+- 在明确广告并满足所需 capability 的隔离 Hermes release 上完成真实 Flutter 客户端、Gateway/PostgreSQL、Connector 的 10 轮、stop、approval、非优雅断线与 Connector/Gateway 重启；证据记录 exact Hermes version/commit。Hermes 0.19.0 只保留为原始历史目标和负向兼容样本。
 
 退出条件：真实端到端门全部通过，事件和 session 不串线，没有重复执行、自动审批、秘密日志或把连接丢失误报为失败/完成。fake Hermes 只证明 Connector 契约，不满足退出条件。
 
-当前实证：直接 Hermes 0.19 adapter 已通过 10 轮、stop、manual deny、SIGKILL uncertain 和 gateway 重启/session resume；生产 Connector 因上游 `idempotency=false` 正确拒绝注册。只有 Hermes 明确声明并实际实现相同 idempotency key 的精确 run submission 恢复后，才重跑完整 Flutter/Gateway/PostgreSQL/Connector 门。
+当前实证：直接 Hermes 0.19 adapter 已通过 10 轮、stop、manual deny、SIGKILL uncertain 和 gateway 重启/session resume；该版本未广告幂等 run capability，生产 Connector 将缺失能力协商为 `idempotency=false` 并正确拒绝注册，这是当前第一个外部阻断。H1 的历史退出矩阵明确包含 approval，因此完整 H1 的第二项必需上游能力是不可变 approval identity 与按 ID 精确 resolution；0.19 只接收 `choice` 并 FIFO 消费队首，不能满足该门。两项能力均不得以版本推断、自动重提或放开 Connector fail-closed 代替。
 
-### M6 — Hermes MVP 界面与真实负载（Fedora 60 Hz 门完成）
+### M6 — Hermes MVP 界面与真实负载（UI/Fedora 60 Hz 门完成；移动 120 Hz 待验）
 
 目标：将底层事件变成可长期使用的对话界面，并让 SignalCore 成为原创、实时、可访问的状态主体。
 
@@ -484,9 +543,116 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 
 完成证据：Flutter analyze、170 项 test、Linux x64 release build 和 runtime-effect 编译通过；桌面 500/手机 2,000 条长历史 widget gate 均通过。Fedora 44 release 的 2,000 事件实际 HomeScreen stress/idle P95 分别为 12,759/12,964 µs，低于 60 Hz 的 16,667 µs 门，证据位于 `artifacts/benchmarks/mvp-fedora44-20260729/`。120 Hz 实体手机 profile 仍是跨设备性能限制，不改写本里程碑的 Fedora 首发结论。
 
-## 5. 测试矩阵
+## 5. 后续开发批次
 
-### 5.1 每次变更
+以下批次不新增里程碑编号，而是在既有 M5、M6、H1 内关闭剩余问题。顺序是强约束：先修复身份、凭据、目标与终态的一致性，再建立统一助手和长期上下文，之后关闭真实语音与设备门，最后在上游能力具备时执行 H1。除批次 7 外，均不依赖 Hermes 改版。
+
+### 5.1 批次 1（M5）：Provider Profile、历史隔离与确认目标快照
+
+- **用户需求**：切换 API 服务、模型或 Hermes 目标时，密钥、历史和已确认文字都只发送给用户明确看到并确认的目标。
+- **当前问题**：生产设置路径只有一个 active configuration，首次 ID 为 `default-direct-llm`；编辑 origin 或 model 会复用该 ID，空 key 会继续读取该 ID 下的旧 key，全部历史也按同一 ID 复用。`confirmDraft()` 只确认文本，实际发送时才读取当前 ChatSource/configuration 或 Hermes conversation，因此确认后切换目标不会强制重新确认。
+- **实施范围**：引入 opaque `providerProfileId`、独立 `credentialRevision`、`configurationRevision` 和本地生成的 `conversationId`。origin/auth realm/principal 变化必须创建新 Profile；同身份 key rotation 递增 credential revision；model 或采样参数变化创建 configuration revision，并默认开启新 conversation。批次 1 先生成并持久化一个 opaque default `assistantId`，建立最小 `AssistantProfile { assistantId, assistantRevision, systemPrompt }`，把现有 Direct system prompt 迁入这个唯一权威；批次 3 再扩展完整助手配置和统一界面。实现架构定义的完整 `ConfirmedDraft { draftId, draftRevision, confirmedText, textHash, assistantId, assistantRevision, contextSnapshotRevision, contextSnapshotHash, chatSource, conversationId, targetSnapshot, confirmedAt }`；Direct target 固定 Profile、credential/config revision 与 conversation，Hermes target 固定 conversation 及权威 `(nodeId, agentId, capabilityRevision, sessionId)` route，其中 `nodeId` 是安全意义上的执行主机身份。任何绑定字段变化都销毁确认快照。
+- **状态和数据语义**：Profile 是服务/auth 边界，credential/config revision 是不可变请求快照，conversation 是历史边界，不能复用一个 ID。批次 1 先落最终 `local_messages` terminal/provenance schema 与 legacy migration，批次 2 再把 runtime lifecycle 完整接到该 schema；两批之间不得再做第二次终态 schema 迁移。旧配置、secret 和消息迁移为禁用 legacy records：旧消息虽有 `providerId`，但该 ID 曾跨 origin 复用，因此 origin/revision/conversation provenance 不可信；旧 assistant message 使用 `terminal=incomplete` 加独立 `provenance=legacy_unverified`，只可查看、导出、删除。旧 secret 保持隔离且不得用于测试或聊天；用户看到 exact normalized origin/auth realm 后重新输入 key，才创建可用 credential revision，成功后删除旧 secret reference。
+- **安全边界**：新建 Profile、改变 origin/auth realm/principal 或重新激活 legacy 配置时必须输入非空 key；当前 adapter 不定义无认证模式。只有同一 active Profile 且不执行 rotation 时，空输入才表示保留原 key。历史跨 Profile 迁移默认禁止；显式迁移必须预览目标、范围和会发送的数据。确认界面展示实际 provider/origin/model/credential revision 或 Hermes node/agent/session，不以 display label 作安全判断。
+- **主要影响模块**：`apps/client/lib/domain/direct_chat.dart`、`domain/client_session.dart`、Direct LLM/ClientSession/ChatSource controllers、secure store、Drift Direct chat store、设置页、消息输入区，以及相应 migration 和 tests；Hermes route 仍复用 Gateway 已持久化的权威 tuple，不新增第二份路由真相。
+- **批内实施顺序**：先用当前实现写出会失败的 key/history/target-switch 回归；再做 forward-only Drift schema、default assistant identity 与 legacy secret/history 隔离 migration；随后接 Profile/revision CRUD 和 request payload；最后替换 `confirmDraft()`/composer UI 并做人工双 provider 验收。第一提交不改统一主页、记忆或语音 UI。
+- **自动化验收**：覆盖“origin A 的 key 不会发送给 origin B”“legacy secret 不能测试/聊天且重输前 Profile disabled”“rotation 递增 credential revision 并撤销测试证明/确认”“Profile B 不接收 Profile A 历史”“model/revision 变化不改写旧 conversation”“assistant/system prompt 或 context-eligible message revision 变化撤销确认”“发送正文来自 immutable confirmedText”“确认后切换 source/Profile/conversation/node/agent/revision/session 必须重新确认”“legacy provenance 不进入 payload”“最终 terminal/provenance schema 的 migration 中断可安全恢复”。相关 Flutter unit/widget/migration tests 与固定 SDK `flutter:check` 通过。
+- **人工验收**：使用注入式 integration harness 创建两个带规范 HTTPS origin 的 deterministic fake provider，分别保存不同 key 和历史，逐项切换 origin/model/Profile/source/Hermes target；发送前界面目标与 fake 捕获结果一致，空 key 不继承错误服务商凭据，旧确认不可提交。harness 不发真实网络请求，也不得放宽 production HTTPS/TLS 规则。
+- **外部依赖**：无；使用现有 OS secure storage、Drift 和 Gateway route。loopback fake 不需要真实 API。
+- **完成条件**：代码和存量数据中不存在“配置 ID 同时充当 provider、credential 和 conversation 身份”的活动路径；legacy key/history 默认不可发送；所有发送只接受 assistant/context/backend revisions 仍有效的 `ConfirmedDraft`。这是下一轮 Luna Max 的首个开发任务，也是 PR #4 转为可评审前的第一项正确性门。
+
+### 5.2 批次 2（M5）：Direct LLM 请求所有权、消息终态与有界 I/O
+
+- **用户需求**：取消、切页、切换配置、超时或服务异常后，旧请求不能污染当前对话、误播 TTS 或把残缺回复伪装成成功；Direct LLM 也不应依赖 Gateway 在线才能发送。
+- **当前问题**：连接测试与聊天流共享 transport 的单一 `_active` 请求；切 source/Profile/config 不取消旧流，隐藏页面仍可写历史和触发 TTS。消息只有 `completed: bool`，自然 EOF、取消和部分失败都会把部分文本写成完成。`GET /models` 与 chat 非 2xx body 仍是无界 `drain()`；delta 每片同步写 SQLite；Direct 输入区复用了要求 Gateway connected 的 `canSubmit`。
+- **实施范围**：以 request ID + assistant/Profile/revision/conversation 作为 request owner；连接测试使用独立句柄。切 source、Profile、revision、conversation 或退出当前聊天上下文时，先 cancel 并等待 terminal barrier，再激活新目标；旧 generation 的 delta、terminal 和 TTS token 一律丢弃。复用批次 1 已落地的最终 terminal/provenance schema，把 runtime lifecycle 完整映射为 `streaming | completed | cancelled | failed | incomplete | truncated`，保存 stage/error code/received bytes；所有 response path 使用同一有界 reader 和总时限。delta 最多每 250 ms 合并写入一次，terminal 立即落盘。Direct submit readiness 与 Gateway connection 分离。
+- **状态和数据语义**：只有收到协议认可的完成标记且解析结束才是 `completed`；用户取消为 `cancelled`；未产生有效正文的连接、认证、超时、网络或 protocol 错误为 `failed`；已有部分正文却缺少完成证明，包括提前 EOF、缺 `[DONE]`、超时、断网或后续解析失败，均为 `incomplete`；超过响应上限为 `truncated`。迁移时旧 assistant reply 一律为 `terminal=incomplete`，另设 `provenance=legacy_unverified`；该 provenance 不是第七终态，只展示且不自动进入上下文或 TTS。
+- **安全边界**：cancel 不得转成 retry；失败或部分回复不得自动重提；非 2xx body 只在上限内消费后丢弃，仅保存 HTTP status、stage、稳定错误码和 allowlist request ID，不保存或展示 upstream body 摘要；只有当前前台 conversation 的 `completed` reply 可进入自动播报。TTS 有独立 generation token，录音开始、目标切换、配置变化或新 reply 都能取消旧 generation。
+- **主要影响模块**：OpenAI-compatible client、DirectChatController/Provider、TTS controller、HomeScreen/MessageComposer、Direct message schema/store 与 adapter/controller/widget tests。
+- **自动化验收**：覆盖无 `[DONE]` EOF、EOF with partial、cancel before/after delta、connect/read timeout、网络断开、超限、非 2xx 超大 body、`/models` 超大 body、test/chat 并发、source/Profile/page 切换、迟到 delta/TTS、写入合并、terminal crash recovery，以及 Gateway 离线时 Direct chat 可用。用 fake clock/stream 保证无 30 秒悬挂测试。
+- **人工验收**：对 loopback SSE 服务注入慢流、断流、超大错误和迟到 chunk；UI 显示准确终态，历史不串线，无隐藏播报，取消立即可见且不自动重发。
+- **外部依赖**：无；真实 OpenRouter 只作为批次结束后的补充证据，不替代 failure fixtures。
+- **完成条件**：每个请求有唯一 owner 和唯一 terminal；所有 body 均受 byte/time limit；重启后不会把非完成回复当作已完成上下文；Direct 聊天可在 Gateway 完全不可用时独立工作。
+
+### 5.3 批次 3（M5）：统一助手配置与 capability 化界面
+
+- **用户需求**：用户始终面对同一个有名称、人格、声音、记忆和视觉表现的个人助手；Direct LLM 聊天与 Hermes 工作是同一助手的不同能力，而不是两个产品入口。
+- **当前问题**：当前状态以 ChatSource、Direct 单例配置、Hermes conversation、TTS/STT 设置和 SignalCore 分散持有；没有 AssistantProfile 聚合身份，也没有清晰区分纯聊天 capability 与 Agent capability。
+- **实施范围**：扩展批次 1 已创建的最小 AssistantProfile，增加名称/人格、memory policy、STT/microphone、TTS/voice/speed/language、SignalCore、默认聊天后端、Hermes work backend、播报与打断策略；system prompt 继续只由 AssistantProfile 拥有，不在 Provider revision 建立第二来源。首版只要求一个 active assistant，但所有新数据携带 `assistantId`。统一 conversation shell、消息列表和 composer；Hermes 工具轨迹、approval、lease、执行主机和真实 Agent state 仅在 Hermes capability 可用时展示，Direct LLM 永不模拟这些状态。
+- **状态和数据语义**：AssistantProfile 只保存 secret reference；Provider Profile、Hermes route 和 conversation 仍是独立实体。conversation 创建时固定 backend binding；显式 handoff 创建新 conversation/branch，不原地改写旧历史。现有 voice/visual/Direct 设置以版本化 migration 合并到默认 assistant，保留可回滚备份直到 migration commit。
+- **安全边界**：统一视觉不等于统一授权。Direct LLM 无 Agent、tool、approval、lease 或 remote execution 语义；Hermes 的原生状态只来自 Gateway ledger/Connector。首版不得把本地 persona、固定记忆或 Direct system prompt 自动注入 Hermes，除非后续规格明确并由用户启用。
+- **主要影响模块**：client domain/state/storage、HomeScreen/navigation/settings、SignalCore、Direct/Hermes presenters、secure reference mapping 与 migrations；Gateway/Connector wire protocol 不因 UI 统一而改写。
+- **自动化验收**：AssistantProfile migration、backend capability projection、conversation binding、Direct 不出现 Agent 控件、Hermes 状态只读权威事件、切 assistant/backend 后确认失效、voice/visual 设置按 assistant 恢复；widget/golden/accessibility 和长历史测试保持通过。
+- **人工验收**：从同一助手主页分别开始陪伴聊天与 Hermes 工作；名称、人格、SignalCore 和音色连续一致，但只有 Hermes 会话出现工具轨迹、审批、lease 和执行主机，切换时无历史或状态串线。
+- **外部依赖**：无。Hermes H1 live 能力不是构建统一 shell 的前置条件，可用 fake capability 完成离线验收。
+- **完成条件**：产品主导航不再以“两个互不关联的来源”组织体验；一份 AssistantProfile 可完整重建基础展示与语音偏好，backend 差异通过 capability 明示且不伪造状态。
+
+### 5.4 批次 4（M5）：conversation 级上下文、固定记忆与滚动摘要
+
+- **用户需求**：长期陪伴聊天能记住用户允许保留的信息，同时上下文有界、可理解、可查看、可编辑、可删除，并且不会跨服务商或 conversation 泄露。
+- **当前问题**：当前 Direct 请求每轮发送该单例下的全部消息；没有 conversation context budget、固定记忆、滚动摘要、删除/编辑语义或 partial reply 排除规则。
+- **实施范围**：为每个 conversation 保存单调 `contextSnapshotRevision` 和 context policy，按 `system prompt → 已授权固定记忆 → 带覆盖范围的滚动摘要 → 最近 completed turns` 组装 payload；在不引入 tokenizer 依赖的首版使用可测试的 UTF-8 byte budget，并为输出保留固定余量。固定记忆支持查看、编辑、删除和作用域；摘要保留 source range、生成 backend/Profile/revision 和更新时间，永不覆盖原始历史。预算不足时先丢弃最旧最近轮次；system prompt 或固定记忆单项自身超限时拒绝发送并要求裁剪，绝不突破硬预算。
+- **状态和数据语义**：原始消息、摘要和固定记忆是不同记录；`cancelled/failed/incomplete/truncated` 或 `provenance=legacy_unverified` 的 reply 默认不进入上下文，provenance 与 terminal 分列。摘要只能覆盖同一 assistant/conversation/backend binding 的已完成轮次；任何 context-eligible message set/content/terminal、memory、summary 或 policy 变化都递增 context revision 并撤销旧确认；当前 confirmed user text 的预发送落盘不递增，assistant reply 进入 `completed` 后才为下一轮递增。切 Profile/迁移 conversation 后重新生成或显式不携带。删除立即从读模型和未来 payload 消失，后台压缩/清理不得阻塞当前发送。
+- **安全边界**：记忆默认仅存本地；用户可见具体哪些记忆会随下一请求发送。摘要只能由当前 conversation 已选择的同一聊天后端生成，不把数据送往第三方“摘要服务”。任何向 Hermes 注入个人记忆的能力保持关闭，等待单独产品决定和显式授权。
+- **主要影响模块**：Direct conversation/message store、memory/summary repositories、context builder、settings/memory UI、request payload fixtures、diagnostic export/redaction。
+- **自动化验收**：conversation 隔离、确定性预算边界、组合顺序、partial 排除、摘要覆盖不重叠、固定记忆 CRUD、删除后不再发送、Profile 切换不带旧摘要、重启恢复、长历史性能与日志脱敏。
+- **人工验收**：建立两个 conversation 和两个 Provider Profile，分别添加/编辑/删除固定记忆并产生足够长历史；发送前预览与 fake provider 捕获 payload 一致，旧 conversation、已删除记忆和残缺回复均未出现。
+- **外部依赖**：无强制依赖；若未来引入精确 tokenizer，须单独记录模型覆盖、许可证、体积和 fallback。
+- **完成条件**：请求上下文始终受确定性预算约束；用户能解释并控制发送内容；长期会话不会因历史无限增长而持续放大请求或 SQLite 写入压力。
+
+### 5.5 批次 5（M5）：语音配置、真实 GUI 闭环与可打断交互
+
+- **用户需求**：用户可选择麦克风、STT、TTS、音色、语速、语言和播报策略，并在真实 GUI 中完成连续、可打断的个人助手对话；任一语音服务失败仍保留文字聊天。
+- **当前问题**：GPT-SoVITS 有 adapter/factory/config store，但没有完整可编辑设置入口。Piper adapter/config/store 已有 origin、voice、lengthScale、speaker/speakerId，UI 只覆盖 origin/voice/lengthScale，测试未覆盖 speaker，`/info` 只验证 JSON 而未做 capability parsing；当前 “Speech speed” 实际直接写 lengthScale，用户语义可能反向。移动端 remote STT 仍未接线；bundled launcher 只查应用包内 `libexec/voxhandoff-stt`，现有桌面构建未打包该 executable；sidecar 默认模型名 `base` 可能由引擎联网获取，GUI 没有已验证本地模型路径。麦克风选择、生产 STT language、播报/打断策略也不完整。真实服务与合成音频证据不等于 production bundle 或实体麦克风 GUI 验收。
+- **实施范围**：在 AssistantProfile 下提供可枚举且可诊断的 microphone/STT/TTS 配置。GPT-SoVITS 暴露 adapter 已支持的 origin、reference audio、prompt text/language 和 text language。先核对 Piper 官方/versioned contract：只解析和展示真实广告的 voice/speaker/language；若字段无契约则保持隐藏或删除，不靠当前请求字段猜能力。将用户 `speechRate` 与 Piper `lengthScale` 的方向和边界做明确、单调、可测试的换算，UI 不再把两者当同义原值。desktop release 把受信 `voxhandoff-stt` 安装到规范 `libexec` 路径并验证 version 1.0 JSONL；STT Profile 要求用户选择已存在的 canonical local model path，缺失时 fail closed，production sidecar 禁止用模型名触发下载或回退 PATH。remote STT 在 desktop/mobile 共用显式 provider、origin、credential reference、language 和上传同意。实现播报策略（关闭/手动/完成后自动）、手动按键打断和 generation 取消；无设备枚举能力的平台明确显示“系统默认/不可选”。
+- **状态和数据语义**：recording、transcribing、confirmed、sending、reply terminal、synthesizing、playing 分属独立但可关联的 generation。开始录音立即停止本地 TTS/playback，但不把 Hermes remote run 误当作已停止；新的 backend/config/conversation 只影响新 generation。STT/TTS failure 写入具体 stage，确认文本和完整回复保持可编辑、可复制、可重试语音。
+- **安全边界**：raw recording 默认本地且按策略清理；production local STT 只接收用户选择的本地模型目录，缺失/损坏时不联网下载；remote STT 每个 exact origin 首次上传必须确认，origin 变化重新确认；远程 TTS 首次发送回复文字及 origin/TLS/保留事实变化时同样重新确认；凭据只在 OS secure storage；TTS 不朗读未完成回复、秘密字段、approval payload 或隐藏 conversation。连续免手模式默认关闭，只有明确启用和可见麦克风状态时运行。
+- **主要影响模块**：audio capture/record adapter、STT/TTS ports 与 factories、desktop build/install packaging、Assistant settings、voice session controller、TTS playback、mobile platform wiring、HomeScreen/SignalCore 与 live acceptance harness。
+- **自动化验收**：每个 adapter 的 config round-trip、Piper capability/field mapping、speaker forwarding、speechRate/lengthScale 单调边界、credential isolation、remote STT/TTS exact-origin consent、language forwarding、bundled executable manifest/版本/protocol、无本地模型且禁网时 fail closed、设备断开、record/TTS generation race、迟到结果丢弃、语音失败文字保留、无设备/无服务降级，以及现有 Flutter 全套检查。
+- **人工验收**：在 Fedora release GUI 连续完成 10 轮共享历史的 Direct conversation，其中至少一轮使用实体麦克风执行完整 `录音 → STT → 编辑/确认 → Direct LLM → completed 回复 → TTS → 播放/停止`；同一验收矩阵另覆盖一次打断、一次取消、一次 STT 失败、一次 TTS 失败、一次 Profile/source 切换，并确认 release app 实际从 bundle 启动 sidecar、只使用指定本地模型。分别记录 GPT-SoVITS 与 Piper 可用配置。移动端 remote STT 另在一台具名设备完成权限、上传同意、断网和恢复验收。
+- **外部依赖**：用户提供的本地 STT 模型、loopback/remote STT、GPT-SoVITS/Piper 服务和至少一台实体移动设备；这些服务不可用时只阻断相应 live 证据，不得破坏文字模式。
+- **完成条件**：文档明确区分 adapter 存在、配置入口、production bundle、自动化、真实服务和 GUI/实体设备证据；M5 的唯一关闭口径是 10 轮连续 GUI Direct conversation 且其中至少一轮完成实体麦克风全链路，所有失败都能安全降级为文字。免手常听与移动发布门不借此宣称完成。
+
+### 5.6 批次 6（M5/M6）：PR #4 收口、回归门与移动性能证据
+
+- **用户需求**：当前累计实现能被准确评审和稳定运行，文档、PR 描述、CI 与真实设备证据对应同一 commit，不把旧账单错误或外部 H1 阻断误写成当前 M5 失败。
+- **当前问题**：PR #4 是从 M2 到 M6/H1/M5 的累计 46-commit、208-file Draft，不是单独的 M5 patch；最新 Actions 已全绿，但 PR body 仍引用之前的 billing/spending pre-run failure，并把独立 H1 与未规格化的 “security workbench” 混入 Draft 理由。M5 的 Direct/实体语音门和 M6 的移动 120 Hz profile 仍未关闭。
+- **实施范围**：批次 1–2 作为 PR #4 内 Direct LLM 正确性修复，避免为同一窄问题新开重复 PR；批次 3–5 仅在评审范围可承受且重新基线后加入，否则在 PR #4 合并后分批提交。刷新 PR 描述中的 commit、阶段、真实阻断和验收链接；对累计 diff 做一次按 M2–M6/H1/M5 边界的 review map。完成 voice/UI 改动后重跑 Fedora release、跨平台 build、Android 实机和 M6 120 Hz profile。
+- **状态和数据语义**：每条证据绑定 exact commit、OS/device、服务版本和命令；GitHub check 的 `success`、本地 gate、live service 与人工 GUI 结果分栏记录。旧失败保留为历史，不覆盖最新结论；H1 的 external blocked 不改变 M5 数据终态或 CI 状态。
+- **安全边界**：不为通过 PR 门而放宽 `uncertain`、approval、lease、credential 或 target binding；不把 synthetic audio 当 physical microphone；不在诊断 artifact 中保存正文、密钥或 raw recording。
+- **主要影响模块**：`spec/`、PR #4 描述/检查、CI workflows、benchmark artifacts 和受批次 1–5 影响的 client tests；不借收口做无关重构。
+- **自动化验收**：`npm run check`、固定 Flutter SDK `npm run flutter:check`、相关 PostgreSQL/transport tests、Linux release、自测、Android/Windows/Apple build，以及 `git diff --check`；所有结果绑定最终 head。
+- **人工验收**：按批次 5 执行语音矩阵，并在具名 Android 设备运行实际 HomeScreen 120 Hz profile；reviewer 能从 PR 目录直接定位每个阶段的代码、测试和未关闭门。
+- **外部依赖**：GitHub Actions 可用额度、实体 Android 设备及语音服务；Hermes 幂等提交不是 PR #4 的 M5 ready-for-review 前置条件，Connector 保持 fail closed 即可。
+- **完成条件**：PR 描述不再把历史账单失败当当前状态；最新 head 的 CI、local gate 和人工证据无混用；Draft 的剩余理由只包含真实未完成门。是否合并/发布仍由用户授权，本文档不授权 push、PR 修改或 merge。
+
+### 5.7 批次 7（H1）：Hermes 上游能力具备后的真实纵向验收
+
+- **用户需求**：同一个人助手能够安全地把工作交给 Hermes，准确显示真实 session、工具、审批、lease、执行主机、完整回复和不确定状态。
+- **当前问题**：Flutter → Gateway/PostgreSQL → Connector 的内部链路已实现，但 Hermes 0.19 未广告幂等 run capability，adapter 将缺失能力 fail closed 为 `idempotency=false`，生产 Connector 因此拒绝注册；approval resolution 还只有 FIFO `choice`，缺少不可变 approval ID。两者都是关闭完整 H1 所需的上游协议能力，不是 Direct LLM/M5 的完成条件。
+- **实施范围**：上游首先提供可协商、可验证的 run idempotency key/查询语义；Connector 保持基于 capability 的 fail-closed 注册。由于 H1 原退出矩阵包含 approval，上游还必须提供不可变 approval identity 与按 ID resolve，再更新 adapter translation/fixtures。两项能力具备后，在隔离 profile 执行 Flutter、Gateway/PostgreSQL、Connector、Hermes 的 10 轮、stop、approval deny/approve、非优雅断线、Gateway/Connector 重启和 session resume。
+- **状态和数据语义**：conversation route 继续以持久化 `(nodeId, agentId, capabilityRevision, sessionId)` 为唯一权威；非空 native session 在同一 `(nodeId, agentId, capabilityRevision)` 下只能绑定一个 conversation。accepted 后连接丢失保持 `uncertain`，只允许查询/恢复同一 request，不创建第二次 run。approval decision 绑定不可变 ID、operation hash、device signature、scope、lease、expiry 和 terminal CAS。
+- **安全边界**：禁止通过版本号猜测能力、自动重提、FIFO 猜测、自动审批或跳过 lease 来通过 live gate；Hermes endpoint 仍只由出站 Node Connector 访问，不暴露未认证公网入口。
+- **主要影响模块**：Hermes adapter、Node Connector capability/dispatch/approval translation、Gateway integration fixtures、isolated live PoC 与 H1 evidence；不改 Direct LLM 纯聊天语义。
+- **自动化验收**：capability negotiation、相同 idempotency key 重放、accepted 后断线恢复、session route 冲突、并发 approval 精确寻址、迟到/重复 decision、lease 过期、Connector/Gateway restart 与日志脱敏 tests。
+- **人工验收**：隔离 Hermes profile 上由用户观察并处理真实 approval，核对 UI execution host/session 与 ledger；故障注入后没有重复执行、串 session、静默完成或误报失败。
+- **外部依赖**：Hermes 上游同时提供并广告幂等 run 语义与不可变 approval identity/resolution。若只补齐前者，可完成无 approval 的纵向子集，但不能关闭 H1。
+- **完成条件**：H1 原退出矩阵在真实全链路通过，全部证据绑定 exact Hermes/Connector commit；任何必需 capability 缺失时 Connector 仍拒绝上线。
+
+### 5.8 仍需产品确认、但不阻断批次 1–2 的事项
+
+以下事项采用保守默认值继续开发；只有用户明确改变默认值时才需要先改规格：
+
+1. **Hermes 是否接收个人记忆与人格提示**：默认不接收；统一助手只统一展示和本地偏好，Hermes 保持其原生 Agent 配置。若未来允许，必须逐项预览并显式授权。
+2. **首版助手数量**：默认只支持一个 active AssistantProfile，但数据模型保留 `assistantId`；多助手管理不是 M5 发布门。
+3. **跨 Provider 历史迁移**：默认空白新 conversation；旧历史只展示/导出/删除。若允许迁移，优先复制用户选中的摘要而不是整段原文，并在发送前预览。
+4. **免手连续监听**：默认关闭，M5 先保证显式录音和手动打断可靠；是否默认启用 VAD/唤醒词以及采用何种本地模型，需要后续单独的隐私、功耗和误触发决策。
+5. **PR #4 的 ready-for-review 设备门**：基线要求 10 轮连续 GUI Direct conversation，其中至少一轮完成 Fedora 实体麦克风全链路；Android 120 Hz 与移动 remote STT 是 M6/移动发布门。若用户要求 PR #4 同时代表全平台发布候选，则必须把两项也设为 Draft 阻断。
+6. **“security workbench” 是否成为产品需求**：默认从 PR #4 的阶段门删除，因为当前 `spec/` 没有该用户需求、状态语义或验收条件；若用户希望保留，必须先定义范围并放入既有 M5/M6 内部批次，不能仅凭 PR 文案扩展产品。
+
+## 6. 测试矩阵
+
+### 6.1 每次变更
 
 - formatting/lint/type check；
 - Core 和 adapter unit tests；
@@ -494,7 +660,7 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 - 数据 migration 和 adapter contract tests；
 - secret fixture 与日志脱敏测试。
 
-### 5.2 合并前
+### 6.2 合并前
 
 - 相关 integration/failure injection；
 - 旧版本数据库/协议兼容；
@@ -502,7 +668,7 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 - UI golden/accessibility tests；
 - 依赖/许可证变更说明。
 
-### 5.3 Nightly/设备实验室
+### 6.3 Nightly/设备实验室
 
 - Windows、Linux、macOS、Android、iOS build + smoke；
 - 真实安全存储写入/重启/读回/撤销；
@@ -511,7 +677,7 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 - Hermes 允许版本的 live compatibility；
 - 性能、内存、GPU、冷/热 STT/TTS 指标。
 
-### 5.4 发布门
+### 6.4 发布门
 
 - 所有非协商安全测试通过；
 - 无已知 Critical/High 可利用漏洞；
@@ -522,7 +688,7 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 - 50 次端到端和 Hermes 同一 session 10 轮验收通过；
 - 安装、升级、卸载不删除未明确选择删除的用户数据。
 
-### 5.5 可重复性能口径
+### 6.5 可重复性能口径
 
 - 每份结果记录 exact OS/build、CPU/GPU/RAM、设备型号、电源模式、组件版本、冷/热状态和网络 profile；“中档设备”在 M3/M4 gate 前必须替换为至少一台具名 Android 参考设备，不能仅凭开发机推断；
 - local profile：RTT ≤ 2 ms、无人工丢包；normal remote profile：RTT 80 ms、jitter 20 ms、loss 0.5%、下行 20 Mbps、上行 5 Mbps；degraded profile：RTT 250 ms、jitter 50 ms、loss 2%；
@@ -531,7 +697,7 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 - 同进程阶段使用 monotonic clock；跨进程通过 trace ID 记录各自 monotonic duration，不用未校时的 wall clock 直接相减；
 - 所有基准保存脱敏原始测量、汇总脚本和 pass/fail 结论；变更目标必须先修改 `PRODUCT.md` 并说明实测依据。
 
-## 6. PoC 规范
+## 7. PoC 规范
 
 PoC 是验收工具，不是一次性脚本。每次 live PoC 记录：
 
@@ -545,7 +711,7 @@ PoC 是验收工具，不是一次性脚本。每次 live PoC 记录：
 
 Live PoC 不得自动执行写文件、发消息、发布、删除或管理员动作。需要审批的测试使用临时目录、无害命令和明确人工批准。
 
-## 7. 当前命令
+## 8. 当前命令
 
 ```bash
 npm install
@@ -612,7 +778,7 @@ npm run poc -- hermes \
 
 新工作区加入 Flutter、Buf、PostgreSQL 等工具后，在这里添加统一命令，不把关键检查藏在个人 IDE task 中。
 
-## 8. 可观测性
+## 9. 可观测性
 
 每个请求至少记录：
 
@@ -625,7 +791,7 @@ npm run poc -- hermes \
 
 UI 不展示虚构完成百分比。诊断页面显示最后真实事件、同步状态、实际执行主机和是否可能仍在远端运行。
 
-## 9. 风险登记
+## 10. 风险登记
 
 | 风险 | 当前处置 | 触发动作 |
 | --- | --- | --- |
@@ -634,19 +800,25 @@ UI 不展示虚构完成百分比。诊断页面显示最后真实事件、同�
 | approval 并发或迟到响应 | 耐久状态机、CAS、lease/scope 和 idempotency | 任一重复/迟到批准到达 Agent 即 Critical |
 | Client 离线命令自动执行 | Client 只保存草稿，恢复连接必须重新确认 | 任何自动排空可执行命令即阻止发布 |
 | protocol 滚动升级不兼容 | major/minor handshake、前一 minor fixtures、expand-first migration | N/N-1 组合失败即阻止升级 |
+| Direct Provider 凭据或历史串用 | 不可变 Profile identity、独立 revision/conversation、legacy 历史隔离、确认目标快照 | 旧 key/历史到达新 origin 或确认后可换目标即阻止 M5/发布 |
+| Direct request/终态竞争 | request-scoped owner、cancel-and-wait、互斥 terminal、有界 body、generation gate | 迟到流污染新会话、残缺回复标 completed 或隐藏 TTS 即阻止 M5 |
+| 个人记忆跨 backend 泄露 | local-only 默认、可见 scope、上下文预算、显式迁移；默认不注入 Hermes | 已删除/未授权记忆或跨 Provider 摘要进入请求即 High |
 | 远程 STT 泄露音频 | 默认关闭、provider 同意、目标/TLS/保留提示 | 未确认上传或目标变化后继续上传即 Critical |
+| 本地 STT 隐式下载模型 | bundled executable + 用户选择的 canonical local model path；禁网缺失时 fail closed | production 启动因模型名访问网络即 High/发布阻断 |
+| 远程 TTS 泄露回复正文 | exact-origin 同意、TLS/保留变化重确认、只发送允许播报文本 | 未确认把回复/秘密/审批正文发送给远端即 High |
 | Hermes capability 或 SSE 契约变化 | fail-closed 协商、稳定事件身份、fake 契约与隔离 live profile | 任一必需能力缺失或事件不可恢复即拒绝 Connector 上线 |
-| Hermes 当前纵向真链路未验证 | fake Hermes + 真实 Gateway stream 已覆盖 Connector 边界，不擅自复用默认 gateway | Hermes 补齐幂等提交后关闭 H1 live gate |
+| Hermes 当前纵向真链路未验证 | fake Hermes + 真实 Gateway stream 已覆盖 Connector 边界，不擅自复用默认 gateway | Hermes 同时补齐幂等 run 与精确 approval identity/resolution 后关闭完整 H1 live gate |
 | PowerSync 引入第二同步/授权平面 | 当前采用 Drift + 已认证 cursor sync；PowerSync 仅位于可选 Sync Adapter | 只有许可、运维、最小授权和量化收益同时过门才引入 |
 | 五端插件能力不一致 | record/media/security adapter + real device tests | 单平台失败显式降级或写原生 plugin |
 | TTS 冷启动/崩溃 | 常驻预热、分段、纯文字降级 | 不达标时限制自动播报长度 |
+| adapter 证据被误作 GUI/发布证据 | 独立证据轴分栏、exact commit/device/service 记录 | synthetic/service smoke 被写成实体麦克风或发布通过即退回验收 |
 | STT 技术词误识别 | 默认确认、高风险审批独立 | 30 条基准不达标切换后端 |
 | 多设备重复提交 | DB uniqueness、idempotency、lease、uncertain | 任何重复执行为发布阻断 |
 | 视觉模板化或近似第三方资产 | 原创视觉主命题、语义 token、组件状态目录、golden 和许可证记录 | 出现禁止的泛 AI 模板或无来源资产即退回设计门 |
 | 视觉耗电或不可访问 | 档位、减少动态、静态回退 | 中档设备不达标降低 shader 复杂度 |
 | 远程高权限泄露 | device scope、TLS、Node 出站、Agent loopback | 安全门失败停止远程发布 |
 
-## 10. Definition of Done
+## 11. Definition of Done
 
 一项变更只有在以下条件全部满足时完成：
 
@@ -654,9 +826,12 @@ UI 不展示虚构完成百分比。诊断页面显示最后真实事件、同�
 - 类型、lint、相关 unit/integration/contract test 通过；
 - 错误能定位到具体 stage；
 - 失败、取消和 uncertain 语义没有合并；
+- Direct LLM 的 `completed/cancelled/failed/incomplete/truncated`、请求 owner 和有界读取经过相应 failure fixtures；
+- 发送前确认绑定精确 backend target；Profile、conversation、route 或执行主机变化会撤销确认；
 - 不引入明文秘密、静默重试或自动审批；
 - 五端影响和降级路径已评估；
 - 新依赖的维护、许可证、体积和退出路径已记录；
 - 用户可见变化有可访问性和无动画路径；
 - 必要的 migration、protocol compatibility、回滚和诊断信息可用；
+- 自动化、真实服务、人工 GUI/实体设备和发布证据按层次记录，并绑定 exact commit；
 - 改动形成聚焦、说明清楚且工作树干净的本地提交；远程写入仍按授权执行。
