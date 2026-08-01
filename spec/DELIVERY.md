@@ -33,11 +33,11 @@
 
 CI 只能证明其 runner 上声明的自动化，不能证明实体麦克风、真实第三方服务或人工交互；真实 service smoke 也不能证明 production GUI。发布门是适用证据轴在同一候选版本上的汇总结论，不是一个能反向替代其他证据的“最高层”。
 
-PR [#4](https://github.com/Dreamy-MoLing/VoxHandoff/pull/4) 当前为 Open、Draft、mergeable，base `main@f4f42e6`，head `agent/m4-fairy-desktop@ba16896`。它是 46 commits、208 files、`+24066/-591` 的累计 PR，覆盖 M2/M3/M4、Hermes/H1/M6 与 M5，不是 M5-only。
+PR [#4](https://github.com/Dreamy-MoLing/VoxHandoff/pull/4) 当前为 Open、Draft、mergeable，base `main@f4f42e6`，功能实现 head 为 `agent/m4-fairy-desktop@1198c4c`；它是覆盖 M2/M3/M4、Hermes/H1/M6 与 M5 的累计 PR，不是 M5-only。随后追加的本文件刷新属于 docs-only 交付记录，不改变上述功能基线。
 
-最新 [GitHub Actions run 30643641151](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30643641151) 的 Node、Flutter Linux、Android、Windows、Apple 五个 job 全部通过；Flutter 为 188 tests passed、2 个 opt-in live tests skipped，并通过 Linux release、desktop self-test 与 Secret Service。较早 [run 30643640922](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30643640922) 的 runner 分配前 billing/spending failure 是历史记录，**不再是当前 CI 阻断**。
+针对功能 head 的 [GitHub Actions run 30705851274](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30705851274) 与 [run 30705850924](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30705850924) 在本快照时仍为 `in_progress`：两组 Node quality 已通过，Flutter Linux、Android、Windows、Apple jobs 尚未完成，因此不能写成远端全绿。较早 [run 30643640922](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30643640922) 的 runner 分配前 billing/spending failure 是历史记录，**不再是当前 CI 阻断**。
 
-PR 正文当前仍把实体麦克风 GUI、H1 和未在 `spec/` 定义的 “security workbench” 列为 Draft 理由，并保留旧 billing 说明。核验结论是：实体麦克风仍是 M5 门；H1 是独立上游阻断，不是 M5/CI 失败；“security workbench” 不能在没有正式需求和验收定义时充当阶段门；billing 说明已经过时。当前合理的 Draft 理由是批次 1–2 的状态一致性修复、连续 GUI/实体麦克风验收和累计 PR 审查，后续应按本规格刷新 PR 正文。
+PR 正文已同步本轮批次 1–4 实现与剩余证据。核验结论是：实体麦克风仍是 M5 门；H1 是独立上游阻断，不是 M5/CI 失败；“security workbench” 不能在没有正式需求和验收定义时充当阶段门；billing 说明已经过时。当前合理的 Draft 理由是批次 5、连续 GUI/实体麦克风验收和累计 PR 审查。
 
 ### 1.3 本轮已确认的实现差异
 
@@ -51,7 +51,7 @@ PR 正文当前仍把实体麦克风 GUI、H1 和未在 `spec/` 定义的 “sec
 | 6 | 每个 delta 同步写 SQLite，每轮发送全部历史；没有 conversation ID、上下文预算、固定记忆、滚动摘要或删除 API | 本轮以 conversation 隔离的 Drift memory/summary、48 KiB UTF-8 budget + 8 KiB reserve、确定性本地 summary rebuild 和 CRUD 关闭最小上下文边界；可调 policy/LLM 自动摘要另拆产品决策 | 批次 4（本轮实现） |
 | 7 | Hermes 与 Direct 使用独立页面/state；没有 AssistantProfile 或共享人格/记忆模型 | 本轮建立共享 AssistantProfile、voice assistant binding 和 common composer/banner 语义；内容视图仍按真实 backend capability 分开，Direct 不出现 Agent 控件 | 批次 3（本轮实现） |
 | 8 | GPT-SoVITS adapter 已有但无完整设置入口；Piper adapter/config 有 speaker 字段但 UI/测试/`/info` capability 未覆盖；远程 STT 只有隔离 adapter；bundled STT launcher 只找 `libexec/voxhandoff-stt`，当前构建未打包它且默认模型可能触发下载；无麦克风选择，STT language 未接生产，播报/打断策略不可配置 | 本轮已补齐本地 STT language/model path、生产传递、麦克风枚举/选择降级、Piper speaker/capability/语速换算和 voice assistant binding，并让 Linux release 以显式 CMake 参数安装 sidecar；remote STT、播报策略、可执行 sidecar 产物和真实 GUI 证据仍未关闭 | 批次 5（本轮部分实现） |
-| 9 | PR #4 当前 CI 已全绿，但仍为累计 Draft；H1 首先被 `idempotency=false` 阻断 | billing 不再是 blocker；M5 与 H1 必须分开关闭 | 批次 6、7 |
+| 9 | PR #4 仍为累计 Draft；功能 head 的 CI 在本快照时仍运行中，H1 首先被 `idempotency=false` 阻断 | billing 不再是 blocker；M5 与 H1 必须分开关闭，远端运行完成前不宣称 CI 全绿 | 批次 6、7 |
 
 同时确认的正向安全事实：Gateway 从持久化 `(nodeId, agentId, capabilityRevision, sessionId)` route 接受、恢复、claim 和校验 Node event；非空 Hermes session 在同一 `(nodeId, agentId, capabilityRevision)` 下只能绑定一个 conversation；Hermes 0.19 resolution 是无 immutable approval ID 的 FIFO，Connector 以 `hermes_approval_resolution_ambiguous` fail closed；Connector session store 合并冷启动加载和同 conversation 并发创建。`uncertain`、禁止静默重提、approval/CAS、control lease、完整回复与语音失败隔离继续是不可回退基线。
 
