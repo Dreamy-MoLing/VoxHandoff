@@ -70,12 +70,20 @@ class DirectChatState {
 
 class DirectChatController extends Notifier<DirectChatState> {
   int _generation = 0;
+  int _testGeneration = 0;
+  String? _activeRequestId;
+  DirectLlmConfiguration? _activeConfiguration;
   DirectChatTransport? _transport;
 
   @override
   DirectChatState build() {
     _transport = ref.watch(directChatTransportProvider);
-    ref.onDispose(() => unawaited(_transport?.close() ?? Future<void>.value()));
+    ref.onDispose(() {
+      _generation += 1;
+      _activeRequestId = null;
+      _activeConfiguration = null;
+      unawaited(_transport?.close() ?? Future<void>.value());
+    });
     unawaited(_restore());
     return const DirectChatState();
   }
@@ -146,6 +154,8 @@ class DirectChatController extends Notifier<DirectChatState> {
       );
       return;
     }
+    _testGeneration += 1;
+    await cancelForContextChange();
     final current = state.configuration;
     final origin = normalizedProviderOrigin(configuration.origin);
     final currentOrigin = current == null
@@ -279,6 +289,17 @@ class DirectChatController extends Notifier<DirectChatState> {
   }
 
   Future<void> testConnection() async {
+    if (state.phase == DirectChatPhase.sending ||
+        state.phase == DirectChatPhase.testing) {
+      state = state.copyWith(
+        phase: DirectChatPhase.failed,
+        failure: const DirectChatFailure(
+          code: 'llm_request_busy',
+          message: 'Finish or cancel the active LLM request before testing.',
+        ),
+      );
+      return;
+    }
     final configuration = state.configuration;
     if (configuration == null) return;
     final key = await ref
@@ -298,16 +319,37 @@ class DirectChatController extends Notifier<DirectChatState> {
       );
       return;
     }
+    final testGeneration = ++_testGeneration;
     state = state.copyWith(phase: DirectChatPhase.testing, clearFailure: true);
     try {
       await _transport!.test(configuration, key);
+      if (testGeneration != _testGeneration ||
+          state.configuration != configuration) {
+        return;
+      }
       state = state.copyWith(phase: DirectChatPhase.ready, tested: true);
     } on DirectChatTransportException catch (error) {
+      if (testGeneration != _testGeneration ||
+          state.configuration != configuration) {
+        return;
+      }
       state = state.copyWith(
         phase: DirectChatPhase.failed,
         failure: DirectChatFailure(
           code: error.code,
           message: error.safeMessage,
+        ),
+      );
+    } on Object {
+      if (testGeneration != _testGeneration ||
+          state.configuration != configuration) {
+        return;
+      }
+      state = state.copyWith(
+        phase: DirectChatPhase.failed,
+        failure: const DirectChatFailure(
+          code: 'llm_connection_failed',
+          message: 'The LLM API could not be reached securely.',
         ),
       );
     }
@@ -361,6 +403,9 @@ class DirectChatController extends Notifier<DirectChatState> {
       return;
     }
     final generation = ++_generation;
+    final requestId = _opaqueId('request');
+    _activeRequestId = requestId;
+    _activeConfiguration = configuration;
     final previousMessages = state.messages;
     final now = DateTime.now().toUtc();
     final user = DirectChatMessage(
@@ -386,6 +431,7 @@ class DirectChatController extends Notifier<DirectChatState> {
       clearFailure: true,
     );
     ref.read(clientSessionProvider.notifier).markAcceptedLocal();
+    var lastPersistedAt = DateTime.fromMillisecondsSinceEpoch(0);
     try {
       await for (final delta in _transport!.streamCompletion(
         configuration: configuration,
@@ -395,7 +441,7 @@ class DirectChatController extends Notifier<DirectChatState> {
           user,
         ],
       )) {
-        if (generation != _generation) return;
+        if (!_ownsRequest(generation, requestId, configuration)) return;
         final current = state.messages
             .map(
               (message) => message.id == reply.id
@@ -404,9 +450,14 @@ class DirectChatController extends Notifier<DirectChatState> {
             )
             .toList(growable: false);
         state = state.copyWith(messages: current);
-        await store.upsert(configuration.conversationId, current.last);
+        final now = DateTime.now();
+        if (now.difference(lastPersistedAt) >=
+            const Duration(milliseconds: 250)) {
+          await store.upsert(configuration.conversationId, current.last);
+          lastPersistedAt = now;
+        }
       }
-      if (generation != _generation) return;
+      if (!_ownsRequest(generation, requestId, configuration)) return;
       final completed = state.messages
           .map(
             (message) => message.id == reply.id
@@ -417,6 +468,7 @@ class DirectChatController extends Notifier<DirectChatState> {
       state = state.copyWith(phase: DirectChatPhase.ready, messages: completed);
       final finalReply = completed.last;
       await store.upsert(configuration.conversationId, finalReply);
+      _releaseRequest(requestId);
       final updatedConfiguration = configuration.copyWith(
         contextSnapshotRevision: configuration.contextSnapshotRevision + 1,
         contextSnapshotHash: _contextHash(completed),
@@ -425,7 +477,8 @@ class DirectChatController extends Notifier<DirectChatState> {
           .read(directChatConfigurationStoreProvider)
           .save(updatedConfiguration);
       state = state.copyWith(configuration: updatedConfiguration);
-      if (finalReply.text.trim().isNotEmpty) {
+      if (_isCurrentConfiguration(configuration) &&
+          finalReply.text.trim().isNotEmpty) {
         await ref
             .read(speechPlaybackProvider.notifier)
             .speakCompletedReply(
@@ -436,8 +489,12 @@ class DirectChatController extends Notifier<DirectChatState> {
             );
       }
     } on DirectChatTransportException catch (error) {
-      if (generation != _generation) return;
-      await _completePartial(configuration.conversationId, reply.id);
+      if (!_ownsRequest(generation, requestId, configuration)) return;
+      await _completePartial(
+        configuration.conversationId,
+        reply.id,
+        code: error.code,
+      );
       state = state.copyWith(
         phase: DirectChatPhase.failed,
         failure: DirectChatFailure(
@@ -445,6 +502,22 @@ class DirectChatController extends Notifier<DirectChatState> {
           message: error.safeMessage,
         ),
       );
+      _releaseRequest(requestId);
+    } on Object {
+      if (!_ownsRequest(generation, requestId, configuration)) return;
+      await _completePartial(
+        configuration.conversationId,
+        reply.id,
+        code: 'llm_stream_failed',
+      );
+      state = state.copyWith(
+        phase: DirectChatPhase.failed,
+        failure: const DirectChatFailure(
+          code: 'llm_stream_failed',
+          message: 'The LLM response stopped before completion.',
+        ),
+      );
+      _releaseRequest(requestId);
     }
   }
 
@@ -453,7 +526,10 @@ class DirectChatController extends Notifier<DirectChatState> {
       return;
     }
     _generation += 1;
+    _activeRequestId = null;
+    _activeConfiguration = null;
     await _transport!.cancel();
+    await ref.read(speechPlaybackProvider.notifier).stopSpeech();
     final configuration = state.configuration;
     if (configuration != null) {
       final incomplete = state.messages
@@ -482,11 +558,26 @@ class DirectChatController extends Notifier<DirectChatState> {
     }
   }
 
-  Future<void> _completePartial(String conversationId, String replyId) async {
+  /// Cancels local work before a source, profile, configuration or conversation
+  /// becomes active. The generation increment is the stale-result barrier;
+  /// awaiting transport cancellation completes the terminal write barrier.
+  Future<void> cancelForContextChange() async {
+    if (state.phase == DirectChatPhase.sending) {
+      await cancel();
+    } else {
+      await ref.read(speechPlaybackProvider.notifier).stopSpeech();
+    }
+  }
+
+  Future<void> _completePartial(
+    String conversationId,
+    String replyId, {
+    required String code,
+  }) async {
     final messages = state.messages
         .map(
           (message) => message.id == replyId
-              ? message.copyWith(terminal: DirectMessageTerminal.incomplete)
+              ? message.copyWith(terminal: _terminalFor(code, message.text))
               : message,
         )
         .toList(growable: false);
@@ -494,6 +585,43 @@ class DirectChatController extends Notifier<DirectChatState> {
     await ref
         .read(directChatHistoryStoreProvider)
         .upsert(conversationId, messages.last);
+  }
+
+  DirectMessageTerminal _terminalFor(String code, String text) {
+    if (code == 'llm_stream_too_large') {
+      return DirectMessageTerminal.truncated;
+    }
+    return text.trim().isEmpty
+        ? DirectMessageTerminal.failed
+        : DirectMessageTerminal.incomplete;
+  }
+
+  bool _ownsRequest(
+    int generation,
+    String requestId,
+    DirectLlmConfiguration configuration,
+  ) =>
+      generation == _generation &&
+      _activeRequestId == requestId &&
+      identical(_activeConfiguration, configuration);
+
+  bool _isCurrentConfiguration(DirectLlmConfiguration configuration) {
+    final current = state.configuration;
+    return _activeConfiguration == null &&
+        current != null &&
+        current.conversationId == configuration.conversationId &&
+        current.profileId == configuration.profileId &&
+        current.credentialRevision == configuration.credentialRevision &&
+        current.configurationRevision == configuration.configurationRevision &&
+        current.assistantId == configuration.assistantId &&
+        current.assistantRevision == configuration.assistantRevision;
+  }
+
+  void _releaseRequest(String requestId) {
+    if (_activeRequestId == requestId) {
+      _activeRequestId = null;
+      _activeConfiguration = null;
+    }
   }
 
   bool _draftMatchesConfiguration(

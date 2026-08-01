@@ -23,6 +23,7 @@ class MessageComposer extends StatelessWidget {
     required this.onCancelVoice,
     required this.onDiscardVoice,
     this.sendLabel = 'Handoff to Hermes',
+    this.requiresGatewayConnection = true,
     super.key,
   });
 
@@ -40,6 +41,7 @@ class MessageComposer extends StatelessWidget {
   final Future<void> Function() onCancelVoice;
   final Future<void> Function() onDiscardVoice;
   final String sendLabel;
+  final bool requiresGatewayConnection;
 
   @override
   Widget build(BuildContext context) {
@@ -105,7 +107,12 @@ class MessageComposer extends StatelessWidget {
                         onPressed: session.canConfirmDraft ? onConfirm : null,
                         child: const Text('Confirm'),
                       );
-                final canSend = confirmed && session.canSubmit && sendEnabled;
+                final canSend =
+                    confirmed &&
+                    (requiresGatewayConnection
+                        ? session.canSubmit
+                        : session.draftPhase == DraftPhase.confirmed) &&
+                    sendEnabled;
                 final sendAction = FilledButton.tonalIcon(
                   onPressed: canSend ? onSend : null,
                   icon: const Icon(Icons.arrow_upward_rounded),

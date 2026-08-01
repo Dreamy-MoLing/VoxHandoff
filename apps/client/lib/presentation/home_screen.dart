@@ -229,8 +229,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             PopupMenuButton<ChatSource>(
               tooltip: 'Choose chat source',
               initialValue: source,
-              onSelected: (value) =>
-                  ref.read(chatSourceProvider.notifier).select(value),
+              onSelected: (value) => unawaited(
+                ref.read(chatSourceProvider.notifier).select(value),
+              ),
               itemBuilder: (context) => const [
                 PopupMenuItem(
                   value: ChatSource.hermes,
@@ -307,6 +308,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ? directChat.isConfigured &&
                         directChat.phase != DirectChatPhase.sending
                   : ownsLease,
+              requiresGatewayConnection: !isDirect,
               sendLabel: isDirect ? 'Send to LLM' : 'Handoff to Hermes',
               onStartVoice: _startVoice,
               onStopVoice: _stopVoice,

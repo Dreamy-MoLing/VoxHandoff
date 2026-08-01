@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:agent_talk_client/application/direct_chat_controller.dart';
+import 'package:agent_talk_client/application/chat_source_controller.dart';
 import 'package:agent_talk_client/application/client_session_controller.dart';
 import 'package:agent_talk_client/application/speech_playback_controller.dart';
 import 'package:agent_talk_client/domain/confirmed_draft.dart';
@@ -94,6 +95,125 @@ void main() {
       'llm_key_required_for_new_profile',
     );
   });
+
+  test(
+    'changing profile cancels the old request before loading new history',
+    () async {
+      final history = _History();
+      final transport = _BlockingTransport();
+      final container = _container(history, transport);
+      addTearDown(container.dispose);
+      final controller = container.read(directChatProvider.notifier);
+      await controller.configure(_config, 'origin-a-key');
+      final draft = container.read(clientSessionProvider.notifier);
+      draft.editDraft('old request');
+      draft.confirmDraft(_directDraft(container, 'old request'));
+      final pending = controller.sendConfirmedText(
+        container.read(clientSessionProvider).confirmedDraft!,
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      await controller.configure(
+        _config.copyWith(origin: Uri.parse('https://origin-b.example.test')),
+        'origin-b-key',
+      );
+      await pending;
+
+      expect(transport.cancelled, isTrue);
+      expect(
+        history.records.values
+            .expand((messages) => messages)
+            .singleWhere((message) => message.role == DirectChatRole.assistant)
+            .terminal,
+        DirectMessageTerminal.cancelled,
+      );
+      expect(
+        container.read(directChatProvider).configuration!.origin.toString(),
+        'https://origin-b.example.test',
+      );
+      expect(container.read(directChatProvider).messages, isEmpty);
+    },
+  );
+
+  test(
+    'source switching cancels Direct work and prevents late deltas',
+    () async {
+      final history = _History();
+      final transport = _BlockingTransport();
+      final container = _container(history, transport);
+      addTearDown(container.dispose);
+      final controller = container.read(directChatProvider.notifier);
+      await controller.configure(_config, 'fixture-key');
+      await container
+          .read(chatSourceProvider.notifier)
+          .select(ChatSource.directLlm);
+      final draft = container.read(clientSessionProvider.notifier);
+      draft.editDraft('switch source');
+      draft.confirmDraft(_directDraft(container, 'switch source'));
+      final pending = controller.sendConfirmedText(
+        container.read(clientSessionProvider).confirmedDraft!,
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      await container
+          .read(chatSourceProvider.notifier)
+          .select(ChatSource.hermes);
+      await pending;
+
+      expect(transport.cancelled, isTrue);
+      expect(
+        history.records.values
+            .expand((messages) => messages)
+            .singleWhere((message) => message.role == DirectChatRole.assistant)
+            .terminal,
+        DirectMessageTerminal.cancelled,
+      );
+    },
+  );
+
+  test(
+    'maps empty, partial, and oversized failures to distinct terminals',
+    () async {
+      for (final fixture in [
+        (
+          code: 'llm_connection_failed',
+          text: '',
+          terminal: DirectMessageTerminal.failed,
+        ),
+        (
+          code: 'llm_stream_incomplete',
+          text: 'partial',
+          terminal: DirectMessageTerminal.incomplete,
+        ),
+        (
+          code: 'llm_stream_too_large',
+          text: 'partial',
+          terminal: DirectMessageTerminal.truncated,
+        ),
+      ]) {
+        final history = _History();
+        final container = _container(
+          history,
+          _FailingTransport(fixture.code, fixture.text),
+        );
+        final controller = container.read(directChatProvider.notifier);
+        await controller.configure(_config, 'fixture-key');
+        final draft = container.read(clientSessionProvider.notifier);
+        draft.editDraft('terminal fixture');
+        draft.confirmDraft(_directDraft(container, 'terminal fixture'));
+        await controller.sendConfirmedText(
+          container.read(clientSessionProvider).confirmedDraft!,
+        );
+
+        expect(
+          history.messages.last.terminal,
+          fixture.terminal,
+          reason: fixture.code,
+        );
+        container.dispose();
+      }
+    },
+  );
 
   test('legacy v1 secret and configuration are never auto-activated', () async {
     final history = _History();
@@ -352,7 +472,7 @@ class _BlockingTransport implements DirectChatTransport {
   @override
   Future<void> cancel() async {
     cancelled = true;
-    await _controller.close();
+    unawaited(_controller.close());
   }
 
   @override
@@ -363,6 +483,35 @@ class _BlockingTransport implements DirectChatTransport {
     required String apiKey,
     required List<DirectChatMessage> messages,
   }) => _controller.stream;
+  @override
+  Future<void> test(
+    DirectLlmConfiguration configuration,
+    String apiKey,
+  ) async {}
+}
+
+class _FailingTransport implements DirectChatTransport {
+  _FailingTransport(this.code, this.partial);
+
+  final String code;
+  final String partial;
+
+  @override
+  Future<void> cancel() async {}
+
+  @override
+  Future<void> close() async {}
+
+  @override
+  Stream<String> streamCompletion({
+    required DirectLlmConfiguration configuration,
+    required String apiKey,
+    required List<DirectChatMessage> messages,
+  }) async* {
+    if (partial.isNotEmpty) yield partial;
+    throw DirectChatTransportException(code, 'fixture failure');
+  }
+
   @override
   Future<void> test(
     DirectLlmConfiguration configuration,
