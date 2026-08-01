@@ -13,6 +13,7 @@ import '../application/device_pairing_controller.dart';
 import '../application/gateway_workspace_controller.dart';
 import '../application/voice_session_controller.dart';
 import '../domain/client_session.dart';
+import '../domain/confirmed_draft.dart';
 import '../domain/direct_chat.dart';
 import '../domain/desktop_capabilities.dart';
 import '../domain/device_pairing.dart';
@@ -64,7 +65,59 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _confirmDraft() {
-    ref.read(clientSessionProvider.notifier).confirmDraft();
+    final session = ref.read(clientSessionProvider);
+    final source = ref.read(chatSourceProvider);
+    final direct = ref.read(directChatProvider);
+    final workspace = ref.read(gatewayWorkspaceProvider);
+    if (source == ChatSource.hermes && workspace.selectedConversation == null) {
+      // An unpaired shell may still keep a local confirmed draft for the
+      // existing composer UX. It has no routable target and cannot be sent.
+      ref.read(clientSessionProvider.notifier).confirmDraft();
+      final confirmedText = ref.read(clientSessionProvider).draftText;
+      _composer.value = TextEditingValue(
+        text: confirmedText,
+        selection: TextSelection.collapsed(offset: confirmedText.length),
+      );
+      return;
+    }
+    final assistant =
+        direct.assistantProfile ??
+        const AssistantProfile(
+          assistantId: 'default-assistant-uninitialized',
+          assistantRevision: 1,
+          systemPrompt: '',
+        );
+    final target = switch (source) {
+      ChatSource.directLlm => _directTarget(direct),
+      ChatSource.hermes => _hermesTarget(workspace),
+    };
+    final contextParts = switch (source) {
+      ChatSource.directLlm =>
+        direct.messages
+            .where((message) => message.contextEligible)
+            .map(
+              (message) => '${message.id}:${message.revision}:${message.text}',
+            )
+            .toList(growable: false),
+      ChatSource.hermes =>
+        workspace.events
+            .map((event) => '${event.eventId}:${event.sequence}')
+            .toList(growable: false),
+    };
+    final contextRevision = source == ChatSource.directLlm
+        ? direct.configuration?.contextSnapshotRevision ?? 0
+        : workspace.selectedConversation?.revision.toInt() ?? 0;
+    final draft = ConfirmedDraft(
+      draftId: _opaqueId('draft'),
+      draftRevision: session.draftRevision,
+      confirmedText: session.draftText,
+      assistantId: assistant.assistantId,
+      assistantRevision: assistant.assistantRevision,
+      contextSnapshotRevision: contextRevision,
+      contextSnapshotHash: ConfirmedDraft.contextHash(contextParts),
+      target: target,
+    );
+    ref.read(clientSessionProvider.notifier).confirmDraft(draft);
     final confirmedText = ref.read(clientSessionProvider).draftText;
     _composer.value = TextEditingValue(
       text: confirmedText,
@@ -75,11 +128,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _openPairing() => showDevicePairingDialog(context);
 
   Future<void> _send() async {
-    final text = ref.read(clientSessionProvider).draftText;
-    if (ref.read(chatSourceProvider) == ChatSource.directLlm) {
-      await ref.read(directChatProvider.notifier).sendConfirmedText(text);
+    final draft = ref.read(clientSessionProvider).confirmedDraft;
+    if (draft == null) return;
+    if (draft.chatSource == ChatSource.directLlm) {
+      await ref.read(directChatProvider.notifier).sendConfirmedText(draft);
     } else {
-      await ref.read(gatewayWorkspaceProvider.notifier).sendConfirmedText(text);
+      await ref
+          .read(gatewayWorkspaceProvider.notifier)
+          .sendConfirmedText(draft);
     }
   }
 
@@ -310,6 +366,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ),
     );
+  }
+
+  DirectTargetSnapshot _directTarget(DirectChatState state) {
+    final configuration = state.configuration;
+    if (configuration == null || configuration.conversationId.isEmpty) {
+      throw StateError('Configure the Direct LLM target before confirming.');
+    }
+    return DirectTargetSnapshot(
+      conversationId: configuration.conversationId,
+      providerProfileId: configuration.profileId,
+      credentialRevision: configuration.credentialRevision,
+      configurationRevision: configuration.configurationRevision,
+      normalizedOrigin: normalizedProviderOrigin(configuration.origin),
+      model: configuration.model,
+    );
+  }
+
+  HermesTargetSnapshot _hermesTarget(GatewayWorkspaceState workspace) {
+    final conversation = workspace.selectedConversation;
+    if (conversation == null) {
+      throw StateError('Select a Hermes conversation before confirming.');
+    }
+    return HermesTargetSnapshot(
+      conversationId: conversation.conversationId,
+      nodeId: conversation.nodeId,
+      agentId: conversation.agentId,
+      capabilityRevision: conversation.capabilityRevision,
+      sessionId: conversation.sessionId,
+    );
+  }
+
+  String _opaqueId(String prefix) {
+    final random = math.Random.secure();
+    return '$prefix-${List<int>.generate(16, (_) => random.nextInt(256)).map((value) => value.toRadixString(16).padLeft(2, '0')).join()}';
   }
 }
 

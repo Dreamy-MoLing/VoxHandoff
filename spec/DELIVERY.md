@@ -43,10 +43,10 @@ PR 正文当前仍把实体麦克风 GUI、H1 和未在 `spec/` 定义的 “sec
 
 | # | 仓库事实 | 工程结论 | 进入批次 |
 | --- | --- | --- | --- |
-| 1 | Direct LLM 只有固定 `default-direct-llm` 配置；改 origin/model 复用 ID，空 key 保留旧 key；历史按该 ID 加载并全部发送 | 可把旧 Provider key 与历史发送给新 origin，属于发布阻断 | 批次 1 |
-| 2 | `confirmDraft()` 只冻结文本；发送时才读取当前 ChatSource/Profile/Hermes conversation/route | 确认没有证明用户同意当前目标；Gateway route authority 不能弥补 Client 确认缺口 | 批次 1 |
+| 1 | **批次 1 前** Direct LLM 只有固定 `default-direct-llm` 配置；改 origin/model 复用 ID，空 key 保留旧 key；历史按该 ID 加载并全部发送 | 已由批次 1 的 Profile/credential/configuration/conversation revision 与 legacy 隔离关闭 | 批次 1（已关闭） |
+| 2 | **批次 1 前** `confirmDraft()` 只冻结文本；发送时才读取当前 ChatSource/Profile/Hermes conversation/route | 已由批次 1 的 immutable `ConfirmedDraft` 与 exact target/context 校验关闭 | 批次 1（已关闭） |
 | 3 | source/profile/config 切换不取消旧流；test/chat 共用单一 `_active`；隐藏 Direct 页面仍可写历史和触发 TTS | 存在请求所有权和跨会话副作用竞争 | 批次 2 |
-| 4 | Direct message 只有 `completed: bool`；提前 EOF 会走成功/TTS 路径，cancel/failure/超限 partial 虽当次不播报却仍以 completed 持久化并进入后续全历史 payload | 终态失真，可能把残缺内容当可信上下文 | 批次 2 |
+| 4 | **批次 1 前** Direct message 只有 `completed: bool`；提前 EOF 会走成功/TTS 路径，cancel/failure/超限 partial 虽当次不播报却仍以 completed 持久化并进入后续全历史 payload | 批次 1 已落最终 schema；runtime 终态证明、请求 ownership 与 bounded I/O 仍属批次 2 | 批次 2 |
 | 5 | 正常 SSE 已在 UTF-8/分行前限制 4 MiB；`GET /models` 与非 2xx body 仍直接无界 `drain()` | 字节修复只覆盖正常 SSE，资源边界未闭合 | 批次 2 |
 | 6 | 每个 delta 同步写 SQLite，每轮发送全部历史；没有 conversation ID、上下文预算、固定记忆、滚动摘要或删除 API | 不满足长期助手和长期聊天语义 | 批次 3、4 |
 | 7 | Hermes 与 Direct 使用独立页面/state；没有 AssistantProfile 或共享人格/记忆模型 | 当前仍表现为两个产品，统一助手是目标态而非已实现 | 批次 3 |
@@ -550,7 +550,7 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 ### 5.1 批次 1（M5）：Provider Profile、历史隔离与确认目标快照
 
 - **用户需求**：切换 API 服务、模型或 Hermes 目标时，密钥、历史和已确认文字都只发送给用户明确看到并确认的目标。
-- **当前问题**：生产设置路径只有一个 active configuration，首次 ID 为 `default-direct-llm`；编辑 origin 或 model 会复用该 ID，空 key 会继续读取该 ID 下的旧 key，全部历史也按同一 ID 复用。`confirmDraft()` 只确认文本，实际发送时才读取当前 ChatSource/configuration 或 Hermes conversation，因此确认后切换目标不会强制重新确认。
+- **批次 1 前的问题（已关闭）**：生产设置路径只有一个 active configuration，首次 ID 为 `default-direct-llm`；编辑 origin 或 model 会复用该 ID，空 key 会继续读取该 ID 下的旧 key，全部历史也按同一 ID 复用。`confirmDraft()` 只确认文本，实际发送时才读取当前 ChatSource/configuration 或 Hermes conversation，因此确认后切换目标不会强制重新确认。
 - **实施范围**：引入 opaque `providerProfileId`、独立 `credentialRevision`、`configurationRevision` 和本地生成的 `conversationId`。origin/auth realm/principal 变化必须创建新 Profile；同身份 key rotation 递增 credential revision；model 或采样参数变化创建 configuration revision，并默认开启新 conversation。批次 1 先生成并持久化一个 opaque default `assistantId`，建立最小 `AssistantProfile { assistantId, assistantRevision, systemPrompt }`，把现有 Direct system prompt 迁入这个唯一权威；批次 3 再扩展完整助手配置和统一界面。实现架构定义的完整 `ConfirmedDraft { draftId, draftRevision, confirmedText, textHash, assistantId, assistantRevision, contextSnapshotRevision, contextSnapshotHash, chatSource, conversationId, targetSnapshot, confirmedAt }`；Direct target 固定 Profile、credential/config revision 与 conversation，Hermes target 固定 conversation 及权威 `(nodeId, agentId, capabilityRevision, sessionId)` route，其中 `nodeId` 是安全意义上的执行主机身份。任何绑定字段变化都销毁确认快照。
 - **状态和数据语义**：Profile 是服务/auth 边界，credential/config revision 是不可变请求快照，conversation 是历史边界，不能复用一个 ID。批次 1 先落最终 `local_messages` terminal/provenance schema 与 legacy migration，批次 2 再把 runtime lifecycle 完整接到该 schema；两批之间不得再做第二次终态 schema 迁移。旧配置、secret 和消息迁移为禁用 legacy records：旧消息虽有 `providerId`，但该 ID 曾跨 origin 复用，因此 origin/revision/conversation provenance 不可信；旧 assistant message 使用 `terminal=incomplete` 加独立 `provenance=legacy_unverified`，只可查看、导出、删除。旧 secret 保持隔离且不得用于测试或聊天；用户看到 exact normalized origin/auth realm 后重新输入 key，才创建可用 credential revision，成功后删除旧 secret reference。
 - **安全边界**：新建 Profile、改变 origin/auth realm/principal 或重新激活 legacy 配置时必须输入非空 key；当前 adapter 不定义无认证模式。只有同一 active Profile 且不执行 rotation 时，空输入才表示保留原 key。历史跨 Profile 迁移默认禁止；显式迁移必须预览目标、范围和会发送的数据。确认界面展示实际 provider/origin/model/credential revision 或 Hermes node/agent/session，不以 display label 作安全判断。
@@ -561,10 +561,12 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 - **外部依赖**：无；使用现有 OS secure storage、Drift 和 Gateway route。loopback fake 不需要真实 API。
 - **完成条件**：代码和存量数据中不存在“配置 ID 同时充当 provider、credential 和 conversation 身份”的活动路径；legacy key/history 默认不可发送；所有发送只接受 assistant/context/backend revisions 仍有效的 `ConfirmedDraft`。这是下一轮 Luna Max 的首个开发任务，也是 PR #4 转为可评审前的第一项正确性门。
 
+**2026-08-01 批次 1 实现证据**：已落地 `ConfirmedDraft`、default assistant identity、Provider/credential/configuration/conversation revision 和 `contextSnapshotHash`；Direct secret/config 改为 v2 key space，origin/auth realm/principal 变化创建新 opaque Profile，模型变化创建新 configuration revision/conversation，同身份 rotation 递增并删除旧 credential revision。旧 v1 config/secret 不被读取；旧 Drift message migration 进入 `legacy-<providerId>` 隔离 conversation，写入 `terminal=incomplete`、`provenance=legacy_unverified` 和 `context_eligible=false`。消息表已从 `completed` 布尔值改为受约束的 `streaming|completed|cancelled|failed|incomplete|truncated` terminal、provenance、revision 与 context eligibility。确认和发送回归覆盖 origin key/history 隔离、Profile disabled、revision/conversation 隔离、source/Profile/conversation/route target switch、immutable text/target/context hash；`npm run flutter:check` 于本批次 head 通过（Flutter analyze、195 tests；2 个显式 live smoke skipped）。批次 2 仍负责把所有 Direct lifecycle/ bounded I/O 完整映射到这些终态。
+
 ### 5.2 批次 2（M5）：Direct LLM 请求所有权、消息终态与有界 I/O
 
 - **用户需求**：取消、切页、切换配置、超时或服务异常后，旧请求不能污染当前对话、误播 TTS 或把残缺回复伪装成成功；Direct LLM 也不应依赖 Gateway 在线才能发送。
-- **当前问题**：连接测试与聊天流共享 transport 的单一 `_active` 请求；切 source/Profile/config 不取消旧流，隐藏页面仍可写历史和触发 TTS。消息只有 `completed: bool`，自然 EOF、取消和部分失败都会把部分文本写成完成。`GET /models` 与 chat 非 2xx body 仍是无界 `drain()`；delta 每片同步写 SQLite；Direct 输入区复用了要求 Gateway connected 的 `canSubmit`。
+- **当前问题**：连接测试与聊天流共享 transport 的单一 `_active` 请求；切 source/Profile/config 不取消旧流，隐藏页面仍可写历史和触发 TTS。批次 1 已落最终 terminal/provenance schema，但 runtime 仍把任意自然 EOF 当作 `completed`，且尚未完整区分 `[DONE]` 缺失、超时、超限与部分失败。`GET /models` 与 chat 非 2xx body 仍是无界 `drain()`；delta 每片同步写 SQLite；Direct 输入区复用了要求 Gateway connected 的 `canSubmit`。
 - **实施范围**：以 request ID + assistant/Profile/revision/conversation 作为 request owner；连接测试使用独立句柄。切 source、Profile、revision、conversation 或退出当前聊天上下文时，先 cancel 并等待 terminal barrier，再激活新目标；旧 generation 的 delta、terminal 和 TTS token 一律丢弃。复用批次 1 已落地的最终 terminal/provenance schema，把 runtime lifecycle 完整映射为 `streaming | completed | cancelled | failed | incomplete | truncated`，保存 stage/error code/received bytes；所有 response path 使用同一有界 reader 和总时限。delta 最多每 250 ms 合并写入一次，terminal 立即落盘。Direct submit readiness 与 Gateway connection 分离。
 - **状态和数据语义**：只有收到协议认可的完成标记且解析结束才是 `completed`；用户取消为 `cancelled`；未产生有效正文的连接、认证、超时、网络或 protocol 错误为 `failed`；已有部分正文却缺少完成证明，包括提前 EOF、缺 `[DONE]`、超时、断网或后续解析失败，均为 `incomplete`；超过响应上限为 `truncated`。迁移时旧 assistant reply 一律为 `terminal=incomplete`，另设 `provenance=legacy_unverified`；该 provenance 不是第七终态，只展示且不自动进入上下文或 TTS。
 - **安全边界**：cancel 不得转成 retry；失败或部分回复不得自动重提；非 2xx body 只在上限内消费后丢弃，仅保存 HTTP status、stage、稳定错误码和 allowlist request ID，不保存或展示 upstream body 摘要；只有当前前台 conversation 的 `completed` reply 可进入自动播报。TTS 有独立 generation token，录音开始、目标切换、配置变化或新 reply 都能取消旧 generation。

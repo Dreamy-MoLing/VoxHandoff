@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:agent_talk_client/application/direct_chat_controller.dart';
 import 'package:agent_talk_client/application/client_session_controller.dart';
 import 'package:agent_talk_client/application/speech_playback_controller.dart';
+import 'package:agent_talk_client/domain/confirmed_draft.dart';
+import 'package:agent_talk_client/domain/client_session.dart';
 import 'package:agent_talk_client/domain/direct_chat.dart';
 import 'package:agent_talk_client/domain/speech.dart';
 import 'package:agent_talk_client/infrastructure/chat/openai_compatible_chat_client.dart';
@@ -21,9 +24,12 @@ void main() {
       addTearDown(container.dispose);
       final controller = container.read(directChatProvider.notifier);
       await controller.configure(_config, 'not-logged-key');
-      container.read(clientSessionProvider.notifier).editDraft('第一条已确认文本');
-      container.read(clientSessionProvider.notifier).confirmDraft();
-      await controller.sendConfirmedText('第一条已确认文本');
+      final draft = container.read(clientSessionProvider.notifier);
+      draft.editDraft('第一条已确认文本');
+      draft.confirmDraft(_directDraft(container, '第一条已确认文本'));
+      await controller.sendConfirmedText(
+        container.read(clientSessionProvider).confirmedDraft!,
+      );
       final state = container.read(directChatProvider);
       expect(state.phase, DirectChatPhase.ready);
       expect(state.messages.map((message) => message.text), [
@@ -44,9 +50,12 @@ void main() {
       addTearDown(container.dispose);
       final controller = container.read(directChatProvider.notifier);
       await controller.configure(_config, 'not-logged-key');
-      container.read(clientSessionProvider.notifier).editDraft('不要重发');
-      container.read(clientSessionProvider.notifier).confirmDraft();
-      final pending = controller.sendConfirmedText('不要重发');
+      final draft = container.read(clientSessionProvider.notifier);
+      draft.editDraft('不要重发');
+      draft.confirmDraft(_directDraft(container, '不要重发'));
+      final pending = controller.sendConfirmedText(
+        container.read(clientSessionProvider).confirmedDraft!,
+      );
       await Future<void>.delayed(Duration.zero);
       await controller.cancel();
       await pending;
@@ -55,7 +64,176 @@ void main() {
         DirectChatPhase.cancelled,
       );
       expect(transport.cancelled, isTrue);
-      expect(history.messages.last.completed, isTrue);
+      expect(history.messages.last.terminal, DirectMessageTerminal.cancelled);
+    },
+  );
+
+  test('changing origin cannot auto-bind the previous profile key', () async {
+    final history = _History();
+    final transport = _Transport(const ['reply']);
+    final container = _container(history, transport);
+    addTearDown(container.dispose);
+    final controller = container.read(directChatProvider.notifier);
+
+    await controller.configure(_config, 'key-for-origin-a');
+    await controller.configure(
+      _config.copyWith(origin: Uri.parse('https://origin-b.example.test')),
+      '',
+    );
+    final draft = container.read(clientSessionProvider.notifier);
+    draft.editDraft('must not use origin A key');
+    draft.confirmDraft(_directDraft(container, 'must not use origin A key'));
+
+    await controller.sendConfirmedText(
+      container.read(clientSessionProvider).confirmedDraft!,
+    );
+
+    expect(transport.apiKeys, isEmpty);
+    expect(
+      container.read(directChatProvider).failure?.code,
+      'llm_key_required_for_new_profile',
+    );
+  });
+
+  test('legacy v1 secret and configuration are never auto-activated', () async {
+    final history = _History();
+    final transport = _Transport(const ['should-not-run']);
+    final store = _Store()
+      ..values['${DirectLlmSecretStore.legacyPrefix}fixture-provider'] =
+          'legacy-key'
+      ..values[DirectLlmConfigurationStore.legacyKey] = jsonEncode({
+        'version': 1,
+        'id': 'fixture-provider',
+        'origin': 'https://legacy.example.test',
+        'model': 'legacy-model',
+        'system_prompt': '',
+      });
+    final container = ProviderContainer(
+      overrides: [
+        directChatHistoryStoreProvider.overrideWithValue(history),
+        directChatTransportProvider.overrideWithValue(transport),
+        directChatSecretStoreProvider.overrideWithValue(
+          DirectLlmSecretStore(store),
+        ),
+        directChatConfigurationStoreProvider.overrideWithValue(
+          DirectLlmConfigurationStore(store),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    final controller = container.read(directChatProvider.notifier);
+
+    await controller.configure(_config, '');
+
+    expect(container.read(directChatProvider).isConfigured, isFalse);
+    expect(transport.apiKeys, isEmpty);
+    expect(history.messages, isEmpty);
+  });
+
+  test(
+    'changing origin opens a new history boundary instead of loading old messages',
+    () async {
+      final history = _History();
+      final transport = _Transport(const ['reply']);
+      final container = _container(history, transport);
+      addTearDown(container.dispose);
+      final controller = container.read(directChatProvider.notifier);
+
+      await controller.configure(_config, 'key-for-origin-a');
+      final draft = container.read(clientSessionProvider.notifier);
+      draft.editDraft('origin A message');
+      draft.confirmDraft(_directDraft(container, 'origin A message'));
+      await controller.sendConfirmedText(
+        container.read(clientSessionProvider).confirmedDraft!,
+      );
+      draft.startNextDraft();
+
+      await controller.configure(
+        _config.copyWith(origin: Uri.parse('https://origin-b.example.test')),
+        'key-for-origin-b',
+      );
+
+      expect(container.read(directChatProvider).messages, isEmpty);
+      expect(history.listedIds, hasLength(2));
+      expect(history.listedIds.first, isNot(history.listedIds.last));
+    },
+  );
+
+  test(
+    'changing the direct target invalidates an existing confirmation',
+    () async {
+      final history = _History();
+      final container = _container(history, _Transport(const ['reply']));
+      addTearDown(container.dispose);
+      final controller = container.read(directChatProvider.notifier);
+      final draft = container.read(clientSessionProvider.notifier);
+
+      await controller.configure(_config, 'key-for-origin-a');
+      draft.editDraft('target-bound text');
+      draft.confirmDraft(_directDraft(container, 'target-bound text'));
+      expect(
+        container.read(clientSessionProvider).draftPhase,
+        DraftPhase.confirmed,
+      );
+
+      await controller.configure(
+        _config.copyWith(origin: Uri.parse('https://origin-b.example.test')),
+        'key-for-origin-b',
+      );
+
+      expect(
+        container.read(clientSessionProvider).draftPhase,
+        DraftPhase.editing,
+      );
+      expect(container.read(clientSessionProvider).confirmedDraft, isNull);
+    },
+  );
+
+  test(
+    'keeps provider, credential, configuration, conversation, and assistant revisions distinct',
+    () async {
+      final history = _History();
+      final store = _Store();
+      final container = ProviderContainer(
+        overrides: [
+          directChatHistoryStoreProvider.overrideWithValue(history),
+          directChatTransportProvider.overrideWithValue(_Transport(const [])),
+          directChatSecretStoreProvider.overrideWithValue(
+            DirectLlmSecretStore(store),
+          ),
+          directChatConfigurationStoreProvider.overrideWithValue(
+            DirectLlmConfigurationStore(store),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final controller = container.read(directChatProvider.notifier);
+
+      await controller.configure(_config, 'key-a');
+      final first = container.read(directChatProvider).configuration!;
+      await controller.configure(_config, 'key-b');
+      final rotated = container.read(directChatProvider).configuration!;
+      expect(rotated.providerProfileId, first.providerProfileId);
+      expect(rotated.credentialRevision, first.credentialRevision + 1);
+      expect(rotated.configurationRevision, first.configurationRevision);
+      expect(rotated.conversationId, first.conversationId);
+
+      await controller.configure(
+        _config.copyWith(model: 'new-model', systemPrompt: 'Be concise.'),
+        '',
+      );
+      final changed = container.read(directChatProvider).configuration!;
+      expect(changed.providerProfileId, first.providerProfileId);
+      expect(changed.credentialRevision, rotated.credentialRevision);
+      expect(changed.configurationRevision, rotated.configurationRevision + 1);
+      expect(changed.conversationId, isNot(rotated.conversationId));
+      expect(changed.assistantId, first.assistantId);
+      expect(changed.assistantRevision, first.assistantRevision + 1);
+      expect(container.read(directChatProvider).messages, isEmpty);
+      expect(
+        store.values.keys.where((key) => key.contains('direct-llm-key')),
+        hasLength(1),
+      );
     },
   );
 }
@@ -84,6 +262,28 @@ ProviderContainer _container(_History history, DirectChatTransport transport) {
   );
 }
 
+ConfirmedDraft _directDraft(ProviderContainer container, String text) {
+  final configuration = container.read(directChatProvider).configuration!;
+  final session = container.read(clientSessionProvider);
+  return ConfirmedDraft(
+    draftId: 'draft-${text.hashCode}',
+    draftRevision: session.draftRevision,
+    confirmedText: text,
+    assistantId: configuration.assistantId,
+    assistantRevision: configuration.assistantRevision,
+    contextSnapshotRevision: configuration.contextSnapshotRevision,
+    contextSnapshotHash: configuration.contextSnapshotHash,
+    target: DirectTargetSnapshot(
+      conversationId: configuration.conversationId,
+      providerProfileId: configuration.profileId,
+      credentialRevision: configuration.credentialRevision,
+      configurationRevision: configuration.configurationRevision,
+      normalizedOrigin: normalizedProviderOrigin(configuration.origin),
+      model: configuration.model,
+    ),
+  );
+}
+
 class _Store implements SecureValueStore {
   final values = <String, String>{};
   @override
@@ -95,12 +295,19 @@ class _Store implements SecureValueStore {
 }
 
 class _History implements DirectChatHistoryStore {
-  final messages = <DirectChatMessage>[];
+  final records = <String, List<DirectChatMessage>>{};
+  final listedIds = <String>[];
+  List<DirectChatMessage> get messages =>
+      records.values.expand((messages) => messages).toList(growable: false);
   @override
-  Future<List<DirectChatMessage>> list(String providerId) async =>
-      List.of(messages);
+  Future<List<DirectChatMessage>> list(String providerId) async {
+    listedIds.add(providerId);
+    return List.of(records[providerId] ?? const []);
+  }
+
   @override
   Future<void> upsert(String providerId, DirectChatMessage message) async {
+    final messages = records.putIfAbsent(providerId, () => []);
     final index = messages.indexWhere(
       (candidate) => candidate.id == message.id,
     );
@@ -116,6 +323,7 @@ class _Transport implements DirectChatTransport {
   _Transport(this.chunks);
   final List<String> chunks;
   final messages = <List<DirectChatMessage>>[];
+  final apiKeys = <String>[];
   @override
   Future<void> cancel() async {}
   @override
@@ -127,6 +335,7 @@ class _Transport implements DirectChatTransport {
     required List<DirectChatMessage> messages,
   }) async* {
     this.messages.add(messages);
+    apiKeys.add(apiKey);
     yield* Stream.fromIterable(chunks);
   }
 

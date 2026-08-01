@@ -4,6 +4,7 @@ import 'package:agent_talk_client/application/client_session_controller.dart';
 import 'package:agent_talk_client/application/gateway_workspace_controller.dart';
 import 'package:agent_talk_client/domain/client_event.dart';
 import 'package:agent_talk_client/domain/client_session.dart';
+import 'package:agent_talk_client/domain/confirmed_draft.dart';
 import 'package:agent_talk_client/domain/gateway_sync.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -210,8 +211,10 @@ void main() {
 
       final draft = container.read(clientSessionProvider.notifier);
       draft.editDraft('confirmed text');
-      draft.confirmDraft();
-      await workspace.sendConfirmedText('confirmed text');
+      draft.confirmDraft(_hermesDraft(container, 'confirmed text'));
+      await workspace.sendConfirmedText(
+        container.read(clientSessionProvider).confirmedDraft!,
+      );
       expect(factory.session.sendCalls, 1);
       expect(
         container.read(clientSessionProvider).draftPhase,
@@ -264,9 +267,11 @@ void main() {
 
       final draft = container.read(clientSessionProvider.notifier);
       draft.editDraft('confirmed text');
-      draft.confirmDraft();
+      draft.confirmDraft(_hermesDraft(container, 'confirmed text'));
       factory.session.throwAfterPrepared = true;
-      await workspace.sendConfirmedText('confirmed text');
+      await workspace.sendConfirmedText(
+        container.read(clientSessionProvider).confirmedDraft!,
+      );
 
       expect(factory.session.sendCalls, 1);
       expect(
@@ -308,5 +313,27 @@ void main() {
         same(live),
       );
     },
+  );
+}
+
+ConfirmedDraft _hermesDraft(ProviderContainer container, String text) {
+  final workspace = container.read(gatewayWorkspaceProvider);
+  final conversation = workspace.selectedConversation!;
+  final session = container.read(clientSessionProvider);
+  return ConfirmedDraft(
+    draftId: 'draft-${text.hashCode}',
+    draftRevision: session.draftRevision,
+    confirmedText: text,
+    assistantId: 'assistant-test',
+    assistantRevision: 1,
+    contextSnapshotRevision: conversation.revision.toInt(),
+    contextSnapshotHash: ConfirmedDraft.contextHash(const []),
+    target: HermesTargetSnapshot(
+      conversationId: conversation.conversationId,
+      nodeId: conversation.nodeId,
+      agentId: conversation.agentId,
+      capabilityRevision: conversation.capabilityRevision,
+      sessionId: conversation.sessionId,
+    ),
   );
 }

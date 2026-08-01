@@ -98,7 +98,10 @@ class _MessageBubble extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: SelectableText(
-              message.text.isEmpty && !message.completed ? '…' : message.text,
+              message.text.isEmpty &&
+                      message.terminal == DirectMessageTerminal.streaming
+                  ? '…'
+                  : message.text,
             ),
           ),
         ),

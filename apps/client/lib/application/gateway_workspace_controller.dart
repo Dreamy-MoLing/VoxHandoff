@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/client_event.dart';
 import '../domain/client_session.dart';
 import '../domain/conversation_timeline.dart';
+import '../domain/confirmed_draft.dart';
 import '../domain/gateway_sync.dart';
 import '../domain/gateway_workspace.dart';
 import '../infrastructure/gateway/secure_grpc_gateway_workspace_factory.dart';
@@ -167,6 +168,7 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
       selectedEventsHydrated: false,
       clearLiveEvent: true,
     );
+    ref.read(clientSessionProvider.notifier).invalidateConfirmation();
     await _reloadEvents(conversationId);
   }
 
@@ -199,21 +201,43 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
     );
   }
 
-  Future<void> sendConfirmedText(String text) async {
+  Future<void> sendConfirmedText(ConfirmedDraft draft) async {
     final session = _requiredSession();
     final conversation = state.selectedConversation;
     final lease = state.selectedLease;
-    if (conversation == null ||
-        lease == null ||
-        lease.deviceId != session.deviceId) {
-      throw StateError('This device does not own the selected control lease.');
+    final target = draft.target;
+    final routeMatches =
+        target is HermesTargetSnapshot &&
+        conversation != null &&
+        lease != null &&
+        lease.deviceId == session.deviceId &&
+        target.conversationId == conversation.conversationId &&
+        target.nodeId == conversation.nodeId &&
+        target.agentId == conversation.agentId &&
+        target.capabilityRevision == conversation.capabilityRevision &&
+        target.sessionId == conversation.sessionId &&
+        draft.contextSnapshotRevision == conversation.revision.toInt() &&
+        draft.contextSnapshotHash ==
+            ConfirmedDraft.contextHash(
+              state.events.map((event) => '${event.eventId}:${event.sequence}'),
+            );
+    if (draft.chatSource != ChatSource.hermes || !routeMatches) {
+      ref.read(clientSessionProvider.notifier).invalidateConfirmation();
+      state = state.copyWith(
+        safeErrorCode: 'confirmation_stale',
+        safeErrorMessage:
+            'The confirmed Hermes target changed. Confirm the draft again.',
+      );
+      return;
     }
+    final selectedConversation = conversation;
+    final selectedLease = lease;
     String? requestId;
     try {
       await session.sendConfirmedText(
-        conversation: conversation,
-        lease: lease,
-        confirmedText: text,
+        conversation: selectedConversation,
+        lease: selectedLease,
+        confirmedText: draft.confirmedText,
         onPrepared: (preparedRequestId) {
           requestId = preparedRequestId;
           ref

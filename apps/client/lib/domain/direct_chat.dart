@@ -1,47 +1,132 @@
 enum DirectChatRole { system, user, assistant }
 
+enum DirectMessageTerminal {
+  streaming,
+  completed,
+  cancelled,
+  failed,
+  incomplete,
+  truncated,
+}
+
+enum DirectMessageProvenance { native, legacyUnverified }
+
+extension DirectMessageProvenanceStorage on DirectMessageProvenance {
+  String get storageName => switch (this) {
+    DirectMessageProvenance.native => 'native',
+    DirectMessageProvenance.legacyUnverified => 'legacy_unverified',
+  };
+}
+
 class DirectChatMessage {
-  const DirectChatMessage({
+  DirectChatMessage({
     required this.id,
     required this.role,
     required this.text,
     required this.createdAt,
-    this.completed = true,
-  });
+    this.terminal = DirectMessageTerminal.completed,
+    this.provenance = DirectMessageProvenance.native,
+    this.revision = 1,
+    this.contextEligibleOverride,
+  }) {
+    if (id.trim().isEmpty || revision < 1) {
+      throw const FormatException('The direct chat message is invalid.');
+    }
+  }
 
   final String id;
   final DirectChatRole role;
   final String text;
   final DateTime createdAt;
-  final bool completed;
+  final DirectMessageTerminal terminal;
+  final DirectMessageProvenance provenance;
+  final int revision;
+  final bool? contextEligibleOverride;
 
-  DirectChatMessage copyWith({String? text, bool? completed}) =>
-      DirectChatMessage(
-        id: id,
-        role: role,
-        text: text ?? this.text,
-        createdAt: createdAt,
-        completed: completed ?? this.completed,
-      );
+  bool get contextEligible =>
+      contextEligibleOverride ??
+      (role != DirectChatRole.assistant ||
+          (terminal == DirectMessageTerminal.completed &&
+              provenance == DirectMessageProvenance.native));
+
+  DirectChatMessage copyWith({
+    String? text,
+    DirectMessageTerminal? terminal,
+    DirectMessageProvenance? provenance,
+    int? revision,
+    bool? contextEligibleOverride,
+  }) => DirectChatMessage(
+    id: id,
+    role: role,
+    text: text ?? this.text,
+    createdAt: createdAt,
+    terminal: terminal ?? this.terminal,
+    provenance: provenance ?? this.provenance,
+    revision: revision ?? this.revision + 1,
+    contextEligibleOverride:
+        contextEligibleOverride ?? this.contextEligibleOverride,
+  );
+}
+
+class AssistantProfile {
+  const AssistantProfile({
+    required this.assistantId,
+    required this.assistantRevision,
+    required this.systemPrompt,
+  });
+
+  final String assistantId;
+  final int assistantRevision;
+  final String systemPrompt;
 }
 
 /// A deliberately narrow OpenAI-compatible text source. It has no tools,
 /// Agent host, approval, lease, or Gateway semantics.
 class DirectLlmConfiguration {
   const DirectLlmConfiguration({
-    required this.id,
+    this.id,
+    this.providerProfileId,
     required this.origin,
     required this.model,
     this.systemPrompt = '',
+    this.authRealm = '',
+    this.principal = '',
+    this.credentialRevision = 1,
+    this.configurationRevision = 1,
+    this.conversationId = '',
+    this.assistantId = '',
+    this.assistantRevision = 1,
+    this.contextSnapshotRevision = 0,
+    this.contextSnapshotHash = '',
   });
 
-  final String id;
+  /// `id` remains a source-compatible input alias only. Active code uses
+  /// [providerProfileId] and never uses it as a history/conversation key.
+  final String? id;
+  final String? providerProfileId;
   final Uri origin;
   final String model;
   final String systemPrompt;
+  final String authRealm;
+  final String principal;
+  final int credentialRevision;
+  final int configurationRevision;
+  final String conversationId;
+  final String assistantId;
+  final int assistantRevision;
+  final int contextSnapshotRevision;
+  final String contextSnapshotHash;
+
+  String get profileId => providerProfileId ?? id ?? '';
+
+  AssistantProfile get assistant => AssistantProfile(
+    assistantId: assistantId,
+    assistantRevision: assistantRevision,
+    systemPrompt: systemPrompt,
+  );
 
   bool get isSafe =>
-      id.isNotEmpty &&
+      profileId.isNotEmpty &&
       model.trim().isNotEmpty &&
       origin.scheme == 'https' &&
       origin.host.isNotEmpty &&
@@ -54,12 +139,44 @@ class DirectLlmConfiguration {
     Uri? origin,
     String? model,
     String? systemPrompt,
+    String? authRealm,
+    String? principal,
+    String? providerProfileId,
+    int? credentialRevision,
+    int? configurationRevision,
+    String? conversationId,
+    String? assistantId,
+    int? assistantRevision,
+    int? contextSnapshotRevision,
+    String? contextSnapshotHash,
   }) => DirectLlmConfiguration(
     id: id,
+    providerProfileId: providerProfileId ?? this.providerProfileId,
     origin: origin ?? this.origin,
     model: model ?? this.model,
     systemPrompt: systemPrompt ?? this.systemPrompt,
+    authRealm: authRealm ?? this.authRealm,
+    principal: principal ?? this.principal,
+    credentialRevision: credentialRevision ?? this.credentialRevision,
+    configurationRevision: configurationRevision ?? this.configurationRevision,
+    conversationId: conversationId ?? this.conversationId,
+    assistantId: assistantId ?? this.assistantId,
+    assistantRevision: assistantRevision ?? this.assistantRevision,
+    contextSnapshotRevision:
+        contextSnapshotRevision ?? this.contextSnapshotRevision,
+    contextSnapshotHash: contextSnapshotHash ?? this.contextSnapshotHash,
   );
+}
+
+String normalizedProviderOrigin(Uri origin) {
+  final normalizedPath = origin.path == '/' ? '' : origin.path;
+  return origin
+      .replace(
+        scheme: origin.scheme.toLowerCase(),
+        host: origin.host.toLowerCase(),
+        path: normalizedPath,
+      )
+      .toString();
 }
 
 /// A provider may expose its OpenAI-compatible API beneath a stable prefix
@@ -89,6 +206,6 @@ class DirectChatFailure {
 }
 
 abstract interface class DirectChatHistoryStore {
-  Future<List<DirectChatMessage>> list(String providerId);
-  Future<void> upsert(String providerId, DirectChatMessage message);
+  Future<List<DirectChatMessage>> list(String conversationId);
+  Future<void> upsert(String conversationId, DirectChatMessage message);
 }
