@@ -103,6 +103,28 @@ install(CODE "
 
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+set(VOXHANDOFF_STT_EXECUTABLE "" CACHE FILEPATH
+  "Application-owned voxhandoff-stt executable to install in bundle/libexec")
+option(VOXHANDOFF_REQUIRE_STT_BUNDLE
+  "Fail release installation when the bundled STT executable is absent" OFF)
+
+if(VOXHANDOFF_REQUIRE_STT_BUNDLE AND
+   CMAKE_BUILD_TYPE MATCHES "Release" AND
+   NOT VOXHANDOFF_STT_EXECUTABLE)
+  message(FATAL_ERROR
+    "Release STT bundle requires -DVOXHANDOFF_STT_EXECUTABLE=/path/to/voxhandoff-stt")
+endif()
+
+if(VOXHANDOFF_STT_EXECUTABLE)
+  if(NOT EXISTS "${VOXHANDOFF_STT_EXECUTABLE}")
+    message(FATAL_ERROR
+      "VOXHANDOFF_STT_EXECUTABLE does not exist: ${VOXHANDOFF_STT_EXECUTABLE}")
+  endif()
+  install(PROGRAMS "${VOXHANDOFF_STT_EXECUTABLE}"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/libexec"
+    RENAME voxhandoff-stt
+    COMPONENT Runtime)
+endif()
 
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)

@@ -112,10 +112,26 @@ class VoiceSessionState {
 }
 
 class AudioCaptureConfig {
-  const AudioCaptureConfig({this.sampleRate = 16000, this.channels = 1});
+  const AudioCaptureConfig({
+    this.sampleRate = 16000,
+    this.channels = 1,
+    this.microphoneId,
+  });
 
   final int sampleRate;
   final int channels;
+  final String? microphoneId;
+}
+
+class AudioInputDevice {
+  const AudioInputDevice({required this.id, required this.label});
+
+  final String id;
+  final String label;
+}
+
+abstract interface class AudioInputDeviceEnumerator {
+  Future<List<AudioInputDevice>> listInputDevices();
 }
 
 abstract interface class AudioCaptureSession {

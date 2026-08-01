@@ -31,6 +31,8 @@ void main() {
             TtsProviderConfiguration.piper(
               origin: Uri.parse('http://127.0.0.1:5000'),
               voice: 'en_US-test',
+              speaker: 'speaker-a',
+              speakerId: 1,
               lengthScale: 1.2,
             ),
           );
@@ -73,6 +75,50 @@ void main() {
     expect(factory.ttsWarmups, 0);
     expect(store.values, isEmpty);
   });
+
+  test(
+    'local STT model and microphone selection persist independently',
+    () async {
+      final store = _MemorySecureStore();
+      final container = ProviderContainer(
+        overrides: [
+          voiceProviderSettingsStoreProvider.overrideWithValue(
+            VoiceProviderSettingsStore(store),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(voiceProviderSettingsProvider);
+      await Future<void>.delayed(Duration.zero);
+
+      final controller = container.read(voiceProviderSettingsProvider.notifier);
+      await controller.saveStt(
+        const SttProviderConfiguration(
+          language: 'en',
+          modelPath: '/models/fixture',
+        ),
+      );
+      await controller.saveMicrophoneId('alsa_input.usb-test');
+
+      final restored = await VoiceProviderSettingsStore(store).read();
+      expect(restored?.stt.language, 'en');
+      expect(restored?.stt.modelPath, '/models/fixture');
+      expect(restored?.microphoneId, 'alsa_input.usb-test');
+    },
+  );
+
+  test(
+    'speech rate conversion is monotonic and inverse to Piper length scale',
+    () {
+      expect(piperLengthScaleForSpeechRate(0.5), 2);
+      expect(piperLengthScaleForSpeechRate(2), 0.5);
+      expect(
+        speechRateForPiperLengthScale(piperLengthScaleForSpeechRate(1.25)),
+        closeTo(1.25, 0.000001),
+      );
+      expect(() => piperLengthScaleForSpeechRate(2.01), throwsArgumentError);
+    },
+  );
 }
 
 class _MemorySecureStore implements SecureValueStore {

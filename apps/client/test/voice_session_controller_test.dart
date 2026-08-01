@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:agent_talk_client/application/client_session_controller.dart';
+import 'package:agent_talk_client/application/voice_provider_settings_controller.dart';
 import 'package:agent_talk_client/application/voice_session_controller.dart';
 import 'package:agent_talk_client/domain/client_session.dart';
 import 'package:agent_talk_client/domain/voice.dart';
+import 'package:agent_talk_client/domain/voice_provider_settings.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -67,6 +69,26 @@ void main() {
       expect(store.saved, hasLength(1));
     },
   );
+
+  test('recording forwards the configured STT language', () async {
+    final capture = _FakeCapturePort();
+    final stt = _FakeSttPort();
+    final container = ProviderContainer(
+      overrides: [
+        audioCapturePortProvider.overrideWithValue(capture),
+        sttPortProvider.overrideWithValue(stt),
+        voiceProviderSettingsProvider.overrideWith(
+          _ConfiguredVoiceProviderSettingsController.new,
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(voiceSessionProvider.notifier).startRecording();
+
+    expect(stt.requestedLanguage, 'en');
+    await container.read(voiceSessionProvider.notifier).cancelRecording();
+  });
 
   test(
     'recording cancel discards local media without touching the draft',
@@ -236,6 +258,19 @@ void main() {
   );
 }
 
+class _ConfiguredVoiceProviderSettingsController
+    extends VoiceProviderSettingsController {
+  @override
+  VoiceProviderSettingsState build() => const VoiceProviderSettingsState(
+    settings: VoiceProviderSettings(
+      stt: SttProviderConfiguration(
+        language: 'en',
+        modelPath: '/models/fixture',
+      ),
+    ),
+  );
+}
+
 class _FakeCapturePort implements AudioCapturePort {
   _FakeCapturePort({this.startFailure});
 
@@ -277,6 +312,7 @@ class _FakeCaptureSession implements AudioCaptureSession {
 
 class _FakeSttPort implements SttPort {
   final session = _FakeSttSession();
+  String? requestedLanguage;
 
   @override
   Future<void> close() async {}
@@ -286,7 +322,10 @@ class _FakeSttPort implements SttPort {
     required String sessionId,
     required AudioCaptureConfig audio,
     String? language,
-  }) async => session;
+  }) async {
+    requestedLanguage = language;
+    return session;
+  }
 
   @override
   Future<void> warmUp() async {}

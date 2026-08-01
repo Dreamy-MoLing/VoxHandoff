@@ -39,6 +39,19 @@ class PiperHttpTtsConfig {
   final Duration timeout;
 }
 
+/// Stable capability fields advertised by Piper's official `/info` response.
+class PiperVoiceInfo {
+  const PiperVoiceInfo({
+    required this.name,
+    required this.language,
+    required this.speakerCount,
+  });
+
+  final String name;
+  final String language;
+  final int speakerCount;
+}
+
 class PiperHttpTtsPort implements TtsPort {
   PiperHttpTtsPort({required this.config, HttpClient? client})
     : _client = client ?? HttpClient();
@@ -48,6 +61,9 @@ class PiperHttpTtsPort implements TtsPort {
   final Set<HttpClientRequest> _activeRequests = {};
   var _generation = 0;
   var _closed = false;
+  PiperVoiceInfo? _capability;
+
+  PiperVoiceInfo? get capability => _capability;
 
   /// Confirms that the selected server exposes Piper's information endpoint.
   /// No text is sent during this probe.
@@ -60,10 +76,12 @@ class PiperHttpTtsPort implements TtsPort {
           .timeout(config.timeout);
       request.followRedirects = false;
       final response = await request.close().timeout(config.timeout);
-      final body = await _readBounded(response);
-      if (response.statusCode != HttpStatus.ok || !_isJsonObject(body)) {
+      final body = await _readBounded(response).timeout(config.timeout);
+      final capability = _parseVoiceInfo(body);
+      if (response.statusCode != HttpStatus.ok || capability == null) {
         throw const HttpException('Piper information endpoint rejected probe.');
       }
+      _capability = capability;
     } on VoicePortException {
       rethrow;
     } on Object {
@@ -107,10 +125,10 @@ class PiperHttpTtsPort implements TtsPort {
       final response = await request.close().timeout(config.timeout);
       if (generation != _generation) return _cancelled();
       if (response.statusCode != HttpStatus.ok) {
-        await response.drain<void>();
+        await _discardBounded(response).timeout(config.timeout);
         throw const HttpException('Piper rejected synthesis.');
       }
-      final bytes = await _readBounded(response);
+      final bytes = await _readBounded(response).timeout(config.timeout);
       if (generation != _generation) return _cancelled();
       if (!_isWav(bytes)) {
         throw const HttpException('Piper returned invalid WAV.');
@@ -180,11 +198,38 @@ Future<Uint8List> _readBounded(HttpClientResponse response) async {
   return builder.takeBytes();
 }
 
-bool _isJsonObject(Uint8List bytes) {
+Future<void> _discardBounded(HttpClientResponse response) async {
+  var bytes = 0;
+  await for (final chunk in response) {
+    bytes += chunk.length;
+    if (bytes > 16 * 1024 * 1024) {
+      throw const HttpException('Piper response exceeded limit.');
+    }
+  }
+}
+
+PiperVoiceInfo? _parseVoiceInfo(Uint8List bytes) {
   try {
-    return jsonDecode(utf8.decode(bytes)) is Map<Object?, Object?>;
+    final decoded = jsonDecode(utf8.decode(bytes));
+    if (decoded is! Map<String, Object?>) return null;
+    final voice = decoded['voice'];
+    if (voice is! Map<String, Object?> ||
+        voice['name'] is! String ||
+        voice['language'] is! String ||
+        voice['num_speakers'] is! int) {
+      return null;
+    }
+    final name = (voice['name']! as String).trim();
+    final language = (voice['language']! as String).trim();
+    final speakerCount = voice['num_speakers']! as int;
+    if (name.isEmpty || language.isEmpty || speakerCount < 1) return null;
+    return PiperVoiceInfo(
+      name: name,
+      language: language,
+      speakerCount: speakerCount,
+    );
   } on Object {
-    return false;
+    return null;
   }
 }
 

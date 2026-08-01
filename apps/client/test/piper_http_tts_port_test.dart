@@ -35,13 +35,24 @@ void main() {
           received.add(request.uri);
           if (request.uri.path == '/info') {
             request.response.headers.contentType = ContentType.json;
-            request.response.write(jsonEncode({'voice': 'test'}));
+            request.response.write(
+              jsonEncode({
+                'voice': {
+                  'name': 'test',
+                  'language': 'en_US',
+                  'num_speakers': 1,
+                },
+                'last': null,
+              }),
+            );
           } else if (request.uri.path == '/synthesize') {
             expect(request.method, 'POST');
             final body = await utf8.decoder.bind(request).join();
             expect(jsonDecode(body), {
               'text': 'hello',
               'voice': 'test',
+              'speaker': 'speaker-a',
+              'speaker_id': 1,
               'length_scale': 1.25,
             });
             request.response.add(_wavBytes);
@@ -55,6 +66,8 @@ void main() {
         config: PiperHttpTtsConfig(
           baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
           voice: 'test',
+          speaker: 'speaker-a',
+          speakerId: 1,
           lengthScale: 1.25,
         ),
       );
@@ -74,6 +87,8 @@ void main() {
       expect(received.map((uri) => uri.path), ['/info', '/synthesize']);
       expect(speech.mimeType, 'audio/wav');
       expect(speech.bytes, _wavBytes);
+      expect(port.capability?.name, 'test');
+      expect(port.capability?.speakerCount, 1);
     },
   );
 

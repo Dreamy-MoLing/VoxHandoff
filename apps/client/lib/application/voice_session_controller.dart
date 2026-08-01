@@ -14,6 +14,21 @@ final audioCapturePortProvider = Provider<AudioCapturePort>(
   (_) => throw StateError('No production AudioCapturePort is configured.'),
 );
 
+final audioInputDeviceEnumeratorProvider = Provider<AudioInputDeviceEnumerator>(
+  (ref) {
+    AudioCapturePort capture;
+    try {
+      capture = ref.read(audioCapturePortProvider);
+    } on Object {
+      return const _UnavailableAudioInputDeviceEnumerator();
+    }
+    if (capture is AudioInputDeviceEnumerator) {
+      return capture as AudioInputDeviceEnumerator;
+    }
+    return const _UnavailableAudioInputDeviceEnumerator();
+  },
+);
+
 final sttPortProvider = Provider<SttPort>((ref) {
   final configuration = ref.watch(
     voiceProviderSettingsProvider.select((value) => value.settings.stt),
@@ -64,7 +79,7 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
     }
   }
 
-  Future<void> startRecording({String? language = 'zh'}) async {
+  Future<void> startRecording({String? language}) async {
     if (!state.canStart) {
       throw StateError('Voice input is already active.');
     }
@@ -82,6 +97,9 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
       return;
     }
 
+    final configuredLanguage =
+        language ??
+        ref.read(voiceProviderSettingsProvider).settings.stt.language;
     final generation = ++_generation;
     _lastTranscriptSequence = 0;
     final sessionId = _newOpaqueId();
@@ -96,10 +114,19 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
     try {
       await ref.read(speechStopPortProvider).stopSpeech();
       if (generation != _generation) return;
-      const config = AudioCaptureConfig();
+      final config = AudioCaptureConfig(
+        microphoneId: ref
+            .read(voiceProviderSettingsProvider)
+            .settings
+            .microphoneId,
+      );
       final stt = await ref
           .read(sttPortProvider)
-          .start(sessionId: sessionId, audio: config, language: language);
+          .start(
+            sessionId: sessionId,
+            audio: config,
+            language: configuredLanguage,
+          );
       if (generation != _generation) {
         await stt.cancel();
         return;
@@ -381,6 +408,14 @@ class _SpeechControllerStopPort implements SpeechStopPort {
   @override
   Future<void> stopSpeech() =>
       _ref.read(speechPlaybackProvider.notifier).stopSpeech();
+}
+
+class _UnavailableAudioInputDeviceEnumerator
+    implements AudioInputDeviceEnumerator {
+  const _UnavailableAudioInputDeviceEnumerator();
+
+  @override
+  Future<List<AudioInputDevice>> listInputDevices() async => const [];
 }
 
 class _MemoryTranscriptStore implements LocalTranscriptStore {

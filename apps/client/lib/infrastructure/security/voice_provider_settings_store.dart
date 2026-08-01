@@ -13,9 +13,12 @@ class VoiceProviderSettingsStore {
     _key,
     jsonEncode({
       'version': 1,
+      if (settings.microphoneId != null) 'microphone_id': settings.microphoneId,
       'stt': {
         'kind': settings.stt.kind.name,
         'language': settings.stt.language,
+        if (settings.stt.modelPath.isNotEmpty)
+          'model_path': settings.stt.modelPath,
       },
       'tts': {
         'kind': settings.tts.kind.name,
@@ -46,7 +49,16 @@ class VoiceProviderSettingsStore {
       final tts = _readTts(decoded['tts']);
       if (stt == null || tts == null) return null;
       if (!tts.isSafe) return null;
-      return VoiceProviderSettings(stt: stt, tts: tts);
+      final microphoneId = decoded['microphone_id'];
+      if (microphoneId != null &&
+          (microphoneId is! String || microphoneId.trim().isEmpty)) {
+        return null;
+      }
+      return VoiceProviderSettings(
+        stt: stt,
+        tts: tts,
+        microphoneId: microphoneId as String?,
+      );
     } on Object {
       return null;
     }
@@ -64,6 +76,9 @@ SttProviderConfiguration? _readStt(Object? value) {
   final config = SttProviderConfiguration(
     kind: kind,
     language: value['language']! as String,
+    modelPath: value['model_path'] is String
+        ? value['model_path']! as String
+        : '',
   );
   return config.isSafe ? config : null;
 }

@@ -36,6 +36,7 @@ void main() {
       );
       expect(tester.widget<OutlinedButton>(testButton).onPressed, isNull);
 
+      await tester.ensureVisible(find.byType(Switch).last);
       await tester.tap(find.byType(Switch).last);
       await tester.pumpAndSettle();
 

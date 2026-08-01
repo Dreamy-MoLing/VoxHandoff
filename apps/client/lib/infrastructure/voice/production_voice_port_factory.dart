@@ -20,7 +20,9 @@ class ProductionVoicePortFactory implements VoicePortFactory {
       );
     }
     if (Platform.isLinux || Platform.isMacOS || Platform.isWindows) {
-      return StdioSttPort(launch: bundledSttLauncher());
+      return StdioSttPort(
+        launch: bundledSttLauncher(modelPath: configuration.modelPath),
+      );
     }
     return const UnavailableSttPort(
       safeMessage:

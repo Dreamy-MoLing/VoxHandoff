@@ -10,13 +10,28 @@ import '../../domain/voice.dart';
 ///
 /// The adapter never writes a recording to disk. A stopped stream is drained
 /// before STT finalization so the platform's final PCM buffer is not lost.
-class RecordAudioCapture implements AudioCapturePort {
+class RecordAudioCapture
+    implements AudioCapturePort, AudioInputDeviceEnumerator {
   RecordAudioCapture({AudioRecorder? recorder})
     : _recorder = recorder ?? AudioRecorder();
 
   final AudioRecorder _recorder;
   _RecordAudioCaptureSession? _active;
   bool _closed = false;
+
+  @override
+  Future<List<AudioInputDevice>> listInputDevices() async {
+    if (_closed) return const [];
+    try {
+      final devices = await _recorder.listInputDevices();
+      return devices
+          .where((device) => device.id.trim().isNotEmpty)
+          .map((device) => AudioInputDevice(id: device.id, label: device.label))
+          .toList(growable: false);
+    } on Object {
+      return const [];
+    }
+  }
 
   @override
   Future<AudioCaptureSession> start(AudioCaptureConfig config) async {
@@ -67,6 +82,9 @@ class RecordAudioCapture implements AudioCapturePort {
           encoder: AudioEncoder.pcm16bits,
           sampleRate: config.sampleRate,
           numChannels: config.channels,
+          device: config.microphoneId == null
+              ? null
+              : InputDevice(id: config.microphoneId!, label: ''),
           autoGain: false,
           echoCancel: false,
           noiseSuppress: false,

@@ -16,7 +16,7 @@
 | M2 | Flutter 文字客户端与多设备同步 | 完成 | Drift/cursor、配对、lease、审批、两设备恢复、五平台 CI | 实体安装/签名/非 Linux keyring 属总发布门 | 五端发行环境 |
 | M3 | 可确认、可打断的语音闭环 | 工程完成；推荐语音 profile 未达标 | 录音/STT/TTS failure isolation、125 项当时测试、真实服务合成链；CPU/base 明确 `text-first degraded` | 推荐设备真人语料、≥95%、10 次 cold start | 合格 STT/TTS 与设备 |
 | M4 | SignalCore、桌面能力与 60/120 Hz 表现 | 完成 | Fedora 60 Hz；vivo X100s 120 Hz hot profile；Wayland 明确降级 | cold-start 观察与发行设备矩阵不改写阶段结论 | 实体平台环境 |
-| M5 | GUI Direct LLM + 可配置语音聊天 | **实现基座完成，阶段未关闭** | Direct LLM/Piper/faster-whisper adapter、真实服务 smoke、四项安全修复、当前 CI 全绿 | 本节差异 1–8；连续 10 轮 GUI；实体麦克风完整 GUI；发布前复验 | 用户配置的 LLM/STT/TTS/麦克风 |
+| M5 | GUI Direct LLM + 可配置语音聊天 | **实现基座、批次 1–2 与语音配置切片已完成，阶段未关闭** | Direct LLM request ownership/终态/bounded I/O、独立 Gateway readiness、麦克风/STT/Piper 配置入口、固定 Flutter 201 tests、Node/STT 全量门与 Linux release | 批次 3–4（统一助手/上下文）、批次 5 的 production sidecar/播报策略/remote STT、连续 10 轮 GUI、实体麦克风完整 GUI、发布前复验 | 用户配置的 LLM/STT/TTS/麦克风；release sidecar |
 | H1 | 真实 Flutter→Gateway/PostgreSQL→Connector→Hermes 纵向链路 | **外部阻断** | Connector/Gateway fake 边界；直接 Hermes 0.19 PoC；fail-closed 门 | 真实 10 轮、stop、断线/重启、approval 纵向门 | 首先需要幂等 run submission；完整 H1 还需不可变 approval 身份/精确 resolution |
 | M6 | Hermes 会话 UI、长历史与真实负载 | UI/Fedora 门完成 | 轮次聚合、2,000 事件、Fedora 60 Hz P95 | 新 HomeScreen 的实体移动 120 Hz profile | 实体高刷手机 |
 
@@ -45,12 +45,12 @@ PR 正文当前仍把实体麦克风 GUI、H1 和未在 `spec/` 定义的 “sec
 | --- | --- | --- | --- |
 | 1 | **批次 1 前** Direct LLM 只有固定 `default-direct-llm` 配置；改 origin/model 复用 ID，空 key 保留旧 key；历史按该 ID 加载并全部发送 | 已由批次 1 的 Profile/credential/configuration/conversation revision 与 legacy 隔离关闭 | 批次 1（已关闭） |
 | 2 | **批次 1 前** `confirmDraft()` 只冻结文本；发送时才读取当前 ChatSource/Profile/Hermes conversation/route | 已由批次 1 的 immutable `ConfirmedDraft` 与 exact target/context 校验关闭 | 批次 1（已关闭） |
-| 3 | source/profile/config 切换不取消旧流；test/chat 共用单一 `_active`；隐藏 Direct 页面仍可写历史和触发 TTS | 存在请求所有权和跨会话副作用竞争 | 批次 2 |
-| 4 | **批次 1 前** Direct message 只有 `completed: bool`；提前 EOF 会走成功/TTS 路径，cancel/failure/超限 partial 虽当次不播报却仍以 completed 持久化并进入后续全历史 payload | 批次 1 已落最终 schema；runtime 终态证明、请求 ownership 与 bounded I/O 仍属批次 2 | 批次 2 |
-| 5 | 正常 SSE 已在 UTF-8/分行前限制 4 MiB；`GET /models` 与非 2xx body 仍直接无界 `drain()` | 字节修复只覆盖正常 SSE，资源边界未闭合 | 批次 2 |
+| 3 | source/profile/config 切换不取消旧流；test/chat 共用单一 `_active`；隐藏 Direct 页面仍可写历史和触发 TTS | 本轮已按 request ID + configuration owner 隔离聊天与测试句柄；切换先取消、写入 cancelled barrier，迟到 delta/TTS 丢弃 | 批次 2（本轮实现） |
+| 4 | **批次 1 前** Direct message 只有 `completed: bool`；提前 EOF 会走成功/TTS 路径，cancel/failure/超限 partial 虽当次不播报却仍以 completed 持久化并进入后续全历史 payload | 本轮 runtime 映射为 `completed/cancelled/failed/incomplete/truncated`：完成必须有 `[DONE]`，空失败、partial、超限分别落终态；尚未完成批次 3–4 的上下文预算 | 批次 2（本轮实现） |
+| 5 | 正常 SSE 已在 UTF-8/分行前限制 4 MiB；`GET /models` 与非 2xx body 仍直接无界 `drain()` | 本轮统一 request/response byte limit 与 timeout，request 也有 1 MiB 上限；仍需补充真实 loopback 非 2xx/超大 body fixture 作为独立证据 | 批次 2（本轮实现） |
 | 6 | 每个 delta 同步写 SQLite，每轮发送全部历史；没有 conversation ID、上下文预算、固定记忆、滚动摘要或删除 API | 不满足长期助手和长期聊天语义 | 批次 3、4 |
 | 7 | Hermes 与 Direct 使用独立页面/state；没有 AssistantProfile 或共享人格/记忆模型 | 当前仍表现为两个产品，统一助手是目标态而非已实现 | 批次 3 |
-| 8 | GPT-SoVITS adapter 已有但无完整设置入口；Piper adapter/config 有 speaker 字段但 UI/测试/`/info` capability 未覆盖；远程 STT 只有隔离 adapter；bundled STT launcher 只找 `libexec/voxhandoff-stt`，当前构建未打包它且默认模型可能触发下载；无麦克风选择，STT language 未接生产，播报/打断策略不可配置 | adapter、设置、生产打包、模型来源、自动化、真实服务和 GUI 证据必须分别记录 | 批次 5 |
+| 8 | GPT-SoVITS adapter 已有但无完整设置入口；Piper adapter/config 有 speaker 字段但 UI/测试/`/info` capability 未覆盖；远程 STT 只有隔离 adapter；bundled STT launcher 只找 `libexec/voxhandoff-stt`，当前构建未打包它且默认模型可能触发下载；无麦克风选择，STT language 未接生产，播报/打断策略不可配置 | 本轮已补齐本地 STT language/model path、生产传递、麦克风枚举/选择降级、Piper speaker/capability/语速换算，并让 Linux release 以显式 CMake 参数安装 sidecar；remote STT、播报策略、可执行 sidecar 产物和真实 GUI 证据仍未关闭 | 批次 5（本轮部分实现） |
 | 9 | PR #4 当前 CI 已全绿，但仍为累计 Draft；H1 首先被 `idempotency=false` 阻断 | billing 不再是 blocker；M5 与 H1 必须分开关闭 | 批次 6、7 |
 
 同时确认的正向安全事实：Gateway 从持久化 `(nodeId, agentId, capabilityRevision, sessionId)` route 接受、恢复、claim 和校验 Node event；非空 Hermes session 在同一 `(nodeId, agentId, capabilityRevision)` 下只能绑定一个 conversation；Hermes 0.19 resolution 是无 immutable approval ID 的 FIFO，Connector 以 `hermes_approval_resolution_ambiguous` fail closed；Connector session store 合并冷启动加载和同 conversation 并发创建。`uncertain`、禁止静默重提、approval/CAS、control lease、完整回复与语音失败隔离继续是不可回退基线。
@@ -576,6 +576,8 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 - **外部依赖**：无；真实 OpenRouter 只作为批次结束后的补充证据，不替代 failure fixtures。
 - **完成条件**：每个请求有唯一 owner 和唯一 terminal；所有 body 均受 byte/time limit；重启后不会把非完成回复当作已完成上下文；Direct 聊天可在 Gateway 完全不可用时独立工作。
 
+**2026-08-01 批次 2 实现证据（本轮）**：Direct controller 已以 request ID、配置对象和 generation 作为 owner；source/Profile/configuration 变化先 cancel 并等待本地终态写入；连接测试与聊天使用独立 transport request handle；SSE 只有收到 `[DONE]` 才完成，空失败/partial/超限分别写入 `failed/incomplete/truncated`，delta 最多每 250 ms 合并写入且 terminal 立即落盘；request 1 MiB、response/error body 4 MiB 且均有有限 timeout；Direct composer 不再要求 Gateway connected。新增 profile/source switch、终态映射和迟到结果回归。固定 Flutter 3.44.6 的 `npm run flutter:check` 通过（analyze、201 tests passed、2 个显式 live smoke skipped）。本轮仍未把真实非 2xx 超大 body loopback 作为独立 transport fixture，保留为补证项。
+
 ### 5.3 批次 3（M5）：统一助手配置与 capability 化界面
 
 - **用户需求**：用户始终面对同一个有名称、人格、声音、记忆和视觉表现的个人助手；Direct LLM 聊天与 Hermes 工作是同一助手的不同能力，而不是两个产品入口。
@@ -605,7 +607,7 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 ### 5.5 批次 5（M5）：语音配置、真实 GUI 闭环与可打断交互
 
 - **用户需求**：用户可选择麦克风、STT、TTS、音色、语速、语言和播报策略，并在真实 GUI 中完成连续、可打断的个人助手对话；任一语音服务失败仍保留文字聊天。
-- **当前问题**：GPT-SoVITS 有 adapter/factory/config store，但没有完整可编辑设置入口。Piper adapter/config/store 已有 origin、voice、lengthScale、speaker/speakerId，UI 只覆盖 origin/voice/lengthScale，测试未覆盖 speaker，`/info` 只验证 JSON 而未做 capability parsing；当前 “Speech speed” 实际直接写 lengthScale，用户语义可能反向。移动端 remote STT 仍未接线；bundled launcher 只查应用包内 `libexec/voxhandoff-stt`，现有桌面构建未打包该 executable；sidecar 默认模型名 `base` 可能由引擎联网获取，GUI 没有已验证本地模型路径。麦克风选择、生产 STT language、播报/打断策略也不完整。真实服务与合成音频证据不等于 production bundle 或实体麦克风 GUI 验收。
+- **当前问题**：本轮已形成本地 STT/Piper/麦克风的可编辑入口和 production wiring，但 GPT-SoVITS 的完整设置入口、移动端 remote STT、真正的 bundled executable 产物、播报策略（关闭/手动/完成后自动）仍未完成；当前 Linux release 仅在显式提供 sidecar 时安装它。真实服务与合成音频证据不等于 production bundle 或实体麦克风 GUI 验收。
 - **实施范围**：在 AssistantProfile 下提供可枚举且可诊断的 microphone/STT/TTS 配置。GPT-SoVITS 暴露 adapter 已支持的 origin、reference audio、prompt text/language 和 text language。先核对 Piper 官方/versioned contract：只解析和展示真实广告的 voice/speaker/language；若字段无契约则保持隐藏或删除，不靠当前请求字段猜能力。将用户 `speechRate` 与 Piper `lengthScale` 的方向和边界做明确、单调、可测试的换算，UI 不再把两者当同义原值。desktop release 把受信 `voxhandoff-stt` 安装到规范 `libexec` 路径并验证 version 1.0 JSONL；STT Profile 要求用户选择已存在的 canonical local model path，缺失时 fail closed，production sidecar 禁止用模型名触发下载或回退 PATH。remote STT 在 desktop/mobile 共用显式 provider、origin、credential reference、language 和上传同意。实现播报策略（关闭/手动/完成后自动）、手动按键打断和 generation 取消；无设备枚举能力的平台明确显示“系统默认/不可选”。
 - **状态和数据语义**：recording、transcribing、confirmed、sending、reply terminal、synthesizing、playing 分属独立但可关联的 generation。开始录音立即停止本地 TTS/playback，但不把 Hermes remote run 误当作已停止；新的 backend/config/conversation 只影响新 generation。STT/TTS failure 写入具体 stage，确认文本和完整回复保持可编辑、可复制、可重试语音。
 - **安全边界**：raw recording 默认本地且按策略清理；production local STT 只接收用户选择的本地模型目录，缺失/损坏时不联网下载；remote STT 每个 exact origin 首次上传必须确认，origin 变化重新确认；远程 TTS 首次发送回复文字及 origin/TLS/保留事实变化时同样重新确认；凭据只在 OS secure storage；TTS 不朗读未完成回复、秘密字段、approval payload 或隐藏 conversation。连续免手模式默认关闭，只有明确启用和可见麦克风状态时运行。
@@ -614,6 +616,10 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 - **人工验收**：在 Fedora release GUI 连续完成 10 轮共享历史的 Direct conversation，其中至少一轮使用实体麦克风执行完整 `录音 → STT → 编辑/确认 → Direct LLM → completed 回复 → TTS → 播放/停止`；同一验收矩阵另覆盖一次打断、一次取消、一次 STT 失败、一次 TTS 失败、一次 Profile/source 切换，并确认 release app 实际从 bundle 启动 sidecar、只使用指定本地模型。分别记录 GPT-SoVITS 与 Piper 可用配置。移动端 remote STT 另在一台具名设备完成权限、上传同意、断网和恢复验收。
 - **外部依赖**：用户提供的本地 STT 模型、loopback/remote STT、GPT-SoVITS/Piper 服务和至少一台实体移动设备；这些服务不可用时只阻断相应 live 证据，不得破坏文字模式。
 - **完成条件**：文档明确区分 adapter 存在、配置入口、production bundle、自动化、真实服务和 GUI/实体设备证据；M5 的唯一关闭口径是 10 轮连续 GUI Direct conversation 且其中至少一轮完成实体麦克风全链路，所有失败都能安全降级为文字。免手常听与移动发布门不借此宣称完成。
+
+**2026-08-01 批次 5 本轮实现证据**：Voice settings 现在可保存 STT language、已存在的 local model directory、Piper voice/speaker/speaker ID 和用户语义的 speech rate；生产 VoiceSession 将 language 与 microphone ID 传给 STT/capture，`record` adapter 可枚举并选择输入设备，平台不提供枚举时明确使用系统默认。Piper `/info` 严格解析官方 `voice.name/language/num_speakers`，synthesis 的 speaker 字段和 bounded WAV/error body 有离线测试；sidecar CLI 无模型目录以 exit 2 fail closed，不再把 `base` 交给引擎，Linux CMake release 仅在显式提供 executable 时安装 `libexec/voxhandoff-stt`。语音配置、Piper、STT language 和全量 Flutter 门通过；Fedora Linux release 构建通过但本机未提供 sidecar executable，生成 bundle 明确没有 `libexec/voxhandoff-stt`，因此只能作为 text-first degraded build。实体 GUI、实际模型/服务、播报策略/手动播报、remote STT 和 production sidecar 产物仍未关闭。
+
+**本轮规格合理性复核**：将“security workbench”作为 PR 阶段门没有对应的产品条款或验收，不应继续阻断 M5；移动端 remote STT、签名安装包和实体设备矩阵属于独立发布/平台证据轴，也不应被本地 Fedora Direct adapter 的自动化结果冒充完成。M5 的关闭口径仍只保留一条不可替代的实体 GUI 门：10 轮连续 Direct conversation，至少一轮实体麦克风全链路；没有可验证 sidecar/model/service 时保持文字优先和阶段未关闭。
 
 ### 5.6 批次 6（M5/M6）：PR #4 收口、回归门与移动性能证据
 

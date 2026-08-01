@@ -7,29 +7,57 @@ class SttProviderConfiguration {
   const SttProviderConfiguration({
     this.kind = SttProviderKind.bundledFasterWhisper,
     this.language = 'zh',
+    this.modelPath = '',
   });
 
   final SttProviderKind kind;
   final String language;
+  final String modelPath;
 
-  bool get isSafe => language.trim().isNotEmpty && language.length <= 32;
+  bool get isSafe =>
+      language.trim().isNotEmpty &&
+      language.length <= 32 &&
+      (kind == SttProviderKind.disabled || modelPath.trim().isNotEmpty);
 
   SttProviderConfiguration copyWith({
     SttProviderKind? kind,
     String? language,
+    String? modelPath,
   }) => SttProviderConfiguration(
     kind: kind ?? this.kind,
     language: language ?? this.language,
+    modelPath: modelPath ?? this.modelPath,
   );
 
   @override
   bool operator ==(Object other) =>
       other is SttProviderConfiguration &&
       other.kind == kind &&
-      other.language == language;
+      other.language == language &&
+      other.modelPath == modelPath;
 
   @override
-  int get hashCode => Object.hash(kind, language);
+  int get hashCode => Object.hash(kind, language, modelPath);
+}
+
+const minSpeechRate = 0.5;
+const maxSpeechRate = 2.0;
+
+bool isSupportedSpeechRate(double value) =>
+    value.isFinite && value >= minSpeechRate && value <= maxSpeechRate;
+
+double piperLengthScaleForSpeechRate(double speechRate) {
+  if (!isSupportedSpeechRate(speechRate)) {
+    throw ArgumentError.value(speechRate, 'speechRate');
+  }
+  return 1 / speechRate;
+}
+
+double speechRateForPiperLengthScale(double lengthScale) {
+  if (!lengthScale.isFinite || lengthScale <= 0) {
+    throw ArgumentError.value(lengthScale, 'lengthScale');
+  }
+  return 1 / lengthScale;
 }
 
 enum TtsProviderKind { disabled, piperHttp, gptSoVits }
@@ -130,24 +158,35 @@ bool _isLoopback(String host) {
 
 class VoiceProviderSettings {
   const VoiceProviderSettings({
-    this.stt = const SttProviderConfiguration(),
+    this.stt = const SttProviderConfiguration(kind: SttProviderKind.disabled),
     this.tts = const TtsProviderConfiguration.disabled(),
+    this.microphoneId,
   });
 
   final SttProviderConfiguration stt;
   final TtsProviderConfiguration tts;
+  final String? microphoneId;
 
   VoiceProviderSettings copyWith({
     SttProviderConfiguration? stt,
     TtsProviderConfiguration? tts,
-  }) => VoiceProviderSettings(stt: stt ?? this.stt, tts: tts ?? this.tts);
+    String? microphoneId,
+    bool clearMicrophoneId = false,
+  }) => VoiceProviderSettings(
+    stt: stt ?? this.stt,
+    tts: tts ?? this.tts,
+    microphoneId: clearMicrophoneId ? null : microphoneId ?? this.microphoneId,
+  );
 
   @override
   bool operator ==(Object other) =>
-      other is VoiceProviderSettings && other.stt == stt && other.tts == tts;
+      other is VoiceProviderSettings &&
+      other.stt == stt &&
+      other.tts == tts &&
+      other.microphoneId == microphoneId;
 
   @override
-  int get hashCode => Object.hash(stt, tts);
+  int get hashCode => Object.hash(stt, tts, microphoneId);
 }
 
 enum VoiceProviderTestPhase { unknown, testing, ready, failed }

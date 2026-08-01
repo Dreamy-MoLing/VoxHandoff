@@ -109,6 +109,20 @@ class VoiceProviderSettingsController
     );
   }
 
+  Future<void> saveMicrophoneId(String? microphoneId) async {
+    final normalized = microphoneId?.trim();
+    if (normalized != null && normalized.isEmpty) {
+      return saveMicrophoneId(null);
+    }
+    if (normalized != null && normalized.length > 512) return;
+    final settings = state.settings.copyWith(
+      microphoneId: normalized,
+      clearMicrophoneId: normalized == null,
+    );
+    await ref.read(voiceProviderSettingsStoreProvider).save(settings);
+    state = state.copyWith(settings: settings, restored: true);
+  }
+
   Future<void> testStt() =>
       _test(isStt: true, configuration: state.settings.stt);
 
