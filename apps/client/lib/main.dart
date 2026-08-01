@@ -63,6 +63,7 @@ Future<void> main() async {
         ),
         localTranscriptStoreProvider.overrideWithValue(transcriptStore),
         directChatHistoryStoreProvider.overrideWithValue(directChatStore),
+        directContextStoreProvider.overrideWithValue(directChatStore),
         audioPlaybackPortProvider.overrideWithValue(playback),
         if (isDesktop)
           desktopIntegrationPortProvider.overrideWithValue(

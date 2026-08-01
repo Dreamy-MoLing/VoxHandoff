@@ -123,6 +123,21 @@ class VoiceProviderSettingsController
     state = state.copyWith(settings: settings, restored: true);
   }
 
+  Future<void> bindAssistant(String assistantId, int assistantRevision) async {
+    final normalized = assistantId.trim();
+    if (normalized.isEmpty || assistantRevision < 1) return;
+    if (state.settings.assistantId == normalized &&
+        state.settings.assistantRevision == assistantRevision) {
+      return;
+    }
+    final settings = state.settings.copyWith(
+      assistantId: normalized,
+      assistantRevision: assistantRevision,
+    );
+    await ref.read(voiceProviderSettingsStoreProvider).save(settings);
+    state = state.copyWith(settings: settings, restored: true);
+  }
+
   Future<void> testStt() =>
       _test(isStt: true, configuration: state.settings.stt);
 

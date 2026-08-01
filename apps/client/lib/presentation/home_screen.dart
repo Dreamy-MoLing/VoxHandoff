@@ -12,6 +12,7 @@ import '../application/direct_chat_controller.dart';
 import '../application/device_pairing_controller.dart';
 import '../application/gateway_workspace_controller.dart';
 import '../application/voice_session_controller.dart';
+import '../application/voice_provider_settings_controller.dart';
 import '../domain/client_session.dart';
 import '../domain/confirmed_draft.dart';
 import '../domain/direct_chat.dart';
@@ -55,6 +56,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               workspace: ref.read(gatewayWorkspaceProvider),
             ),
       );
+      final assistant = ref.read(directChatProvider).assistantProfile;
+      if (assistant != null) {
+        unawaited(
+          ref
+              .read(voiceProviderSettingsProvider.notifier)
+              .bindAssistant(
+                assistant.assistantId,
+                assistant.assistantRevision,
+              ),
+        );
+      }
     });
   }
 
@@ -107,6 +119,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final contextRevision = source == ChatSource.directLlm
         ? direct.configuration?.contextSnapshotRevision ?? 0
         : workspace.selectedConversation?.revision.toInt() ?? 0;
+    final contextHash = source == ChatSource.directLlm
+        ? direct.configuration?.contextSnapshotHash ??
+              ConfirmedDraft.contextHash(contextParts)
+        : ConfirmedDraft.contextHash(contextParts);
     final draft = ConfirmedDraft(
       draftId: _opaqueId('draft'),
       draftRevision: session.draftRevision,
@@ -114,7 +130,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       assistantId: assistant.assistantId,
       assistantRevision: assistant.assistantRevision,
       contextSnapshotRevision: contextRevision,
-      contextSnapshotHash: ConfirmedDraft.contextHash(contextParts),
+      contextSnapshotHash: contextHash,
       target: target,
     );
     ref.read(clientSessionProvider.notifier).confirmDraft(draft);
@@ -181,6 +197,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final source = ref.watch(chatSourceProvider);
     final directChat = ref.watch(directChatProvider);
     final workspace = ref.watch(gatewayWorkspaceProvider);
+    ref.listen(directChatProvider, (_, next) {
+      final assistant = next.assistantProfile;
+      if (assistant != null) {
+        unawaited(
+          ref
+              .read(voiceProviderSettingsProvider.notifier)
+              .bindAssistant(
+                assistant.assistantId,
+                assistant.assistantRevision,
+              ),
+        );
+      }
+    });
     ref.listen(gatewayWorkspaceProvider, (_, next) {
       unawaited(
         ref.read(desktopIntegrationProvider.notifier).observeWorkspace(next),
@@ -269,6 +298,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             final banner = isDirect
                 ? _DirectLlmBanner(
                     state: directChat,
+                    assistant: directChat.assistantProfile,
+                    capabilities: AssistantCapabilityProjection.direct,
                     onConfigure: () => showDirectLlmSettingsSheet(context),
                   )
                 : _LocalOnlyBanner(
@@ -603,6 +634,24 @@ class _LocalOnlyBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.visualTokens;
     final paired = pairing.phase == PairingPhase.paired;
+    ClientAgentDirectoryEntry? selectedAgent;
+    final selectedAgentId = workspace.selectedConversation?.agentId;
+    for (final agent in workspace.directory?.agents ?? const []) {
+      if (agent.agentId == selectedAgentId) {
+        selectedAgent = agent;
+        break;
+      }
+    }
+    final capabilities = selectedAgent == null
+        ? const AssistantCapabilityProjection(
+            source: ChatSource.hermes,
+            capabilities: {AssistantCapability.chat, AssistantCapability.agent},
+          )
+        : AssistantCapabilityProjection.hermesFromNegotiation(
+            supportsApprovals: selectedAgent.supportsApprovals,
+            supportsInterrupt: selectedAgent.supportsInterrupt,
+            supportsClarifications: selectedAgent.supportsClarifications,
+          );
     return ColoredBox(
       color: Color.alphaBlend(
         tokens.attention.withValues(alpha: 0.08),
@@ -639,6 +688,12 @@ class _LocalOnlyBanner extends StatelessWidget {
                 ),
               ],
             );
+            final accessibleMessage = Semantics(
+              container: true,
+              label:
+                  'Hermes capabilities: ${capabilities.capabilities.map((capability) => capability.name).join(', ')}; Agent state comes only from the authenticated Gateway',
+              child: message,
+            );
             final pairButton = FilledButton(
               onPressed:
                   workspace.connectionPhase == GatewayConnectionPhase.connected
@@ -658,7 +713,7 @@ class _LocalOnlyBanner extends StatelessWidget {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Expanded(child: message),
+                  Expanded(child: accessibleMessage),
                   const SizedBox(width: 8),
                   IconButton.filled(
                     tooltip:
@@ -691,7 +746,7 @@ class _LocalOnlyBanner extends StatelessWidget {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  message,
+                  accessibleMessage,
                   const SizedBox(height: 8),
                   Align(alignment: Alignment.centerRight, child: pairButton),
                 ],
@@ -699,7 +754,7 @@ class _LocalOnlyBanner extends StatelessWidget {
             }
             return Row(
               children: [
-                Expanded(child: message),
+                Expanded(child: accessibleMessage),
                 const SizedBox(width: 16),
                 pairButton,
               ],
@@ -712,34 +767,46 @@ class _LocalOnlyBanner extends StatelessWidget {
 }
 
 class _DirectLlmBanner extends StatelessWidget {
-  const _DirectLlmBanner({required this.state, required this.onConfigure});
+  const _DirectLlmBanner({
+    required this.state,
+    required this.assistant,
+    required this.capabilities,
+    required this.onConfigure,
+  });
 
   final DirectChatState state;
+  final AssistantProfile? assistant;
+  final AssistantCapabilityProjection capabilities;
   final VoidCallback onConfigure;
 
   @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: context.visualTokens.panel,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          const Icon(Icons.shield_outlined),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              state.failure?.message ??
-                  (state.isConfigured
-                      ? 'Direct LLM chat is local to this device. It has no Agent tools, approvals, or cross-device commands.'
-                      : 'Configure a HTTPS OpenAI-compatible LLM API. Its key is stored only in OS secure storage.'),
+  Widget build(BuildContext context) => Semantics(
+    container: true,
+    label:
+        '${assistant?.displayName ?? 'VoxHandoff'}; capabilities: ${capabilities.capabilities.map((capability) => capability.name).join(', ')}; Agent tools, approvals, leases, and remote execution are unavailable',
+    child: ColoredBox(
+      color: context.visualTokens.panel,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            const Icon(Icons.shield_outlined),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                state.failure?.message ??
+                    (state.isConfigured
+                        ? 'Direct LLM chat is local to this device. It has no Agent tools, approvals, or cross-device commands.'
+                        : 'Configure a HTTPS OpenAI-compatible LLM API. Its key is stored only in OS secure storage.'),
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          OutlinedButton(
-            onPressed: onConfigure,
-            child: Text(state.isConfigured ? 'Configure' : 'Configure LLM'),
-          ),
-        ],
+            const SizedBox(width: 12),
+            OutlinedButton(
+              onPressed: onConfigure,
+              child: Text(state.isConfigured ? 'Configure' : 'Configure LLM'),
+            ),
+          ],
+        ),
       ),
     ),
   );

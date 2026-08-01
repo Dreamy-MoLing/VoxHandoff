@@ -4,7 +4,7 @@
 
 ### 1.1 2026-08-01 权威快照
 
-当前产品基线是“统一个人助手”：Hermes 是主要且唯一具有 Agent 语义的工作后端，用户自接 OpenAI-compatible API 是纯聊天/陪伴后端。M0–M4 的历史交付不回退；M5 已有可运行的 Direct LLM、语音端口和真实服务 adapter 证据，但本轮源码核验确认了 Provider/凭据/历史隔离、确认目标绑定、request lifecycle、消息终态和长期上下文缺口，因此 M5 不能再写成“仅差实体麦克风”。H1 独立受 Hermes 上游能力阻断，不是 M5 完成条件。
+当前产品基线是“统一个人助手”：Hermes 是主要且唯一具有 Agent 语义的工作后端，用户自接 OpenAI-compatible API 是纯聊天/陪伴后端。M0–M4 的历史交付不回退；M5 现已补齐 Provider/凭据/历史隔离、确认目标绑定、request lifecycle、消息终态、AssistantProfile 和 conversation context 的本地实现基座，仍缺 production 语音/实体 GUI 发布证据。H1 独立受 Hermes 上游能力阻断，不是 M5 完成条件。
 
 阶段编号表示历史工作包，不表示严格线性顺序；M6 的界面/性能工作曾提前完成。当前映射如下：
 
@@ -16,7 +16,7 @@
 | M2 | Flutter 文字客户端与多设备同步 | 完成 | Drift/cursor、配对、lease、审批、两设备恢复、五平台 CI | 实体安装/签名/非 Linux keyring 属总发布门 | 五端发行环境 |
 | M3 | 可确认、可打断的语音闭环 | 工程完成；推荐语音 profile 未达标 | 录音/STT/TTS failure isolation、125 项当时测试、真实服务合成链；CPU/base 明确 `text-first degraded` | 推荐设备真人语料、≥95%、10 次 cold start | 合格 STT/TTS 与设备 |
 | M4 | SignalCore、桌面能力与 60/120 Hz 表现 | 完成 | Fedora 60 Hz；vivo X100s 120 Hz hot profile；Wayland 明确降级 | cold-start 观察与发行设备矩阵不改写阶段结论 | 实体平台环境 |
-| M5 | GUI Direct LLM + 可配置语音聊天 | **实现基座、批次 1–2 与语音配置切片已完成，阶段未关闭** | Direct LLM request ownership/终态/bounded I/O、独立 Gateway readiness、麦克风/STT/Piper 配置入口、固定 Flutter 201 tests、Node/STT 全量门与 Linux release | 批次 3–4（统一助手/上下文）、批次 5 的 production sidecar/播报策略/remote STT、连续 10 轮 GUI、实体麦克风完整 GUI、发布前复验 | 用户配置的 LLM/STT/TTS/麦克风；release sidecar |
+| M5 | GUI Direct LLM + 可配置语音聊天 | **批次 1–4 与语音配置切片已完成，阶段未关闭** | Direct request ownership/终态/bounded I/O、AssistantProfile/capability projection、conversation context/记忆/摘要、voice binding、固定 Flutter 208 tests、Node/STT 全量门与 Linux release | 批次 5 的 production sidecar/播报策略/remote STT、连续 10 轮 GUI、实体麦克风完整 GUI、发布前复验 | 用户配置的 LLM/STT/TTS/麦克风；release sidecar |
 | H1 | 真实 Flutter→Gateway/PostgreSQL→Connector→Hermes 纵向链路 | **外部阻断** | Connector/Gateway fake 边界；直接 Hermes 0.19 PoC；fail-closed 门 | 真实 10 轮、stop、断线/重启、approval 纵向门 | 首先需要幂等 run submission；完整 H1 还需不可变 approval 身份/精确 resolution |
 | M6 | Hermes 会话 UI、长历史与真实负载 | UI/Fedora 门完成 | 轮次聚合、2,000 事件、Fedora 60 Hz P95 | 新 HomeScreen 的实体移动 120 Hz profile | 实体高刷手机 |
 
@@ -46,11 +46,11 @@ PR 正文当前仍把实体麦克风 GUI、H1 和未在 `spec/` 定义的 “sec
 | 1 | **批次 1 前** Direct LLM 只有固定 `default-direct-llm` 配置；改 origin/model 复用 ID，空 key 保留旧 key；历史按该 ID 加载并全部发送 | 已由批次 1 的 Profile/credential/configuration/conversation revision 与 legacy 隔离关闭 | 批次 1（已关闭） |
 | 2 | **批次 1 前** `confirmDraft()` 只冻结文本；发送时才读取当前 ChatSource/Profile/Hermes conversation/route | 已由批次 1 的 immutable `ConfirmedDraft` 与 exact target/context 校验关闭 | 批次 1（已关闭） |
 | 3 | source/profile/config 切换不取消旧流；test/chat 共用单一 `_active`；隐藏 Direct 页面仍可写历史和触发 TTS | 本轮已按 request ID + configuration owner 隔离聊天与测试句柄；切换先取消、写入 cancelled barrier，迟到 delta/TTS 丢弃 | 批次 2（本轮实现） |
-| 4 | **批次 1 前** Direct message 只有 `completed: bool`；提前 EOF 会走成功/TTS 路径，cancel/failure/超限 partial 虽当次不播报却仍以 completed 持久化并进入后续全历史 payload | 本轮 runtime 映射为 `completed/cancelled/failed/incomplete/truncated`：完成必须有 `[DONE]`，空失败、partial、超限分别落终态；尚未完成批次 3–4 的上下文预算 | 批次 2（本轮实现） |
+| 4 | **批次 1 前** Direct message 只有 `completed: bool`；提前 EOF 会走成功/TTS 路径，cancel/failure/超限 partial 虽当次不播报却仍以 completed 持久化并进入后续全历史 payload | 本轮 runtime 映射为 `completed/cancelled/failed/incomplete/truncated`，完成必须有 `[DONE]`；context builder 另行排除非 completed/native 内容 | 批次 2、4（本轮实现） |
 | 5 | 正常 SSE 已在 UTF-8/分行前限制 4 MiB；`GET /models` 与非 2xx body 仍直接无界 `drain()` | 本轮统一 request/response byte limit 与 timeout，request 也有 1 MiB 上限；仍需补充真实 loopback 非 2xx/超大 body fixture 作为独立证据 | 批次 2（本轮实现） |
-| 6 | 每个 delta 同步写 SQLite，每轮发送全部历史；没有 conversation ID、上下文预算、固定记忆、滚动摘要或删除 API | 不满足长期助手和长期聊天语义 | 批次 3、4 |
-| 7 | Hermes 与 Direct 使用独立页面/state；没有 AssistantProfile 或共享人格/记忆模型 | 当前仍表现为两个产品，统一助手是目标态而非已实现 | 批次 3 |
-| 8 | GPT-SoVITS adapter 已有但无完整设置入口；Piper adapter/config 有 speaker 字段但 UI/测试/`/info` capability 未覆盖；远程 STT 只有隔离 adapter；bundled STT launcher 只找 `libexec/voxhandoff-stt`，当前构建未打包它且默认模型可能触发下载；无麦克风选择，STT language 未接生产，播报/打断策略不可配置 | 本轮已补齐本地 STT language/model path、生产传递、麦克风枚举/选择降级、Piper speaker/capability/语速换算，并让 Linux release 以显式 CMake 参数安装 sidecar；remote STT、播报策略、可执行 sidecar 产物和真实 GUI 证据仍未关闭 | 批次 5（本轮部分实现） |
+| 6 | 每个 delta 同步写 SQLite，每轮发送全部历史；没有 conversation ID、上下文预算、固定记忆、滚动摘要或删除 API | 本轮以 conversation 隔离的 Drift memory/summary、48 KiB UTF-8 budget + 8 KiB reserve、确定性本地 summary rebuild 和 CRUD 关闭最小上下文边界；可调 policy/LLM 自动摘要另拆产品决策 | 批次 4（本轮实现） |
+| 7 | Hermes 与 Direct 使用独立页面/state；没有 AssistantProfile 或共享人格/记忆模型 | 本轮建立共享 AssistantProfile、voice assistant binding 和 common composer/banner 语义；内容视图仍按真实 backend capability 分开，Direct 不出现 Agent 控件 | 批次 3（本轮实现） |
+| 8 | GPT-SoVITS adapter 已有但无完整设置入口；Piper adapter/config 有 speaker 字段但 UI/测试/`/info` capability 未覆盖；远程 STT 只有隔离 adapter；bundled STT launcher 只找 `libexec/voxhandoff-stt`，当前构建未打包它且默认模型可能触发下载；无麦克风选择，STT language 未接生产，播报/打断策略不可配置 | 本轮已补齐本地 STT language/model path、生产传递、麦克风枚举/选择降级、Piper speaker/capability/语速换算和 voice assistant binding，并让 Linux release 以显式 CMake 参数安装 sidecar；remote STT、播报策略、可执行 sidecar 产物和真实 GUI 证据仍未关闭 | 批次 5（本轮部分实现） |
 | 9 | PR #4 当前 CI 已全绿，但仍为累计 Draft；H1 首先被 `idempotency=false` 阻断 | billing 不再是 blocker；M5 与 H1 必须分开关闭 | 批次 6、7 |
 
 同时确认的正向安全事实：Gateway 从持久化 `(nodeId, agentId, capabilityRevision, sessionId)` route 接受、恢复、claim 和校验 Node event；非空 Hermes session 在同一 `(nodeId, agentId, capabilityRevision)` 下只能绑定一个 conversation；Hermes 0.19 resolution 是无 immutable approval ID 的 FIFO，Connector 以 `hermes_approval_resolution_ambiguous` fail closed；Connector session store 合并冷启动加载和同 conversation 并发创建。`uncertain`、禁止静默重提、approval/CAS、control lease、完整回复与语音失败隔离继续是不可回退基线。
@@ -581,7 +581,7 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 ### 5.3 批次 3（M5）：统一助手配置与 capability 化界面
 
 - **用户需求**：用户始终面对同一个有名称、人格、声音、记忆和视觉表现的个人助手；Direct LLM 聊天与 Hermes 工作是同一助手的不同能力，而不是两个产品入口。
-- **当前问题**：当前状态以 ChatSource、Direct 单例配置、Hermes conversation、TTS/STT 设置和 SignalCore 分散持有；没有 AssistantProfile 聚合身份，也没有清晰区分纯聊天 capability 与 Agent capability。
+- **当前问题（本轮前；最小客户端边界已关闭）**：当前状态曾以 ChatSource、Direct 单例配置、Hermes conversation、TTS/STT 设置和 SignalCore 分散持有；现已建立本地 AssistantProfile、voice assistant binding 与 capability projection，但完整的统一内容 shell/多助手管理仍不是本轮扩展目标。
 - **实施范围**：扩展批次 1 已创建的最小 AssistantProfile，增加名称/人格、memory policy、STT/microphone、TTS/voice/speed/language、SignalCore、默认聊天后端、Hermes work backend、播报与打断策略；system prompt 继续只由 AssistantProfile 拥有，不在 Provider revision 建立第二来源。首版只要求一个 active assistant，但所有新数据携带 `assistantId`。统一 conversation shell、消息列表和 composer；Hermes 工具轨迹、approval、lease、执行主机和真实 Agent state 仅在 Hermes capability 可用时展示，Direct LLM 永不模拟这些状态。
 - **状态和数据语义**：AssistantProfile 只保存 secret reference；Provider Profile、Hermes route 和 conversation 仍是独立实体。conversation 创建时固定 backend binding；显式 handoff 创建新 conversation/branch，不原地改写旧历史。现有 voice/visual/Direct 设置以版本化 migration 合并到默认 assistant，保留可回滚备份直到 migration commit。
 - **安全边界**：统一视觉不等于统一授权。Direct LLM 无 Agent、tool、approval、lease 或 remote execution 语义；Hermes 的原生状态只来自 Gateway ledger/Connector。首版不得把本地 persona、固定记忆或 Direct system prompt 自动注入 Hermes，除非后续规格明确并由用户启用。
@@ -594,7 +594,7 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 ### 5.4 批次 4（M5）：conversation 级上下文、固定记忆与滚动摘要
 
 - **用户需求**：长期陪伴聊天能记住用户允许保留的信息，同时上下文有界、可理解、可查看、可编辑、可删除，并且不会跨服务商或 conversation 泄露。
-- **当前问题**：当前 Direct 请求每轮发送该单例下的全部消息；没有 conversation context budget、固定记忆、滚动摘要、删除/编辑语义或 partial reply 排除规则。
+- **当前问题（本轮前；确定性 builder/storage 已关闭）**：当前 Direct 请求曾每轮发送该单例下的全部消息；现已接入 conversation context budget、固定记忆、确定性本地 summary、删除/编辑语义和 partial reply 排除。真正由 LLM 自动生成摘要与可编辑 policy 仍单独保留。
 - **实施范围**：为每个 conversation 保存单调 `contextSnapshotRevision` 和 context policy，按 `system prompt → 已授权固定记忆 → 带覆盖范围的滚动摘要 → 最近 completed turns` 组装 payload；在不引入 tokenizer 依赖的首版使用可测试的 UTF-8 byte budget，并为输出保留固定余量。固定记忆支持查看、编辑、删除和作用域；摘要保留 source range、生成 backend/Profile/revision 和更新时间，永不覆盖原始历史。预算不足时先丢弃最旧最近轮次；system prompt 或固定记忆单项自身超限时拒绝发送并要求裁剪，绝不突破硬预算。
 - **状态和数据语义**：原始消息、摘要和固定记忆是不同记录；`cancelled/failed/incomplete/truncated` 或 `provenance=legacy_unverified` 的 reply 默认不进入上下文，provenance 与 terminal 分列。摘要只能覆盖同一 assistant/conversation/backend binding 的已完成轮次；任何 context-eligible message set/content/terminal、memory、summary 或 policy 变化都递增 context revision 并撤销旧确认；当前 confirmed user text 的预发送落盘不递增，assistant reply 进入 `completed` 后才为下一轮递增。切 Profile/迁移 conversation 后重新生成或显式不携带。删除立即从读模型和未来 payload 消失，后台压缩/清理不得阻塞当前发送。
 - **安全边界**：记忆默认仅存本地；用户可见具体哪些记忆会随下一请求发送。摘要只能由当前 conversation 已选择的同一聊天后端生成，不把数据送往第三方“摘要服务”。任何向 Hermes 注入个人记忆的能力保持关闭，等待单独产品决定和显式授权。
@@ -603,6 +603,27 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 - **人工验收**：建立两个 conversation 和两个 Provider Profile，分别添加/编辑/删除固定记忆并产生足够长历史；发送前预览与 fake provider 捕获 payload 一致，旧 conversation、已删除记忆和残缺回复均未出现。
 - **外部依赖**：无强制依赖；若未来引入精确 tokenizer，须单独记录模型覆盖、许可证、体积和 fallback。
 - **完成条件**：请求上下文始终受确定性预算约束；用户能解释并控制发送内容；长期会话不会因历史无限增长而持续放大请求或 SQLite 写入压力。
+
+**2026-08-01 批次 3/4 本轮实现证据**：AssistantProfile 已从批次 1 的最小
+`assistantId/assistantRevision/systemPrompt` 扩展为本地聚合身份，持久化名称、人格、记忆策略、
+voice/SignalCore 引用、默认 chat backend、Hermes work backend 和播报策略；voice settings
+同时保存当前 `assistantId/assistantRevision`，由 HomeScreen 在 active Assistant 恢复后绑定。
+Direct banner 与 Hermes banner 共用 Assistant 语义，Direct 的 capability projection 只有
+`chat`，Hermes 只有在 Gateway directory 广告对应能力时才在无障碍语义中报告 approval、interrupt
+或 clarification；工具、lease、执行主机仍只读真实 Hermes 事件，不由 Direct 模拟。
+
+批次 4 已新增独立的 Drift context memory/summary 表（schema 3），按 conversation 隔离固定记忆和
+滚动摘要；`DirectContextBuilder` 按 system prompt → fixed memory → rolling summary → 最近
+completed turns → 当前 user 的顺序组装，使用 UTF-8 48 KiB 输入预算并保留 8 KiB 输出余量，排除
+cancelled/failed/incomplete/truncated/legacy 回复，摘要 target 或 source range 不匹配时拒绝发送。
+Direct request 现在只发送 builder 的实际结果，设置页支持 memory 查看/编辑/删除、summary 本地重建
+和清空；`contextSnapshotHash/revision` 会随消息、记忆、摘要或 Assistant identity 变化而撤销确认。
+新增 builder、预算、target isolation、Drift CRUD 与 Assistant identity 回归；固定 Flutter 3.44.6
+门通过（208 tests，2 个显式 live smoke skipped）。
+
+本轮刻意没有把“由当前 LLM 自动生成滚动摘要”或可调 tokenizer/policy 做成隐式请求：这会增加费用、
+递归摘要、失败终态和数据外发边界，应作为独立产品决策。当前提供的是不联网的确定性本地 summary
+rebuild 和固定安全预算；若要求真正的 LLM 摘要，必须另定义其确认、失败、版本和删除语义。
 
 ### 5.5 批次 5（M5）：语音配置、真实 GUI 闭环与可打断交互
 

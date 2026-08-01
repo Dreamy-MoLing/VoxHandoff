@@ -356,6 +356,65 @@ void main() {
       );
     },
   );
+
+  test(
+    'persists the unified assistant identity across provider reconfiguration',
+    () async {
+      final history = _History();
+      final container = _container(history, _Transport(const []));
+      addTearDown(container.dispose);
+      final controller = container.read(directChatProvider.notifier);
+
+      await controller.configure(_config, 'key-a');
+      await controller.updateAssistantIdentity(
+        displayName: 'Night Signal',
+        persona: 'A concise local companion.',
+      );
+      await controller.configure(_config, '');
+
+      final assistant = container.read(directChatProvider).assistantProfile!;
+      expect(assistant.displayName, 'Night Signal');
+      expect(assistant.persona, 'A concise local companion.');
+      expect(assistant.assistantRevision, greaterThan(1));
+    },
+  );
+
+  test(
+    'context memory changes revoke confirmation and enter the next payload',
+    () async {
+      final history = _History();
+      final transport = _Transport(const ['reply']);
+      final container = _container(history, transport);
+      addTearDown(container.dispose);
+      final controller = container.read(directChatProvider.notifier);
+
+      await controller.configure(_config, 'key-a');
+      final draftController = container.read(clientSessionProvider.notifier);
+      draftController.editDraft('remembered context');
+      draftController.confirmDraft(
+        _directDraft(container, 'remembered context'),
+      );
+      await controller.saveMemory('The user prefers a short answer.');
+      expect(
+        container.read(clientSessionProvider).draftPhase,
+        DraftPhase.editing,
+      );
+
+      draftController.confirmDraft(
+        _directDraft(container, 'remembered context'),
+      );
+      await controller.sendConfirmedText(
+        container.read(clientSessionProvider).confirmedDraft!,
+      );
+
+      expect(
+        transport.messages.single.map((message) => message.text),
+        contains(
+          '[Pinned memory / conversation] The user prefers a short answer.',
+        ),
+      );
+    },
+  );
 }
 
 final _config = DirectLlmConfiguration(

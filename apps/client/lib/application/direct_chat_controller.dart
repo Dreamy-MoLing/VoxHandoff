@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../domain/direct_context.dart';
 import '../domain/direct_chat.dart';
 import '../domain/confirmed_draft.dart';
 import '../infrastructure/chat/openai_compatible_chat_client.dart';
@@ -13,6 +14,12 @@ import 'speech_playback_controller.dart';
 
 final directChatHistoryStoreProvider = Provider<DirectChatHistoryStore>(
   (_) => throw StateError('No direct chat history store is configured.'),
+);
+final directContextStoreProvider = Provider<DirectContextStore>(
+  (_) => InMemoryDirectContextStore(),
+);
+final directContextBuilderProvider = Provider<DirectContextBuilder>(
+  (_) => const DirectContextBuilder(),
 );
 final directChatSecretStoreProvider = Provider<DirectLlmSecretStore>(
   (_) => DirectLlmSecretStore(FlutterSecureValueStore()),
@@ -119,16 +126,15 @@ class DirectChatController extends Notifier<DirectChatState> {
           configuration.profileId,
           credentialRevision: configuration.credentialRevision,
         );
-    final restored = configuration.copyWith(
-      contextSnapshotHash: _contextHash(messages),
-    );
+    final restored = await _withCurrentContext(configuration, messages);
+    await ref.read(directChatConfigurationStoreProvider).save(restored);
     state = DirectChatState(
       phase: key == null || key.isEmpty
           ? DirectChatPhase.failed
           : DirectChatPhase.ready,
       configuration: restored,
       messages: messages,
-      assistantProfile: configuration.assistant,
+      assistantProfile: defaultAssistant,
       credentialAvailable: key != null && key.isNotEmpty,
       failure: key == null || key.isEmpty
           ? const DirectChatFailure(
@@ -168,23 +174,19 @@ class DirectChatController extends Notifier<DirectChatState> {
         current.principal != configuration.principal;
     final assistantStore = ref.read(directChatConfigurationStoreProvider);
     final oldAssistant =
+        state.assistantProfile ??
         current?.assistant ??
         await assistantStore.readOrCreateDefaultAssistant();
     final assistantChanged =
         current != null && current.systemPrompt != configuration.systemPrompt;
     final assistant = assistantChanged
-        ? AssistantProfile(
-            assistantId: oldAssistant.assistantId,
+        ? oldAssistant.copyWith(
             assistantRevision: oldAssistant.assistantRevision + 1,
             systemPrompt: configuration.systemPrompt,
           )
         : oldAssistant.systemPrompt == configuration.systemPrompt
         ? oldAssistant
-        : AssistantProfile(
-            assistantId: oldAssistant.assistantId,
-            assistantRevision: oldAssistant.assistantRevision,
-            systemPrompt: configuration.systemPrompt,
-          );
+        : oldAssistant.copyWith(systemPrompt: configuration.systemPrompt);
     await assistantStore.saveAssistant(assistant);
     final profileId = identityChanged
         ? _opaqueId('provider')
@@ -250,9 +252,7 @@ class DirectChatController extends Notifier<DirectChatState> {
     final messages = await ref
         .read(directChatHistoryStoreProvider)
         .list(active.conversationId);
-    final activeWithContext = active.copyWith(
-      contextSnapshotHash: _contextHash(messages),
-    );
+    final activeWithContext = await _withCurrentContext(active, messages);
     await assistantStore.save(activeWithContext);
     final confirmed = ref.read(clientSessionProvider).confirmedDraft;
     if (confirmed != null &&
@@ -422,6 +422,50 @@ class DirectChatController extends Notifier<DirectChatState> {
       createdAt: now,
       terminal: DirectMessageTerminal.streaming,
     );
+    final contextConfiguration = await _withCurrentContext(
+      configuration,
+      previousMessages,
+    );
+    if (!_sameContextSnapshot(configuration, contextConfiguration)) {
+      state = state.copyWith(configuration: contextConfiguration);
+      await ref
+          .read(directChatConfigurationStoreProvider)
+          .save(contextConfiguration);
+      ref.read(clientSessionProvider.notifier).invalidateConfirmation();
+      state = state.copyWith(
+        phase: DirectChatPhase.failed,
+        failure: const DirectChatFailure(
+          code: 'llm_context_changed',
+          message: 'Conversation context changed. Confirm the draft again.',
+        ),
+      );
+      _releaseRequest(requestId);
+      return;
+    }
+    final contextData = await ref
+        .read(directContextStoreProvider)
+        .read(configuration.conversationId);
+    late final DirectContextAssembly assembly;
+    try {
+      assembly = ref
+          .read(directContextBuilderProvider)
+          .assemble(
+            configuration: configuration,
+            history: previousMessages,
+            currentUser: user,
+            data: contextData,
+          );
+    } on DirectContextException catch (error) {
+      state = state.copyWith(
+        phase: DirectChatPhase.failed,
+        failure: DirectChatFailure(
+          code: error.code,
+          message: error.safeMessage,
+        ),
+      );
+      _releaseRequest(requestId);
+      return;
+    }
     final store = ref.read(directChatHistoryStoreProvider);
     await store.upsert(configuration.conversationId, user);
     await store.upsert(configuration.conversationId, reply);
@@ -436,10 +480,7 @@ class DirectChatController extends Notifier<DirectChatState> {
       await for (final delta in _transport!.streamCompletion(
         configuration: configuration,
         apiKey: apiKey,
-        messages: [
-          ...previousMessages.where((message) => message.contextEligible),
-          user,
-        ],
+        messages: assembly.messages,
       )) {
         if (!_ownsRequest(generation, requestId, configuration)) return;
         final current = state.messages
@@ -471,7 +512,7 @@ class DirectChatController extends Notifier<DirectChatState> {
       _releaseRequest(requestId);
       final updatedConfiguration = configuration.copyWith(
         contextSnapshotRevision: configuration.contextSnapshotRevision + 1,
-        contextSnapshotHash: _contextHash(completed),
+        contextSnapshotHash: directContextHash(contextData, completed),
       );
       await ref
           .read(directChatConfigurationStoreProvider)
@@ -569,6 +610,180 @@ class DirectChatController extends Notifier<DirectChatState> {
     }
   }
 
+  Future<List<FixedMemory>> listMemories() async {
+    final configuration = state.configuration;
+    if (configuration == null) return const [];
+    return (await ref
+            .read(directContextStoreProvider)
+            .read(configuration.conversationId))
+        .memories;
+  }
+
+  Future<RollingSummary?> readSummary() async {
+    final configuration = state.configuration;
+    if (configuration == null) return null;
+    return (await ref
+            .read(directContextStoreProvider)
+            .read(configuration.conversationId))
+        .summary;
+  }
+
+  Future<void> saveMemory(
+    String text, {
+    String scope = 'conversation',
+    String? memoryId,
+  }) async {
+    final configuration = state.configuration;
+    final normalizedText = text.trim();
+    final normalizedScope = scope.trim();
+    if (configuration == null ||
+        normalizedText.isEmpty ||
+        normalizedText.length > 8192 ||
+        normalizedScope.isEmpty ||
+        normalizedScope.length > 128) {
+      throw const FormatException('The fixed memory is invalid.');
+    }
+    await cancelForContextChange();
+    final current = await ref
+        .read(directContextStoreProvider)
+        .read(configuration.conversationId);
+    FixedMemory? existing;
+    for (final item in current.memories) {
+      if ((memoryId != null && item.memoryId == memoryId) ||
+          (memoryId == null &&
+              item.text == normalizedText &&
+              item.scope == normalizedScope)) {
+        existing = item;
+        break;
+      }
+    }
+    final memory = FixedMemory(
+      memoryId: existing?.memoryId ?? memoryId ?? _opaqueId('memory'),
+      text: normalizedText,
+      scope: normalizedScope,
+      revision: (existing?.revision ?? 0) + 1,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await ref
+        .read(directContextStoreProvider)
+        .saveMemory(configuration.conversationId, memory);
+    await _refreshContextAfterMutation(configuration);
+  }
+
+  Future<void> updateAssistantIdentity({
+    required String displayName,
+    required String persona,
+  }) async {
+    final current = state.assistantProfile;
+    if (current == null) return;
+    final name = displayName.trim();
+    final description = persona.trim();
+    if (name.isEmpty || name.length > 128 || description.length > 2048) {
+      throw const FormatException('The assistant identity is invalid.');
+    }
+    await cancelForContextChange();
+    final updated = current.copyWith(
+      assistantRevision: current.assistantRevision + 1,
+      displayName: name,
+      persona: description,
+    );
+    final store = ref.read(directChatConfigurationStoreProvider);
+    await store.saveAssistant(updated);
+    final configuration = state.configuration;
+    if (configuration == null) {
+      state = state.copyWith(assistantProfile: updated);
+      return;
+    }
+    final next = configuration.copyWith(
+      assistantRevision: updated.assistantRevision,
+      contextSnapshotRevision: configuration.contextSnapshotRevision + 1,
+    );
+    await store.save(next);
+    ref.read(clientSessionProvider.notifier).invalidateConfirmation();
+    state = state.copyWith(configuration: next, assistantProfile: updated);
+  }
+
+  Future<void> deleteMemory(String memoryId) async {
+    final configuration = state.configuration;
+    if (configuration == null || memoryId.trim().isEmpty) return;
+    await cancelForContextChange();
+    await ref
+        .read(directContextStoreProvider)
+        .deleteMemory(configuration.conversationId, memoryId);
+    await _refreshContextAfterMutation(configuration);
+  }
+
+  /// Rebuilds a local, deterministic summary from completed turns. It does not
+  /// make a second LLM request, so summary failure cannot affect chat sending.
+  Future<void> rebuildSummary() async {
+    final configuration = state.configuration;
+    if (configuration == null) return;
+    await cancelForContextChange();
+    final messages = state.messages
+        .where(
+          (message) =>
+              message.contextEligible &&
+              message.terminal == DirectMessageTerminal.completed &&
+              message.role != DirectChatRole.system,
+        )
+        .toList(growable: false);
+    if (messages.isEmpty) {
+      await clearSummary();
+      return;
+    }
+    final summaryText = messages
+        .map(
+          (message) =>
+              '${message.role == DirectChatRole.user ? 'User' : 'Assistant'}: ${message.text}',
+        )
+        .join('\n');
+    final bounded = summaryText.length > 16384
+        ? summaryText.substring(summaryText.length - 16384)
+        : summaryText;
+    final current = await readSummary();
+    await ref
+        .read(directContextStoreProvider)
+        .saveSummary(
+          configuration.conversationId,
+          RollingSummary(
+            summaryId: current?.summaryId ?? _opaqueId('summary'),
+            text: bounded,
+            firstMessageId: messages.first.id,
+            lastMessageId: messages.last.id,
+            providerProfileId: configuration.profileId,
+            configurationRevision: configuration.configurationRevision,
+            updatedAt: DateTime.now().toUtc(),
+          ),
+        );
+    await _refreshContextAfterMutation(configuration);
+  }
+
+  Future<void> clearSummary() async {
+    final configuration = state.configuration;
+    if (configuration == null) return;
+    await cancelForContextChange();
+    await ref
+        .read(directContextStoreProvider)
+        .deleteSummary(configuration.conversationId);
+    await _refreshContextAfterMutation(configuration);
+  }
+
+  Future<void> _refreshContextAfterMutation(
+    DirectLlmConfiguration configuration,
+  ) async {
+    final refreshed = await _withCurrentContext(configuration, state.messages);
+    final next = refreshed.copyWith(
+      contextSnapshotRevision:
+          refreshed.contextSnapshotRevision ==
+              configuration.contextSnapshotRevision
+          ? refreshed.contextSnapshotRevision + 1
+          : refreshed.contextSnapshotRevision,
+    );
+    await ref.read(directChatConfigurationStoreProvider).save(next);
+    ref.read(clientSessionProvider.notifier).invalidateConfirmation();
+    state = state.copyWith(configuration: next);
+  }
+
   Future<void> _completePartial(
     String conversationId,
     String replyId, {
@@ -654,14 +869,28 @@ class DirectChatController extends Notifier<DirectChatState> {
         model: configuration.model,
       );
 
-  String _contextHash(Iterable<DirectChatMessage> messages) =>
-      ConfirmedDraft.contextHash(
-        messages
-            .where((message) => message.contextEligible)
-            .map(
-              (message) => '${message.id}:${message.revision}:${message.text}',
-            ),
-      );
+  Future<DirectLlmConfiguration> _withCurrentContext(
+    DirectLlmConfiguration configuration,
+    List<DirectChatMessage> messages,
+  ) async {
+    final data = await ref
+        .read(directContextStoreProvider)
+        .read(configuration.conversationId);
+    final hash = directContextHash(data, messages);
+    return configuration.copyWith(
+      contextSnapshotRevision: configuration.contextSnapshotHash == hash
+          ? configuration.contextSnapshotRevision
+          : configuration.contextSnapshotRevision + 1,
+      contextSnapshotHash: hash,
+    );
+  }
+
+  bool _sameContextSnapshot(
+    DirectLlmConfiguration first,
+    DirectLlmConfiguration second,
+  ) =>
+      first.contextSnapshotRevision == second.contextSnapshotRevision &&
+      first.contextSnapshotHash == second.contextSnapshotHash;
 
   String _opaqueId(String prefix) =>
       '$prefix-${List<int>.generate(16, (_) => Random.secure().nextInt(256)).map((value) => value.toRadixString(16).padLeft(2, '0')).join()}';

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/direct_chat_controller.dart';
 import '../domain/direct_chat.dart';
+import 'direct_context_settings_sheet.dart';
 
 Future<void> showDirectLlmSettingsSheet(BuildContext context) =>
     showModalBottomSheet<void>(
@@ -24,6 +25,8 @@ class _DirectLlmSettingsSheetState
   late final TextEditingController _model;
   late final TextEditingController _key;
   late final TextEditingController _prompt;
+  late final TextEditingController _assistantName;
+  late final TextEditingController _assistantPersona;
   @override
   void initState() {
     super.initState();
@@ -34,6 +37,11 @@ class _DirectLlmSettingsSheetState
     _model = TextEditingController(text: current?.model ?? '');
     _key = TextEditingController();
     _prompt = TextEditingController(text: current?.systemPrompt ?? '');
+    final assistant = ref.read(directChatProvider).assistantProfile;
+    _assistantName = TextEditingController(
+      text: assistant?.displayName ?? 'VoxHandoff',
+    );
+    _assistantPersona = TextEditingController(text: assistant?.persona ?? '');
   }
 
   @override
@@ -42,6 +50,8 @@ class _DirectLlmSettingsSheetState
     _model.dispose();
     _key.dispose();
     _prompt.dispose();
+    _assistantName.dispose();
+    _assistantPersona.dispose();
     super.dispose();
   }
 
@@ -98,6 +108,17 @@ class _DirectLlmSettingsSheetState
                   labelText: 'Optional system prompt',
                 ),
               ),
+              TextField(
+                controller: _assistantName,
+                decoration: const InputDecoration(labelText: 'Assistant name'),
+              ),
+              TextField(
+                controller: _assistantPersona,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Assistant persona (local display context)',
+                ),
+              ),
               if (state.failure != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -109,6 +130,18 @@ class _DirectLlmSettingsSheetState
                   ),
                 ),
               const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () {
+                    final navigator = Navigator.of(context);
+                    navigator.pop();
+                    showDirectContextSettingsSheet(navigator.context);
+                  },
+                  icon: const Icon(Icons.memory_outlined),
+                  label: const Text('Manage conversation memory and summary'),
+                ),
+              ),
               Wrap(
                 alignment: WrapAlignment.end,
                 spacing: 8,
@@ -152,5 +185,16 @@ class _DirectLlmSettingsSheetState
           ),
           _key.text,
         );
+    final assistant = ref.read(directChatProvider).assistantProfile;
+    if (assistant != null &&
+        (assistant.displayName != _assistantName.text.trim() ||
+            assistant.persona != _assistantPersona.text.trim())) {
+      await ref
+          .read(directChatProvider.notifier)
+          .updateAssistantIdentity(
+            displayName: _assistantName.text,
+            persona: _assistantPersona.text,
+          );
+    }
   }
 }

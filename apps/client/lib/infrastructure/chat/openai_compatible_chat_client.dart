@@ -109,11 +109,11 @@ class OpenAiCompatibleChatTransport implements DirectChatTransport {
         'model': configuration.model,
         'stream': true,
         'messages': [
-          if (configuration.systemPrompt.trim().isNotEmpty)
+          if (configuration.systemPrompt.trim().isNotEmpty &&
+              !messages.any((message) => message.role == DirectChatRole.system))
             {'role': 'system', 'content': configuration.systemPrompt.trim()},
           for (final message in messages)
-            if (message.role != DirectChatRole.system)
-              {'role': message.role.name, 'content': message.text},
+            {'role': message.role.name, 'content': message.text},
         ],
       }),
     );

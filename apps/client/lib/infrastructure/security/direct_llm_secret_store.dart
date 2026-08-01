@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import '../../domain/confirmed_draft.dart';
 import '../../domain/direct_chat.dart';
 import 'device_key_vault.dart';
 
@@ -79,7 +80,7 @@ class DirectLlmConfigurationStore {
       try {
         final value = jsonDecode(raw);
         if (value is Map<String, Object?> &&
-            value['version'] == 1 &&
+            (value['version'] == 1 || value['version'] == 2) &&
             value['assistant_id'] is String &&
             value['assistant_revision'] is int &&
             value['system_prompt'] is String) {
@@ -87,6 +88,28 @@ class DirectLlmConfigurationStore {
             assistantId: value['assistant_id']! as String,
             assistantRevision: value['assistant_revision']! as int,
             systemPrompt: value['system_prompt']! as String,
+            displayName: _assistantString(value, 'display_name', 'VoxHandoff'),
+            persona: _assistantString(value, 'persona', ''),
+            memoryPolicy: _assistantMemoryPolicy(value['memory_policy']),
+            voiceProfileId: _assistantString(
+              value,
+              'voice_profile_id',
+              'default-voice',
+            ),
+            signalCoreProfile: _assistantString(
+              value,
+              'signal_core_profile',
+              'signal-core',
+            ),
+            defaultChatSource: _assistantChatSource(
+              value['default_chat_source'],
+            ),
+            hermesWorkBackend: _assistantString(
+              value,
+              'hermes_work_backend',
+              'hermes-gateway',
+            ),
+            speechPolicy: _assistantSpeechPolicy(value['speech_policy']),
           );
         }
       } on Object {
@@ -106,10 +129,18 @@ class DirectLlmConfigurationStore {
   Future<void> saveAssistant(AssistantProfile profile) => _store.write(
     '$_key.assistant',
     jsonEncode({
-      'version': 1,
+      'version': 2,
       'assistant_id': profile.assistantId,
       'assistant_revision': profile.assistantRevision,
       'system_prompt': profile.systemPrompt,
+      'display_name': profile.displayName,
+      'persona': profile.persona,
+      'memory_policy': profile.memoryPolicy.name,
+      'voice_profile_id': profile.voiceProfileId,
+      'signal_core_profile': profile.signalCoreProfile,
+      'default_chat_source': profile.defaultChatSource.name,
+      'hermes_work_backend': profile.hermesWorkBackend,
+      'speech_policy': profile.speechPolicy.name,
     }),
   );
 
@@ -180,3 +211,25 @@ void _validateRevision(int value, String name) {
 
 String _opaqueId(String prefix) =>
     '$prefix-${List<int>.generate(16, (_) => Random.secure().nextInt(256)).map((value) => value.toRadixString(16).padLeft(2, '0')).join()}';
+
+String _assistantString(
+  Map<String, Object?> value,
+  String key,
+  String fallback,
+) => value[key] is String ? value[key]! as String : fallback;
+
+AssistantMemoryPolicy _assistantMemoryPolicy(Object? value) => switch (value) {
+  'disabled' => AssistantMemoryPolicy.disabled,
+  _ => AssistantMemoryPolicy.localOnly,
+};
+
+AssistantSpeechPolicy _assistantSpeechPolicy(Object? value) => switch (value) {
+  'off' => AssistantSpeechPolicy.off,
+  'manual' => AssistantSpeechPolicy.manual,
+  _ => AssistantSpeechPolicy.afterCompleted,
+};
+
+ChatSource _assistantChatSource(Object? value) => switch (value) {
+  'hermes' => ChatSource.hermes,
+  _ => ChatSource.directLlm,
+};

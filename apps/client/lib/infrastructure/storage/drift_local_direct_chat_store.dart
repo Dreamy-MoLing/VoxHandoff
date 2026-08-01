@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../domain/direct_context.dart';
 import '../../domain/direct_chat.dart';
 
 part 'drift_local_direct_chat_store.g.dart';
@@ -29,11 +30,57 @@ class _DirectChatMessages extends Table {
   ];
 }
 
-@DriftDatabase(tables: [_DirectChatMessages])
+@DataClassName('_StoredDirectContextMemory')
+class _DirectContextMemories extends Table {
+  TextColumn get conversationId => text().withLength(min: 1, max: 128)();
+  TextColumn get memoryId => text().withLength(min: 1, max: 128)();
+  TextColumn get content => text().withLength(min: 1, max: 8192)();
+  TextColumn get scope => text().withLength(min: 1, max: 128)();
+  IntColumn get memoryRevision => integer()();
+  IntColumn get updatedAtMicros => integer()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {conversationId, memoryId};
+
+  @override
+  List<String> get customConstraints => const [
+    'CHECK (memory_revision > 0)',
+    'CHECK (updated_at_micros >= 0)',
+  ];
+}
+
+@DataClassName('_StoredDirectContextSummary')
+class _DirectContextSummaries extends Table {
+  TextColumn get conversationId => text().withLength(min: 1, max: 128)();
+  TextColumn get summaryId => text().withLength(min: 1, max: 128)();
+  TextColumn get content => text().withLength(min: 1, max: 32768)();
+  TextColumn get firstMessageId => text().withLength(min: 1, max: 128)();
+  TextColumn get lastMessageId => text().withLength(min: 1, max: 128)();
+  TextColumn get providerProfileId => text().withLength(min: 1, max: 128)();
+  IntColumn get configurationRevision => integer()();
+  IntColumn get updatedAtMicros => integer()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {conversationId};
+
+  @override
+  List<String> get customConstraints => const [
+    'CHECK (configuration_revision > 0)',
+    'CHECK (updated_at_micros >= 0)',
+  ];
+}
+
+@DriftDatabase(
+  tables: [
+    _DirectChatMessages,
+    _DirectContextMemories,
+    _DirectContextSummaries,
+  ],
+)
 class _DirectChatDatabase extends _$_DirectChatDatabase {
   _DirectChatDatabase(super.executor);
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -71,11 +118,16 @@ class _DirectChatDatabase extends _$_DirectChatDatabase {
         ''');
         await customStatement('DROP TABLE direct_chat_messages_legacy');
       }
+      if (from < 3) {
+        await m.createTable(directContextMemories);
+        await m.createTable(directContextSummaries);
+      }
     },
   );
 }
 
-class DriftLocalDirectChatStore implements DirectChatHistoryStore {
+class DriftLocalDirectChatStore
+    implements DirectChatHistoryStore, DirectContextStore {
   DriftLocalDirectChatStore(QueryExecutor executor)
     : _database = _DirectChatDatabase(executor);
   factory DriftLocalDirectChatStore.inMemory() =>
@@ -147,6 +199,96 @@ class DriftLocalDirectChatStore implements DirectChatHistoryStore {
               contextEligible: message.contextEligible,
             ),
           );
+
+  @override
+  Future<DirectContextData> read(String conversationId) async {
+    final memories = await (_database.select(
+      _database.directContextMemories,
+    )..where((row) => row.conversationId.equals(conversationId))).get();
+    final summary =
+        await (_database.select(_database.directContextSummaries)
+              ..where((row) => row.conversationId.equals(conversationId)))
+            .getSingleOrNull();
+    return DirectContextData(
+      memories: List.unmodifiable(
+        memories.map(
+          (row) => FixedMemory(
+            memoryId: row.memoryId,
+            text: row.content,
+            scope: row.scope,
+            revision: row.memoryRevision,
+            updatedAt: DateTime.fromMicrosecondsSinceEpoch(
+              row.updatedAtMicros,
+              isUtc: true,
+            ),
+          ),
+        ),
+      ),
+      summary: summary == null
+          ? null
+          : RollingSummary(
+              summaryId: summary.summaryId,
+              text: summary.content,
+              firstMessageId: summary.firstMessageId,
+              lastMessageId: summary.lastMessageId,
+              providerProfileId: summary.providerProfileId,
+              configurationRevision: summary.configurationRevision,
+              updatedAt: DateTime.fromMicrosecondsSinceEpoch(
+                summary.updatedAtMicros,
+                isUtc: true,
+              ),
+            ),
+    );
+  }
+
+  @override
+  Future<void> saveMemory(String conversationId, FixedMemory memory) =>
+      _database
+          .into(_database.directContextMemories)
+          .insertOnConflictUpdate(
+            _DirectContextMemoriesCompanion.insert(
+              conversationId: conversationId,
+              memoryId: memory.memoryId,
+              content: memory.text,
+              scope: memory.scope,
+              memoryRevision: memory.revision,
+              updatedAtMicros: memory.updatedAt.toUtc().microsecondsSinceEpoch,
+            ),
+          );
+
+  @override
+  Future<void> deleteMemory(String conversationId, String memoryId) async {
+    await (_database.delete(_database.directContextMemories)..where(
+          (row) =>
+              row.conversationId.equals(conversationId) &
+              row.memoryId.equals(memoryId),
+        ))
+        .go();
+  }
+
+  @override
+  Future<void> saveSummary(String conversationId, RollingSummary summary) =>
+      _database
+          .into(_database.directContextSummaries)
+          .insertOnConflictUpdate(
+            _DirectContextSummariesCompanion.insert(
+              conversationId: conversationId,
+              summaryId: summary.summaryId,
+              content: summary.text,
+              firstMessageId: summary.firstMessageId,
+              lastMessageId: summary.lastMessageId,
+              providerProfileId: summary.providerProfileId,
+              configurationRevision: summary.configurationRevision,
+              updatedAtMicros: summary.updatedAt.toUtc().microsecondsSinceEpoch,
+            ),
+          );
+
+  @override
+  Future<void> deleteSummary(String conversationId) async {
+    await (_database.delete(
+      _database.directContextSummaries,
+    )..where((row) => row.conversationId.equals(conversationId))).go();
+  }
 
   Future<void> close() => _database.close();
 }

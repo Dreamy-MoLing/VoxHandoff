@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:agent_talk_client/domain/direct_chat.dart';
+import 'package:agent_talk_client/domain/direct_context.dart';
 import 'package:agent_talk_client/infrastructure/storage/drift_local_direct_chat_store.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -93,4 +94,38 @@ void main() {
       }
     },
   );
+
+  test('persists conversation memories and summaries independently', () async {
+    final store = DriftLocalDirectChatStore.inMemory();
+    addTearDown(store.close);
+    final now = DateTime.utc(2026, 8, 1);
+    await store.saveMemory(
+      'conversation-a',
+      FixedMemory(
+        memoryId: 'memory-a',
+        text: 'local preference',
+        scope: 'conversation',
+        revision: 1,
+        updatedAt: now,
+      ),
+    );
+    await store.saveSummary(
+      'conversation-a',
+      RollingSummary(
+        summaryId: 'summary-a',
+        text: 'bounded summary',
+        firstMessageId: 'message-1',
+        lastMessageId: 'message-2',
+        providerProfileId: 'profile-a',
+        configurationRevision: 1,
+        updatedAt: now,
+      ),
+    );
+
+    final context = await store.read('conversation-a');
+    expect(context.memories.single.text, 'local preference');
+    expect(context.summary?.text, 'bounded summary');
+    expect((await store.read('conversation-b')).memories, isEmpty);
+    expect((await store.read('conversation-b')).summary, isNull);
+  });
 }

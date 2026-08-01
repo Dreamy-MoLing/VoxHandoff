@@ -1,3 +1,5 @@
+import 'confirmed_draft.dart';
+
 enum DirectChatRole { system, user, assistant }
 
 enum DirectMessageTerminal {
@@ -68,16 +70,116 @@ class DirectChatMessage {
   );
 }
 
+enum AssistantMemoryPolicy { localOnly, disabled }
+
+enum AssistantSpeechPolicy { off, manual, afterCompleted }
+
+enum AssistantCapability {
+  chat,
+  agent,
+  tools,
+  approvals,
+  leases,
+  interrupt,
+  clarifications,
+}
+
 class AssistantProfile {
   const AssistantProfile({
     required this.assistantId,
     required this.assistantRevision,
     required this.systemPrompt,
+    this.displayName = 'VoxHandoff',
+    this.persona = '',
+    this.memoryPolicy = AssistantMemoryPolicy.localOnly,
+    this.voiceProfileId = 'default-voice',
+    this.signalCoreProfile = 'signal-core',
+    this.defaultChatSource = ChatSource.directLlm,
+    this.hermesWorkBackend = 'hermes-gateway',
+    this.speechPolicy = AssistantSpeechPolicy.afterCompleted,
   });
 
   final String assistantId;
   final int assistantRevision;
   final String systemPrompt;
+  final String displayName;
+  final String persona;
+  final AssistantMemoryPolicy memoryPolicy;
+  final String voiceProfileId;
+  final String signalCoreProfile;
+  final ChatSource defaultChatSource;
+  final String hermesWorkBackend;
+  final AssistantSpeechPolicy speechPolicy;
+
+  AssistantProfile copyWith({
+    int? assistantRevision,
+    String? systemPrompt,
+    String? displayName,
+    String? persona,
+    AssistantMemoryPolicy? memoryPolicy,
+    String? voiceProfileId,
+    String? signalCoreProfile,
+    ChatSource? defaultChatSource,
+    String? hermesWorkBackend,
+    AssistantSpeechPolicy? speechPolicy,
+  }) => AssistantProfile(
+    assistantId: assistantId,
+    assistantRevision: assistantRevision ?? this.assistantRevision,
+    systemPrompt: systemPrompt ?? this.systemPrompt,
+    displayName: displayName ?? this.displayName,
+    persona: persona ?? this.persona,
+    memoryPolicy: memoryPolicy ?? this.memoryPolicy,
+    voiceProfileId: voiceProfileId ?? this.voiceProfileId,
+    signalCoreProfile: signalCoreProfile ?? this.signalCoreProfile,
+    defaultChatSource: defaultChatSource ?? this.defaultChatSource,
+    hermesWorkBackend: hermesWorkBackend ?? this.hermesWorkBackend,
+    speechPolicy: speechPolicy ?? this.speechPolicy,
+  );
+}
+
+class AssistantCapabilityProjection {
+  const AssistantCapabilityProjection({
+    required this.source,
+    required this.capabilities,
+  });
+
+  final ChatSource source;
+  final Set<AssistantCapability> capabilities;
+
+  bool has(AssistantCapability capability) => capabilities.contains(capability);
+
+  static const direct = AssistantCapabilityProjection(
+    source: ChatSource.directLlm,
+    capabilities: {AssistantCapability.chat},
+  );
+
+  static const hermes = AssistantCapabilityProjection(
+    source: ChatSource.hermes,
+    capabilities: {
+      AssistantCapability.chat,
+      AssistantCapability.agent,
+      AssistantCapability.tools,
+      AssistantCapability.approvals,
+      AssistantCapability.leases,
+      AssistantCapability.interrupt,
+      AssistantCapability.clarifications,
+    },
+  );
+
+  factory AssistantCapabilityProjection.hermesFromNegotiation({
+    required bool supportsApprovals,
+    required bool supportsInterrupt,
+    required bool supportsClarifications,
+  }) => AssistantCapabilityProjection(
+    source: ChatSource.hermes,
+    capabilities: {
+      AssistantCapability.chat,
+      AssistantCapability.agent,
+      if (supportsApprovals) AssistantCapability.approvals,
+      if (supportsInterrupt) AssistantCapability.interrupt,
+      if (supportsClarifications) AssistantCapability.clarifications,
+    },
+  );
 }
 
 /// A deliberately narrow OpenAI-compatible text source. It has no tools,

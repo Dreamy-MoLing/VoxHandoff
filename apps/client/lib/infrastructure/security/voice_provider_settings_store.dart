@@ -12,7 +12,9 @@ class VoiceProviderSettingsStore {
   Future<void> save(VoiceProviderSettings settings) => _store.write(
     _key,
     jsonEncode({
-      'version': 1,
+      'version': 2,
+      'assistant_id': settings.assistantId,
+      'assistant_revision': settings.assistantRevision,
       if (settings.microphoneId != null) 'microphone_id': settings.microphoneId,
       'stt': {
         'kind': settings.stt.kind.name,
@@ -42,7 +44,8 @@ class VoiceProviderSettingsStore {
     if (raw == null) return null;
     try {
       final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, Object?> || decoded['version'] != 1) {
+      if (decoded is! Map<String, Object?> ||
+          (decoded['version'] != 1 && decoded['version'] != 2)) {
         return null;
       }
       final stt = _readStt(decoded['stt']);
@@ -54,7 +57,19 @@ class VoiceProviderSettingsStore {
           (microphoneId is! String || microphoneId.trim().isEmpty)) {
         return null;
       }
+      final assistantId = decoded['assistant_id'];
+      final assistantRevision = decoded['assistant_revision'];
+      if (assistantId != null &&
+          (assistantId is! String || assistantId.trim().isEmpty)) {
+        return null;
+      }
+      if (assistantRevision != null &&
+          (assistantRevision is! int || assistantRevision < 1)) {
+        return null;
+      }
       return VoiceProviderSettings(
+        assistantId: assistantId is String ? assistantId : 'unbound-assistant',
+        assistantRevision: assistantRevision is int ? assistantRevision : 1,
         stt: stt,
         tts: tts,
         microphoneId: microphoneId as String?,

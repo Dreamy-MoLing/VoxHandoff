@@ -158,21 +158,29 @@ bool _isLoopback(String host) {
 
 class VoiceProviderSettings {
   const VoiceProviderSettings({
+    this.assistantId = 'unbound-assistant',
+    this.assistantRevision = 1,
     this.stt = const SttProviderConfiguration(kind: SttProviderKind.disabled),
     this.tts = const TtsProviderConfiguration.disabled(),
     this.microphoneId,
   });
 
+  final String assistantId;
+  final int assistantRevision;
   final SttProviderConfiguration stt;
   final TtsProviderConfiguration tts;
   final String? microphoneId;
 
   VoiceProviderSettings copyWith({
+    String? assistantId,
+    int? assistantRevision,
     SttProviderConfiguration? stt,
     TtsProviderConfiguration? tts,
     String? microphoneId,
     bool clearMicrophoneId = false,
   }) => VoiceProviderSettings(
+    assistantId: assistantId ?? this.assistantId,
+    assistantRevision: assistantRevision ?? this.assistantRevision,
     stt: stt ?? this.stt,
     tts: tts ?? this.tts,
     microphoneId: clearMicrophoneId ? null : microphoneId ?? this.microphoneId,
@@ -181,12 +189,15 @@ class VoiceProviderSettings {
   @override
   bool operator ==(Object other) =>
       other is VoiceProviderSettings &&
+      other.assistantId == assistantId &&
+      other.assistantRevision == assistantRevision &&
       other.stt == stt &&
       other.tts == tts &&
       other.microphoneId == microphoneId;
 
   @override
-  int get hashCode => Object.hash(stt, tts, microphoneId);
+  int get hashCode =>
+      Object.hash(assistantId, assistantRevision, stt, tts, microphoneId);
 }
 
 enum VoiceProviderTestPhase { unknown, testing, ready, failed }
