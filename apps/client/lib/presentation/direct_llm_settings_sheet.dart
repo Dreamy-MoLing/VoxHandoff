@@ -27,6 +27,7 @@ class _DirectLlmSettingsSheetState
   late final TextEditingController _prompt;
   late final TextEditingController _assistantName;
   late final TextEditingController _assistantPersona;
+  var _speechPolicy = AssistantSpeechPolicy.afterCompleted;
   @override
   void initState() {
     super.initState();
@@ -42,6 +43,8 @@ class _DirectLlmSettingsSheetState
       text: assistant?.displayName ?? 'VoxHandoff',
     );
     _assistantPersona = TextEditingController(text: assistant?.persona ?? '');
+    _speechPolicy =
+        assistant?.speechPolicy ?? AssistantSpeechPolicy.afterCompleted;
   }
 
   @override
@@ -119,6 +122,31 @@ class _DirectLlmSettingsSheetState
                   labelText: 'Assistant persona (local display context)',
                 ),
               ),
+              DropdownButtonFormField<AssistantSpeechPolicy>(
+                initialValue: _speechPolicy,
+                decoration: const InputDecoration(
+                  labelText: 'Automatic speech policy',
+                  helperText:
+                      'Off keeps text only; manual adds a speak action; after completed speaks final replies.',
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: AssistantSpeechPolicy.off,
+                    child: Text('Off'),
+                  ),
+                  DropdownMenuItem(
+                    value: AssistantSpeechPolicy.manual,
+                    child: Text('Manual'),
+                  ),
+                  DropdownMenuItem(
+                    value: AssistantSpeechPolicy.afterCompleted,
+                    child: Text('After completed reply'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => _speechPolicy = value);
+                },
+              ),
               if (state.failure != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -188,12 +216,14 @@ class _DirectLlmSettingsSheetState
     final assistant = ref.read(directChatProvider).assistantProfile;
     if (assistant != null &&
         (assistant.displayName != _assistantName.text.trim() ||
-            assistant.persona != _assistantPersona.text.trim())) {
+            assistant.persona != _assistantPersona.text.trim() ||
+            assistant.speechPolicy != _speechPolicy)) {
       await ref
           .read(directChatProvider.notifier)
           .updateAssistantIdentity(
             displayName: _assistantName.text,
             persona: _assistantPersona.text,
+            speechPolicy: _speechPolicy,
           );
     }
   }

@@ -35,6 +35,8 @@ class VoiceProviderSettingsStore {
           'reference_audio_path': settings.tts.referenceAudioPath,
         if (settings.tts.promptText != null)
           'prompt_text': settings.tts.promptText,
+        'text_language': settings.tts.textLanguage,
+        'prompt_language': settings.tts.promptLanguage,
       },
     }),
   );
@@ -128,7 +130,11 @@ TtsProviderConfiguration? _readTts(Object? value) {
     case TtsProviderKind.gptSoVits:
       if (value['origin'] is! String ||
           value['reference_audio_path'] is! String ||
-          value['prompt_text'] is! String) {
+          value['prompt_text'] is! String ||
+          (value['text_language'] != null &&
+              value['text_language'] is! String) ||
+          (value['prompt_language'] != null &&
+              value['prompt_language'] is! String)) {
         return null;
       }
       final origin = Uri.tryParse(value['origin']! as String);
@@ -138,6 +144,8 @@ TtsProviderConfiguration? _readTts(Object? value) {
               origin: origin,
               referenceAudioPath: value['reference_audio_path']! as String,
               promptText: value['prompt_text']! as String,
+              textLanguage: value['text_language'] as String? ?? 'zh',
+              promptLanguage: value['prompt_language'] as String? ?? 'zh',
             );
     case null:
       return null;

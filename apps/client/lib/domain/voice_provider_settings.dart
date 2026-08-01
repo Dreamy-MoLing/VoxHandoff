@@ -71,7 +71,9 @@ class TtsProviderConfiguration {
       speakerId = null,
       lengthScale = 1,
       referenceAudioPath = null,
-      promptText = null;
+      promptText = null,
+      textLanguage = 'zh',
+      promptLanguage = 'zh';
 
   const TtsProviderConfiguration.piper({
     required this.origin,
@@ -81,12 +83,16 @@ class TtsProviderConfiguration {
     this.lengthScale = 1,
   }) : kind = TtsProviderKind.piperHttp,
        referenceAudioPath = null,
-       promptText = null;
+       promptText = null,
+       textLanguage = 'zh',
+       promptLanguage = 'zh';
 
   const TtsProviderConfiguration.gptSoVits({
     required this.origin,
     required this.referenceAudioPath,
     required this.promptText,
+    this.textLanguage = 'zh',
+    this.promptLanguage = 'zh',
   }) : kind = TtsProviderKind.gptSoVits,
        voice = null,
        speaker = null,
@@ -101,6 +107,8 @@ class TtsProviderConfiguration {
   final double lengthScale;
   final String? referenceAudioPath;
   final String? promptText;
+  final String textLanguage;
+  final String promptLanguage;
 
   bool get isSafe {
     if (kind == TtsProviderKind.disabled) return true;
@@ -121,7 +129,9 @@ class TtsProviderConfiguration {
           lengthScale.isFinite &&
           lengthScale > 0;
     }
-    return referenceAudioPath?.isNotEmpty == true;
+    return _isLocalAbsolutePath(referenceAudioPath) &&
+        _isLanguageSafe(textLanguage) &&
+        _isLanguageSafe(promptLanguage);
   }
 
   @override
@@ -134,7 +144,9 @@ class TtsProviderConfiguration {
       other.speakerId == speakerId &&
       other.lengthScale == lengthScale &&
       other.referenceAudioPath == referenceAudioPath &&
-      other.promptText == promptText;
+      other.promptText == promptText &&
+      other.textLanguage == textLanguage &&
+      other.promptLanguage == promptLanguage;
 
   @override
   int get hashCode => Object.hash(
@@ -146,7 +158,20 @@ class TtsProviderConfiguration {
     lengthScale,
     referenceAudioPath,
     promptText,
+    textLanguage,
+    promptLanguage,
   );
+}
+
+bool _isLanguageSafe(String value) {
+  final normalized = value.trim();
+  return normalized.isNotEmpty && normalized.length <= 32;
+}
+
+bool _isLocalAbsolutePath(String? value) {
+  final normalized = value?.trim() ?? '';
+  return normalized.startsWith('/') ||
+      RegExp(r'^[A-Za-z]:[\\/]').hasMatch(normalized);
 }
 
 bool _isLoopback(String host) {

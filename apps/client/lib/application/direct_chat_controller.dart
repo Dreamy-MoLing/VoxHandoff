@@ -519,6 +519,8 @@ class DirectChatController extends Notifier<DirectChatState> {
           .save(updatedConfiguration);
       state = state.copyWith(configuration: updatedConfiguration);
       if (_isCurrentConfiguration(configuration) &&
+          state.assistantProfile?.speechPolicy ==
+              AssistantSpeechPolicy.afterCompleted &&
           finalReply.text.trim().isNotEmpty) {
         await ref
             .read(speechPlaybackProvider.notifier)
@@ -673,6 +675,7 @@ class DirectChatController extends Notifier<DirectChatState> {
   Future<void> updateAssistantIdentity({
     required String displayName,
     required String persona,
+    AssistantSpeechPolicy? speechPolicy,
   }) async {
     final current = state.assistantProfile;
     if (current == null) return;
@@ -686,6 +689,7 @@ class DirectChatController extends Notifier<DirectChatState> {
       assistantRevision: current.assistantRevision + 1,
       displayName: name,
       persona: description,
+      speechPolicy: speechPolicy,
     );
     final store = ref.read(directChatConfigurationStoreProvider);
     await store.saveAssistant(updated);
@@ -701,6 +705,27 @@ class DirectChatController extends Notifier<DirectChatState> {
     await store.save(next);
     ref.read(clientSessionProvider.notifier).invalidateConfirmation();
     state = state.copyWith(configuration: next, assistantProfile: updated);
+  }
+
+  Future<void> speakMessage(DirectChatMessage message) async {
+    final configuration = state.configuration;
+    final assistant = state.assistantProfile;
+    if (configuration == null ||
+        assistant?.speechPolicy != AssistantSpeechPolicy.manual ||
+        message.role != DirectChatRole.assistant ||
+        message.terminal != DirectMessageTerminal.completed ||
+        message.text.trim().isEmpty ||
+        !_isCurrentConfiguration(configuration)) {
+      return;
+    }
+    await ref
+        .read(speechPlaybackProvider.notifier)
+        .speakCompletedReply(
+          conversationId: configuration.conversationId,
+          requestId: message.id,
+          messageRevision: BigInt.from(message.revision),
+          fullReply: message.text,
+        );
   }
 
   Future<void> deleteMemory(String memoryId) async {

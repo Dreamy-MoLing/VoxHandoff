@@ -77,6 +77,41 @@ void main() {
   });
 
   test(
+    'GPT-SoVITS settings round-trip its supported language fields',
+    () async {
+      final store = _MemorySecureStore();
+      final container = ProviderContainer(
+        overrides: [
+          voiceProviderSettingsStoreProvider.overrideWithValue(
+            VoiceProviderSettingsStore(store),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(voiceProviderSettingsProvider);
+      await Future<void>.delayed(Duration.zero);
+
+      await container
+          .read(voiceProviderSettingsProvider.notifier)
+          .saveTts(
+            TtsProviderConfiguration.gptSoVits(
+              origin: Uri.parse('http://127.0.0.1:9880'),
+              referenceAudioPath: '/audio/reference.wav',
+              promptText: '你好。',
+              textLanguage: 'zh',
+              promptLanguage: 'zh',
+            ),
+          );
+
+      final restored = await VoiceProviderSettingsStore(store).read();
+      expect(restored?.tts.kind, TtsProviderKind.gptSoVits);
+      expect(restored?.tts.referenceAudioPath, '/audio/reference.wav');
+      expect(restored?.tts.textLanguage, 'zh');
+      expect(restored?.tts.promptLanguage, 'zh');
+    },
+  );
+
+  test(
     'local STT model and microphone selection persist independently',
     () async {
       final store = _MemorySecureStore();

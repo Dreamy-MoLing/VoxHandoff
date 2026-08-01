@@ -49,6 +49,8 @@ class ProductionVoicePortFactory implements VoicePortFactory {
             baseUri: configuration.origin!,
             referenceAudioPath: configuration.referenceAudioPath!,
             promptText: configuration.promptText!,
+            textLanguage: configuration.textLanguage,
+            promptLanguage: configuration.promptLanguage,
           ),
         ),
       };

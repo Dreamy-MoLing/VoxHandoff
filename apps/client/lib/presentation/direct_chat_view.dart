@@ -8,10 +8,14 @@ class DirectChatView extends StatelessWidget {
   const DirectChatView({
     required this.state,
     required this.onCancel,
+    required this.onSpeak,
+    required this.speechEnabled,
     super.key,
   });
   final DirectChatState state;
   final Future<void> Function() onCancel;
+  final Future<void> Function(DirectChatMessage) onSpeak;
+  final bool speechEnabled;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -28,8 +32,17 @@ class DirectChatView extends StatelessWidget {
             : ListView.builder(
                 padding: const EdgeInsets.all(16),
                 itemCount: state.messages.length,
-                itemBuilder: (context, index) =>
-                    _MessageBubble(message: state.messages[index]),
+                itemBuilder: (context, index) => _MessageBubble(
+                  message: state.messages[index],
+                  canSpeak:
+                      speechEnabled &&
+                      state.assistantProfile?.speechPolicy ==
+                          AssistantSpeechPolicy.manual &&
+                      state.messages[index].role == DirectChatRole.assistant &&
+                      state.messages[index].terminal ==
+                          DirectMessageTerminal.completed,
+                  onSpeak: onSpeak,
+                ),
               ),
       ),
     ],
@@ -82,8 +95,14 @@ class _DirectChatHeader extends StatelessWidget {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({
+    required this.message,
+    required this.canSpeak,
+    required this.onSpeak,
+  });
   final DirectChatMessage message;
+  final bool canSpeak;
+  final Future<void> Function(DirectChatMessage) onSpeak;
   @override
   Widget build(BuildContext context) {
     final user = message.role == DirectChatRole.user;
@@ -97,11 +116,25 @@ class _MessageBubble extends StatelessWidget {
               : null,
           child: Padding(
             padding: const EdgeInsets.all(12),
-            child: SelectableText(
-              message.text.isEmpty &&
-                      message.terminal == DirectMessageTerminal.streaming
-                  ? '…'
-                  : message.text,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SelectableText(
+                  message.text.isEmpty &&
+                          message.terminal == DirectMessageTerminal.streaming
+                      ? '…'
+                      : message.text,
+                ),
+                if (canSpeak)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      tooltip: 'Speak this completed reply',
+                      onPressed: () => onSpeak(message),
+                      icon: const Icon(Icons.volume_up_outlined),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),

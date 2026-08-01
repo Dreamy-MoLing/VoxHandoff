@@ -369,12 +369,14 @@ void main() {
       await controller.updateAssistantIdentity(
         displayName: 'Night Signal',
         persona: 'A concise local companion.',
+        speechPolicy: AssistantSpeechPolicy.manual,
       );
       await controller.configure(_config, '');
 
       final assistant = container.read(directChatProvider).assistantProfile!;
       expect(assistant.displayName, 'Night Signal');
       expect(assistant.persona, 'A concise local companion.');
+      expect(assistant.speechPolicy, AssistantSpeechPolicy.manual);
       expect(assistant.assistantRevision, greaterThan(1));
     },
   );

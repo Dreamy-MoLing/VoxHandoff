@@ -11,6 +11,7 @@ import '../application/desktop_integration_controller.dart';
 import '../application/direct_chat_controller.dart';
 import '../application/device_pairing_controller.dart';
 import '../application/gateway_workspace_controller.dart';
+import '../application/speech_playback_controller.dart';
 import '../application/voice_session_controller.dart';
 import '../application/voice_provider_settings_controller.dart';
 import '../domain/client_session.dart';
@@ -197,6 +198,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final source = ref.watch(chatSourceProvider);
     final directChat = ref.watch(directChatProvider);
     final workspace = ref.watch(gatewayWorkspaceProvider);
+    final speechEnabled = ref.watch(speechEnabledProvider);
     ref.listen(directChatProvider, (_, next) {
       final assistant = next.assistantProfile;
       if (assistant != null) {
@@ -313,6 +315,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ? DirectChatView(
                     state: directChat,
                     onCancel: ref.read(directChatProvider.notifier).cancel,
+                    onSpeak: ref.read(directChatProvider.notifier).speakMessage,
+                    speechEnabled: speechEnabled,
                   )
                 : workspace.selectedConversation == null
                 ? const _EmptyConversation()

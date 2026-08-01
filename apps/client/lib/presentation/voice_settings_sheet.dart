@@ -30,8 +30,16 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
   late final TextEditingController _speaker;
   late final TextEditingController _speakerId;
   late final TextEditingController _speed;
+  late final TextEditingController _gptOrigin;
+  late final TextEditingController _gptReferenceAudio;
+  late final TextEditingController _gptPromptText;
+  late final TextEditingController _gptTextLanguage;
+  late final TextEditingController _gptPromptLanguage;
   late final TextEditingController _sttLanguage;
   late final TextEditingController _sttModelPath;
+  var _selectedTtsKind = TtsProviderKind.disabled;
+  var _lastEnabledTtsKind = TtsProviderKind.piperHttp;
+  var _ttsKindDirty = false;
   List<AudioInputDevice> _microphones = const [];
   String? _microphoneLoadMessage;
 
@@ -39,6 +47,10 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
   void initState() {
     super.initState();
     final tts = ref.read(voiceProviderSettingsProvider).settings.tts;
+    _selectedTtsKind = tts.kind;
+    if (tts.kind != TtsProviderKind.disabled) {
+      _lastEnabledTtsKind = tts.kind;
+    }
     _piperOrigin = TextEditingController(
       text: tts.kind == TtsProviderKind.piperHttp
           ? tts.origin.toString()
@@ -50,6 +62,17 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
     _speed = TextEditingController(
       text: speechRateForPiperLengthScale(tts.lengthScale).toStringAsFixed(2),
     );
+    _gptOrigin = TextEditingController(
+      text: tts.kind == TtsProviderKind.gptSoVits
+          ? tts.origin.toString()
+          : 'http://127.0.0.1:9880',
+    );
+    _gptReferenceAudio = TextEditingController(
+      text: tts.referenceAudioPath ?? '',
+    );
+    _gptPromptText = TextEditingController(text: tts.promptText ?? '');
+    _gptTextLanguage = TextEditingController(text: tts.textLanguage);
+    _gptPromptLanguage = TextEditingController(text: tts.promptLanguage);
     final stt = ref.read(voiceProviderSettingsProvider).settings.stt;
     _sttLanguage = TextEditingController(text: stt.language);
     _sttModelPath = TextEditingController(text: stt.modelPath);
@@ -63,6 +86,11 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
     _speaker.dispose();
     _speakerId.dispose();
     _speed.dispose();
+    _gptOrigin.dispose();
+    _gptReferenceAudio.dispose();
+    _gptPromptText.dispose();
+    _gptTextLanguage.dispose();
+    _gptPromptLanguage.dispose();
     _sttLanguage.dispose();
     _sttModelPath.dispose();
     super.dispose();
@@ -74,7 +102,9 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
     final settings = state.settings;
     final sttEnabled = settings.stt.kind != SttProviderKind.disabled;
     final tts = settings.tts;
-    final piperEnabled = tts.kind == TtsProviderKind.piperHttp;
+    final selectedTtsKind = _ttsKindDirty ? _selectedTtsKind : tts.kind;
+    final piperEnabled = selectedTtsKind == TtsProviderKind.piperHttp;
+    final gptSoVitsEnabled = selectedTtsKind == TtsProviderKind.gptSoVits;
     final ttsEnabled = tts.kind != TtsProviderKind.disabled;
     return SafeArea(
       child: Padding(
@@ -204,11 +234,39 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                     : null,
               ),
               const Divider(height: 28),
+              DropdownButtonFormField<TtsProviderKind>(
+                initialValue: selectedTtsKind,
+                decoration: const InputDecoration(labelText: 'TTS provider'),
+                items: const [
+                  DropdownMenuItem(
+                    value: TtsProviderKind.disabled,
+                    child: Text('Disabled'),
+                  ),
+                  DropdownMenuItem(
+                    value: TtsProviderKind.piperHttp,
+                    child: Text('Local Piper HTTP'),
+                  ),
+                  DropdownMenuItem(
+                    value: TtsProviderKind.gptSoVits,
+                    child: Text('Local GPT-SoVITS'),
+                  ),
+                ],
+                onChanged: (kind) {
+                  if (kind == null) return;
+                  setState(() {
+                    _ttsKindDirty = true;
+                    _selectedTtsKind = kind;
+                    if (kind != TtsProviderKind.disabled) {
+                      _lastEnabledTtsKind = kind;
+                    }
+                  });
+                },
+              ),
               Row(
                 children: [
                   Expanded(
                     child: Text(
-                      tts.kind == TtsProviderKind.gptSoVits
+                      selectedTtsKind == TtsProviderKind.gptSoVits
                           ? 'Local GPT-SoVITS TTS'
                           : 'Local Piper TTS',
                       style: TextStyle(fontWeight: FontWeight.w700),
@@ -218,20 +276,38 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                     value: ttsEnabled,
                     onChanged: (enabled) async {
                       if (!enabled) {
+                        setState(() {
+                          _ttsKindDirty = true;
+                          if (tts.kind != TtsProviderKind.disabled) {
+                            _lastEnabledTtsKind = tts.kind;
+                          }
+                          _selectedTtsKind = TtsProviderKind.disabled;
+                        });
                         await ref
                             .read(voiceProviderSettingsProvider.notifier)
                             .saveTts(const TtsProviderConfiguration.disabled());
                         return;
                       }
-                      if (tts.kind == TtsProviderKind.disabled) {
+                      final kind = selectedTtsKind == TtsProviderKind.disabled
+                          ? _lastEnabledTtsKind
+                          : selectedTtsKind;
+                      setState(() {
+                        _ttsKindDirty = true;
+                        _selectedTtsKind = kind;
+                      });
+                      if (kind == TtsProviderKind.gptSoVits) {
+                        await _saveGptSoVits();
+                      } else if (tts.kind == TtsProviderKind.disabled) {
                         await _savePiper();
                       }
                     },
                   ),
                 ],
               ),
-              const Text(
-                'Piper is a user-installed local service. The standard preset probes /info and synthesizes WAV with /synthesize on an exact loopback origin.',
+              Text(
+                piperEnabled
+                    ? 'Piper is a user-installed local service. The standard preset probes /info and synthesizes WAV with /synthesize on an exact loopback origin.'
+                    : 'GPT-SoVITS is a user-installed local service. The adapter sends only the configured reference and language fields to an exact loopback origin.',
               ),
               if (piperEnabled) ...[
                 const SizedBox(height: 12),
@@ -281,6 +357,48 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                   ),
                 ),
               ],
+              if (gptSoVitsEnabled) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _gptOrigin,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'GPT-SoVITS HTTP origin',
+                  ),
+                ),
+                TextField(
+                  controller: _gptReferenceAudio,
+                  decoration: const InputDecoration(
+                    labelText: 'Reference audio path',
+                    helperText: 'Absolute path owned by the local user.',
+                  ),
+                ),
+                TextField(
+                  controller: _gptPromptText,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Reference prompt text',
+                  ),
+                ),
+                TextField(
+                  controller: _gptTextLanguage,
+                  decoration: const InputDecoration(labelText: 'Text language'),
+                ),
+                TextField(
+                  controller: _gptPromptLanguage,
+                  decoration: const InputDecoration(
+                    labelText: 'Prompt language',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    onPressed: _saveGptSoVits,
+                    child: const Text('Save GPT-SoVITS settings'),
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               _TestRow(
                 label: 'Test TTS readiness',
@@ -319,6 +437,22 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
             lengthScale: speed == null || !isSupportedSpeechRate(speed)
                 ? 0
                 : piperLengthScaleForSpeechRate(speed),
+          ),
+        );
+  }
+
+  Future<void> _saveGptSoVits() async {
+    final origin = Uri.tryParse(_gptOrigin.text.trim());
+    if (origin == null) return;
+    await ref
+        .read(voiceProviderSettingsProvider.notifier)
+        .saveTts(
+          TtsProviderConfiguration.gptSoVits(
+            origin: origin,
+            referenceAudioPath: _gptReferenceAudio.text.trim(),
+            promptText: _gptPromptText.text.trim(),
+            textLanguage: _gptTextLanguage.text.trim(),
+            promptLanguage: _gptPromptLanguage.text.trim(),
           ),
         );
   }
