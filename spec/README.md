@@ -35,6 +35,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.61 | 2026-08-02 | 刷新批次 6 收口事实：PR #4 真实规模 54 commits / 214 files、head `3f3a3c0`、当前 CI 两组 run 全绿；修正 46/208 与 in_progress 旧文字；记录 review map 与剩余未关门 |
 | 1.60 | 2026-08-01 | 重新确立统一个人助手产品基线；按当前代码与 PR #4 复核 Provider/凭据/历史隔离、确认目标绑定、Direct LLM 生命周期/终态/有界读取、长期上下文、语音配置与 H1 外部能力门，并给出 Luna Max 可直接执行的开发批次 |
 | 1.59 | 2026-07-31 | M5 真实服务证据：OpenRouter `/api/v1` 免费模型十轮 SSE、取消与离线门；官方 Piper loopback adapter 与 faster-whisper JSONL 合成音频链通过，明确保留物理麦克风 GUI 发行验收边界 |
 | 1.58 | 2026-07-31 | M5 设置增量：来源设置页将 Hermes 状态、Direct LLM、faster-whisper readiness 与 Piper 本机 HTTP 配置/测试隔离；Piper 固定官方 `/info` 与 `/synthesize` 契约、精确 loopback 限制与失败降级，Flutter 门扩至 178 项；真实用户服务 smoke 仍未关闭 |

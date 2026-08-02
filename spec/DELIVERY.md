@@ -2,9 +2,9 @@
 
 ## 1. 当前状态
 
-### 1.1 2026-08-01 权威快照
+### 1.1 2026-08-02 权威快照
 
-当前产品基线是“统一个人助手”：Hermes 是主要且唯一具有 Agent 语义的工作后端，用户自接 OpenAI-compatible API 是纯聊天/陪伴后端。M0–M4 的历史交付不回退；M5 现已补齐 Provider/凭据/历史隔离、确认目标绑定、request lifecycle、消息终态、AssistantProfile 和 conversation context 的本地实现基座，仍缺 production 语音/实体 GUI 发布证据。H1 独立受 Hermes 上游能力阻断，不是 M5 完成条件。
+当前产品基线是“统一个人助手”：Hermes 是主要且唯一具有 Agent 语义的工作后端，用户自接 OpenAI-compatible API 是纯聊天/陪伴后端。M0–M4 的历史交付不回退；M5 批次 1–5 的本地实现基座已完成（Provider/凭据/历史隔离、确认目标绑定、request lifecycle、消息终态、AssistantProfile、conversation context、语音配置与播报策略），阶段未关闭，剩余门集中在真实语音与实体设备证据（连续 10 轮 GUI、至少一轮实体麦克风全链路、正式 STT sidecar bundle、remote STT 契约）；批次 6 正在收口 PR #4 事实、review map 与证据登记。H1 独立受 Hermes 上游能力阻断，不是 M5 完成条件。
 
 阶段编号表示历史工作包，不表示严格线性顺序；M6 的界面/性能工作曾提前完成。当前映射如下：
 
@@ -33,11 +33,11 @@
 
 CI 只能证明其 runner 上声明的自动化，不能证明实体麦克风、真实第三方服务或人工交互；真实 service smoke 也不能证明 production GUI。发布门是适用证据轴在同一候选版本上的汇总结论，不是一个能反向替代其他证据的“最高层”。
 
-PR [#4](https://github.com/Dreamy-MoLing/VoxHandoff/pull/4) 当前为 Open、Draft、mergeable，base `main@f4f42e6`，功能实现 head 为 `agent/m4-fairy-desktop@ca6b794`；它是覆盖 M2/M3/M4、Hermes/H1/M6 与 M5 的累计 PR，不是 M5-only。随后追加的本文件刷新属于 docs-only 交付记录，不改变上述功能基线。
+PR [#4](https://github.com/Dreamy-MoLing/VoxHandoff/pull/4) 当前为 Open、Draft、mergeable，base `main@f4f42e6`，head 为 `agent/m4-fairy-desktop@3f3a3c0`（功能实现 head 为其前一提交 `ca6b794`，随后仅有 docs-only 提交）；它是覆盖 M2/M3/M4、Hermes/H1/M6 与 M5 的累计 PR，不是 M5-only。随后追加的本文件刷新属于 docs-only 交付记录，不改变上述功能基线。
 
-针对功能 head 的 [GitHub Actions run 30706592439](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30706592439) 与 [run 30706591806](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30706591806) 在本快照时仍为 `in_progress`：Node、Flutter Linux、Android、Windows、Apple jobs 尚未完成，因此不能写成远端全绿。较早 [run 30643640922](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30643640922) 的 runner 分配前 billing/spending failure 是历史记录，**不再是当前 CI 阻断**。
+针对当前 head `3f3a3c0` 的 [GitHub Actions run 30706647988](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30706647988) 与 [run 30706647923](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30706647923) 均已 `completed/success`，各自 5 个 job（Node quality、Flutter Linux quality、Android、Apple、Windows platform build）全部 success；CI 的本地门与四端构建可写为远端全绿，但不替代实体麦克风、真实服务或人工 GUI 验收。较早 [run 30643640922](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30643640922) 的 runner 分配前 billing/spending failure 与 [run 30706592439](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30706592439)/[30706591806](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30706591806) 的中间 `in_progress` 均为历史记录，**不再是当前 CI 阻断或结论**。
 
-PR 正文已同步本轮批次 1–4 实现与剩余证据。核验结论是：实体麦克风仍是 M5 门；H1 是独立上游阻断，不是 M5/CI 失败；“security workbench” 不能在没有正式需求和验收定义时充当阶段门；billing 说明已经过时。当前合理的 Draft 理由是批次 5、连续 GUI/实体麦克风验收和累计 PR 审查。
+PR 正文已同步本轮批次 1–5 实现与剩余证据（批次 6 起由 Hermes 侧按 review map 统一刷新）。核验结论是：实体麦克风与连续 GUI 仍是 M5 门；H1 是独立上游阻断，不是 M5/CI 失败；“security workbench” 不能在没有正式需求和验收定义时充当阶段门；billing 说明已经过时。当前合理的 Draft 理由是批次 6 收口、连续 GUI/实体麦克风验收和累计 PR 审查。
 
 ### 1.3 本轮已确认的实现差异
 
@@ -645,7 +645,7 @@ rebuild 和固定安全预算；若要求真正的 LLM 摘要，必须另定义�
 ### 5.6 批次 6（M5/M6）：PR #4 收口、回归门与移动性能证据
 
 - **用户需求**：当前累计实现能被准确评审和稳定运行，文档、PR 描述、CI 与真实设备证据对应同一 commit，不把旧账单错误或外部 H1 阻断误写成当前 M5 失败。
-- **当前问题**：PR #4 是从 M2 到 M6/H1/M5 的累计 46-commit、208-file Draft，不是单独的 M5 patch；最新 Actions 已全绿，但 PR body 仍引用之前的 billing/spending pre-run failure，并把独立 H1 与未规格化的 “security workbench” 混入 Draft 理由。M5 的 Direct/实体语音门和 M6 的移动 120 Hz profile 仍未关闭。
+- **当前问题**：PR #4 是从 M2 到 M6/H1/M5 的累计 54-commit、214-file Draft，不是单独的 M5 patch；当前 head `3f3a3c0` 的 Actions 两组 run 已全绿，PR body 的 billing/spending 与 “security workbench” 旧表述已不存在，但 body 仍保留“两个 run 刚入队、尚无结论”的旧 CI 描述，head/commit/file 数字与 CI 终态需与最新证据绑定。M5 的 Direct/实体语音门和 M6 的移动 120 Hz profile 仍未关闭。
 - **实施范围**：批次 1–2 作为 PR #4 内 Direct LLM 正确性修复，避免为同一窄问题新开重复 PR；批次 3–5 仅在评审范围可承受且重新基线后加入，否则在 PR #4 合并后分批提交。刷新 PR 描述中的 commit、阶段、真实阻断和验收链接；对累计 diff 做一次按 M2–M6/H1/M5 边界的 review map。完成 voice/UI 改动后重跑 Fedora release、跨平台 build、Android 实机和 M6 120 Hz profile。
 - **状态和数据语义**：每条证据绑定 exact commit、OS/device、服务版本和命令；GitHub check 的 `success`、本地 gate、live service 与人工 GUI 结果分栏记录。旧失败保留为历史，不覆盖最新结论；H1 的 external blocked 不改变 M5 数据终态或 CI 状态。
 - **安全边界**：不为通过 PR 门而放宽 `uncertain`、approval、lease、credential 或 target binding；不把 synthetic audio 当 physical microphone；不在诊断 artifact 中保存正文、密钥或 raw recording。
@@ -654,6 +654,8 @@ rebuild 和固定安全预算；若要求真正的 LLM 摘要，必须另定义�
 - **人工验收**：按批次 5 执行语音矩阵，并在具名 Android 设备运行实际 HomeScreen 120 Hz profile；reviewer 能从 PR 目录直接定位每个阶段的代码、测试和未关闭门。
 - **外部依赖**：GitHub Actions 可用额度、实体 Android 设备及语音服务；Hermes 幂等提交不是 PR #4 的 M5 ready-for-review 前置条件，Connector 保持 fail closed 即可。
 - **完成条件**：PR 描述不再把历史账单失败当当前状态；最新 head 的 CI、local gate 和人工证据无混用；Draft 的剩余理由只包含真实未完成门。是否合并/发布仍由用户授权，本文档不授权 push、PR 修改或 merge。
+
+**2026-08-02 批次 6 收口进展**：事实核对完成（review map 草稿：`/tmp/voxhandoff-batch6-review-map.md`，按 M2–M6/H1/M5 边界归类全部 54 个提交）。PR #4 实际为 54 commits / 214 files、head `3f3a3c0`、Open/Draft/mergeable；当前 head 的两组 Actions run（[30706647988](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30706647988)、[30706647923](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30706647923)）均为 `completed/success`、各 5 jobs 全绿。本文件已同步修正：46/208 → 54/214；旧 CI `in_progress` → 当前 head 全绿；区分功能实现 head `ca6b794` 与 PR head `3f3a3c0`；PR body 旧 billing/security-workbench 表述已不存在，但仍保留旧的 pending CI 描述，待 Hermes 侧按本快照刷新 PR body。剩余未关：M5 连续 10 轮 GUI、实体麦克风全链路、正式 STT sidecar bundle、remote STT 契约、M6 移动 120 Hz profile；H1 保持上游阻断。
 
 ### 5.7 批次 7（H1）：Hermes 上游能力具备后的真实纵向验收
 
