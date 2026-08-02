@@ -301,11 +301,22 @@ enum DirectChatPhase {
 }
 
 class DirectChatFailure {
-  const DirectChatFailure({required this.code, required this.message});
+  const DirectChatFailure({
+    required this.code,
+    required this.message,
+    this.stage = DirectChatFailureStage.connection,
+    this.statusCode,
+  });
 
   final String code;
   final String message;
+  final DirectChatFailureStage stage;
+  final int? statusCode;
 }
+
+/// The small set of failure stages exposed by the pure Direct LLM transport.
+/// Upstream response text is never part of this failure value.
+enum DirectChatFailureStage { configuration, connection, protocol }
 
 abstract interface class DirectChatHistoryStore {
   Future<List<DirectChatMessage>> list(String conversationId);

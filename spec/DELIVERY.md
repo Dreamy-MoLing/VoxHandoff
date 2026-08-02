@@ -47,7 +47,7 @@ PR 正文已同步本轮批次 1–5 实现与剩余证据（批次 6 起由 Her
 | 2 | **批次 1 前** `confirmDraft()` 只冻结文本；发送时才读取当前 ChatSource/Profile/Hermes conversation/route | 已由批次 1 的 immutable `ConfirmedDraft` 与 exact target/context 校验关闭 | 批次 1（已关闭） |
 | 3 | source/profile/config 切换不取消旧流；test/chat 共用单一 `_active`；隐藏 Direct 页面仍可写历史和触发 TTS | 本轮已按 request ID + configuration owner 隔离聊天与测试句柄；切换先取消、写入 cancelled barrier，迟到 delta/TTS 丢弃 | 批次 2（本轮实现） |
 | 4 | **批次 1 前** Direct message 只有 `completed: bool`；提前 EOF 会走成功/TTS 路径，cancel/failure/超限 partial 虽当次不播报却仍以 completed 持久化并进入后续全历史 payload | 本轮 runtime 映射为 `completed/cancelled/failed/incomplete/truncated`，完成必须有 `[DONE]`；context builder 另行排除非 completed/native 内容 | 批次 2、4（本轮实现） |
-| 5 | 正常 SSE 已在 UTF-8/分行前限制 4 MiB；`GET /models` 与非 2xx body 仍直接无界 `drain()` | 本轮统一 request/response byte limit 与 timeout，request 也有 1 MiB 上限；仍需补充真实 loopback 非 2xx/超大 body fixture 作为独立证据 | 批次 2（本轮实现） |
+| 5 | 正常 SSE 已在 UTF-8/分行前限制 4 MiB；`GET /models` 与非 2xx body 仍直接无界 `drain()` | 本轮统一 request/response byte limit 与 timeout，request 也有 1 MiB 上限；已补充真实 loopback 非 2xx/超大 body fixture，执行证据见批次 2 补证记录 | 批次 2（本轮实现/补证） |
 | 6 | 每个 delta 同步写 SQLite，每轮发送全部历史；没有 conversation ID、上下文预算、固定记忆、滚动摘要或删除 API | 本轮以 conversation 隔离的 Drift memory/summary、48 KiB UTF-8 budget + 8 KiB reserve、确定性本地 summary rebuild 和 CRUD 关闭最小上下文边界；可调 policy/LLM 自动摘要另拆产品决策 | 批次 4（本轮实现） |
 | 7 | Hermes 与 Direct 使用独立页面/state；没有 AssistantProfile 或共享人格/记忆模型 | 本轮建立共享 AssistantProfile、voice assistant binding 和 common composer/banner 语义；内容视图仍按真实 backend capability 分开，Direct 不出现 Agent 控件 | 批次 3（本轮实现） |
 | 8 | GPT-SoVITS adapter 已有但无完整设置入口；Piper adapter/config 有 speaker 字段但 UI/测试/`/info` capability 未覆盖；远程 STT 只有隔离 adapter；bundled STT launcher 只找 `libexec/voxhandoff-stt`，当前构建未打包它且默认模型可能触发下载；无麦克风选择，STT language 未接生产，播报/打断策略不可配置 | 本轮补齐了 GPT-SoVITS origin/reference/language 入口、播报策略的持久化/UI/自动与手动行为，以及此前的本地 STT language/model path、麦克风枚举/选择降级、Piper speaker/capability/语速换算和 voice assistant binding；remote STT、可执行 sidecar 产物和真实 GUI 证据仍未关闭 | 批次 5（本轮实现） |
@@ -578,6 +578,8 @@ fake、合成音频、transport smoke 或离线测试都不能替代它。
 - **完成条件**：每个请求有唯一 owner 和唯一 terminal；所有 body 均受 byte/time limit；重启后不会把非完成回复当作已完成上下文；Direct 聊天可在 Gateway 完全不可用时独立工作。
 
 **2026-08-01 批次 2 实现证据（本轮）**：Direct controller 已以 request ID、配置对象和 generation 作为 owner；source/Profile/configuration 变化先 cancel 并等待本地终态写入；连接测试与聊天使用独立 transport request handle；SSE 只有收到 `[DONE]` 才完成，空失败/partial/超限分别写入 `failed/incomplete/truncated`，delta 最多每 250 ms 合并写入且 terminal 立即落盘；request 1 MiB、response/error body 4 MiB 且均有有限 timeout；Direct composer 不再要求 Gateway connected。新增 profile/source switch、终态映射和迟到结果回归。固定 Flutter 3.44.6 的 `npm run flutter:check` 通过（analyze、201 tests passed、2 个显式 live smoke skipped）。本轮仍未把真实非 2xx 超大 body loopback 作为独立 transport fixture，保留为补证项。
+
+**2026-08-02 批次 2 独立 transport 补证（本轮）**：`apps/client/test/openai_compatible_chat_client_test.dart` 新增真实 loopback `HttpServer` fixture，分别覆盖 `GET /v1/models`（503）和 `POST /v1/chat/completions`（502）；每个响应发送 4 MiB 上限之外的 4.5 MiB body，并以 64 KiB 分块记录 client 在 bounded reader 终止前的消费边界。transport 只返回 `llm_stream_too_large`、`protocol` stage、HTTP status 和固定安全文案；`DirectChatFailure` 保留 stage/status/code，upstream body sentinel 不进入错误文案。按现有 controller 语义，该超限错误落为 `truncated`（无有效正文时仍不触发 TTS/上下文），而非 2xx 且未超限仍为 `failed`。锁定 SDK `flutter analyze --no-pub` 通过；本受限执行环境禁止 loopback listen，目标 `flutter test --no-pub test/openai_compatible_chat_client_test.dart` 在测试加载阶段以 `Operation not permitted` 退出（1），须在允许 loopback 的 runner 复跑该独立 fixture 后再把运行态证据标为通过。
 
 ### 5.3 批次 3（M5）：统一助手配置与 capability 化界面
 

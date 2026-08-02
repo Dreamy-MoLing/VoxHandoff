@@ -338,6 +338,8 @@ class DirectChatController extends Notifier<DirectChatState> {
         failure: DirectChatFailure(
           code: error.code,
           message: error.safeMessage,
+          stage: error.stage,
+          statusCode: error.statusCode,
         ),
       );
     } on Object {
@@ -543,6 +545,8 @@ class DirectChatController extends Notifier<DirectChatState> {
         failure: DirectChatFailure(
           code: error.code,
           message: error.safeMessage,
+          stage: error.stage,
+          statusCode: error.statusCode,
         ),
       );
       _releaseRequest(requestId);

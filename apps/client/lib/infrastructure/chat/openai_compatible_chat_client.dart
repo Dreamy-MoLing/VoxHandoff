@@ -34,9 +34,22 @@ Uri openAiCompatibleEndpoint(
 }
 
 class DirectChatTransportException implements Exception {
-  const DirectChatTransportException(this.code, this.safeMessage);
+  const DirectChatTransportException(
+    this.code,
+    this.safeMessage, {
+    this.stage = DirectChatFailureStage.connection,
+    this.statusCode,
+  });
+
   final String code;
   final String safeMessage;
+  final DirectChatFailureStage stage;
+  final int? statusCode;
+
+  @override
+  String toString() =>
+      'DirectChatTransportException(stage: ${stage.name}, code: $code, '
+      'statusCode: ${statusCode ?? 'none'})';
 }
 
 abstract interface class DirectChatTransport {
@@ -78,9 +91,11 @@ class OpenAiCompatibleChatTransport implements DirectChatTransport {
       final response = await request.close().timeout(timeout);
       await _discardResponse(response);
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw const DirectChatTransportException(
+        throw DirectChatTransportException(
           'llm_connection_rejected',
           'The LLM API rejected its connection test.',
+          stage: DirectChatFailureStage.connection,
+          statusCode: response.statusCode,
         );
       }
     } on DirectChatTransportException {
@@ -89,6 +104,7 @@ class OpenAiCompatibleChatTransport implements DirectChatTransport {
       throw const DirectChatTransportException(
         'llm_connection_failed',
         'The LLM API could not be reached securely.',
+        stage: DirectChatFailureStage.connection,
       );
     } finally {
       if (identical(_activeTestRequest, request)) {
@@ -121,6 +137,7 @@ class OpenAiCompatibleChatTransport implements DirectChatTransport {
       throw const DirectChatTransportException(
         'llm_request_too_large',
         'The LLM request exceeded the safe size limit.',
+        stage: DirectChatFailureStage.protocol,
       );
     }
     HttpClientRequest? request;
@@ -141,9 +158,11 @@ class OpenAiCompatibleChatTransport implements DirectChatTransport {
       final response = await request.close().timeout(timeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         await _discardResponse(response);
-        throw const DirectChatTransportException(
+        throw DirectChatTransportException(
           'llm_request_rejected',
           'The LLM API rejected the message.',
+          stage: DirectChatFailureStage.connection,
+          statusCode: response.statusCode,
         );
       }
       var sawDone = false;
@@ -180,6 +199,7 @@ class OpenAiCompatibleChatTransport implements DirectChatTransport {
         throw const DirectChatTransportException(
           'llm_stream_incomplete',
           'The LLM response ended before its completion marker.',
+          stage: DirectChatFailureStage.protocol,
         );
       }
     } on DirectChatTransportException {
@@ -188,11 +208,13 @@ class OpenAiCompatibleChatTransport implements DirectChatTransport {
       throw const DirectChatTransportException(
         'llm_stream_timeout',
         'The LLM response timed out before completion.',
+        stage: DirectChatFailureStage.connection,
       );
     } on Object {
       throw const DirectChatTransportException(
         'llm_stream_failed',
         'The LLM response stopped before completion.',
+        stage: DirectChatFailureStage.connection,
       );
     } finally {
       if (identical(_activeChatRequest, request)) {
@@ -217,10 +239,21 @@ class OpenAiCompatibleChatTransport implements DirectChatTransport {
     _client.close(force: true);
   }
 
-  Future<void> _discardResponse(HttpClientResponse response) => response
-      .transform(const ResponseByteLimitTransformer(_maximumResponseBytes))
-      .timeout(timeout)
-      .drain<void>();
+  Future<void> _discardResponse(HttpClientResponse response) async {
+    try {
+      await response
+          .transform(const ResponseByteLimitTransformer(_maximumResponseBytes))
+          .timeout(timeout)
+          .drain<void>();
+    } on DirectChatTransportException catch (error) {
+      throw DirectChatTransportException(
+        error.code,
+        error.safeMessage,
+        stage: error.stage,
+        statusCode: response.statusCode,
+      );
+    }
+  }
 
   void _validate(DirectLlmConfiguration configuration, String apiKey) {
     if (_closed) throw StateError('The LLM transport is closed.');
@@ -228,6 +261,7 @@ class OpenAiCompatibleChatTransport implements DirectChatTransport {
       throw const DirectChatTransportException(
         'llm_configuration_invalid',
         'The LLM configuration is incomplete or unsafe.',
+        stage: DirectChatFailureStage.configuration,
       );
     }
   }
@@ -253,6 +287,7 @@ class ResponseByteLimitTransformer
         throw const DirectChatTransportException(
           'llm_stream_too_large',
           'The LLM response exceeded the safe size limit.',
+          stage: DirectChatFailureStage.protocol,
         );
       }
       yield chunk;
