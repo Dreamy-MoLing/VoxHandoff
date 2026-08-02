@@ -69,7 +69,7 @@ jobs:
 
   flutter-linux-quality:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -89,6 +89,13 @@ jobs:
           clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev
           libsqlite3-dev libkeybinder-3.0-dev libayatana-appindicator3-dev
           libnotify-dev dbus-x11 gnome-keyring xvfb ffmpeg pulseaudio-utils
+
+      - name: Install pinned uv for the STT release sidecar
+        run: >-
+          python3 -m pip install --disable-pip-version-check
+          --no-warn-script-location --prefix "$RUNNER_TEMP/uv"
+          uv==0.11.28
+          && echo "$RUNNER_TEMP/uv/bin" >> "$GITHUB_PATH"
 
       - name: Install locked Node dependencies
         run: npm ci
@@ -111,9 +118,39 @@ jobs:
           AGENT_TALK_FLUTTER_ROOT: ${{ env.FLUTTER_ROOT }}
         run: npm run flutter:check
 
+      - name: Build bundled Linux STT executable
+        env:
+          VOXHANDOFF_STT_OUTPUT_DIR: ${{ github.workspace }}/artifacts/stt
+        run: services/stt/scripts/build-linux.sh
+
+      - name: Verify packaged STT fails closed without a model
+        env:
+          VOXHANDOFF_STT_EXECUTABLE: ${{ github.workspace }}/artifacts/stt/linux-x86_64/voxhandoff-stt
+        run: |
+          set +e
+          "$VOXHANDOFF_STT_EXECUTABLE" --model "$RUNNER_TEMP/voxhandoff-no-model" </dev/null
+          status=$?
+          set -e
+          test "$status" -eq 2
+
+      - name: Configure Linux release with required STT bundle
+        working-directory: apps/client
+        env:
+          VOXHANDOFF_STT_EXECUTABLE: ${{ github.workspace }}/artifacts/stt/linux-x86_64/voxhandoff-stt
+        run: >-
+          flutter build linux --release --config-only
+          && cmake -S linux -B build/linux/x64/release -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DVOXHANDOFF_STT_EXECUTABLE="$VOXHANDOFF_STT_EXECUTABLE"
+          -DVOXHANDOFF_REQUIRE_STT_BUNDLE=ON
+
       - name: Build Linux release
         working-directory: apps/client
         run: flutter build linux --release
+
+      - name: Verify bundled STT executable
+        working-directory: apps/client
+        run: test -x build/linux/x64/release/bundle/libexec/voxhandoff-stt
 
       - name: Exercise Linux desktop integration startup
         working-directory: apps/client
