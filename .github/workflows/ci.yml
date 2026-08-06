@@ -135,7 +135,7 @@ jobs:
 
       - name: Verify packaged STT fails closed without a model
         env:
-          VOXHANDOFF_STT_EXECUTABLE: ${{ github.workspace }}/artifacts/stt/linux-x86_64/voxhandoff-stt
+          VOXHANDOFF_STT_EXECUTABLE: ${{ github.workspace }}/artifacts/stt/voxhandoff-stt
         run: |
           set +e
           "$VOXHANDOFF_STT_EXECUTABLE" --model "$RUNNER_TEMP/voxhandoff-no-model" </dev/null
@@ -146,7 +146,7 @@ jobs:
       - name: Configure Linux release with required STT bundle
         working-directory: apps/client
         env:
-          VOXHANDOFF_STT_EXECUTABLE: ${{ github.workspace }}/artifacts/stt/linux-x86_64/voxhandoff-stt
+          VOXHANDOFF_STT_EXECUTABLE: ${{ github.workspace }}/artifacts/stt/voxhandoff-stt
         run: >-
           flutter build linux --release --config-only
           && cmake -S linux -B build/linux/x64/release -G Ninja
