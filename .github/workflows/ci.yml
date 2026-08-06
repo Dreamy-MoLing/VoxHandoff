@@ -92,11 +92,16 @@ jobs:
 
       - name: Install pinned uv for the STT release sidecar
         run: |
+          uv_root="$RUNNER_TEMP/uv"
           python3 -m pip install --disable-pip-version-check \
             --no-warn-script-location --prefix "$RUNNER_TEMP/uv" \
             uv==0.11.28
-          test -x "$RUNNER_TEMP/uv/bin/uv"
-          echo "$RUNNER_TEMP/uv/bin" >> "$GITHUB_PATH"
+          uv_path="$(find "$uv_root" -type f -name uv -print -quit)"
+          test -n "$uv_path"
+          test -x "$uv_path"
+          uv_bin_dir="$(dirname "$uv_path")"
+          echo "$uv_bin_dir" >> "$GITHUB_PATH"
+          echo "VOXHANDOFF_UV_BIN_DIR=$uv_bin_dir" >> "$GITHUB_ENV"
 
       - name: Install locked Node dependencies
         run: npm ci
@@ -123,7 +128,7 @@ jobs:
         env:
           VOXHANDOFF_STT_OUTPUT_DIR: ${{ github.workspace }}/artifacts/stt
         run: |
-          export PATH="$RUNNER_TEMP/uv/bin:$PATH"
+          export PATH="$VOXHANDOFF_UV_BIN_DIR:$PATH"
           command -v uv
           uv --version
           services/stt/scripts/build-linux.sh
