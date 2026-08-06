@@ -9,8 +9,10 @@ const root = path.resolve(scriptDir, "..");
 const excludedDirectories = new Set([
   ".git",
   ".codebase-memory",
+  ".venv",
   "node_modules",
   "dist",
+  "build",
   "coverage",
   "docs",
 ]);

@@ -116,6 +116,79 @@ class FakeCommandPort implements ClientGatewayCommandPort {
   var closed = false;
 
   @override
+  void acquireControl({
+    required String commandId,
+    required String idempotencyKey,
+    required String conversationId,
+    String? expectedLeaseId,
+    BigInt? expectedRevision,
+    required bool explicitTakeover,
+  }) {}
+
+  @override
+  void renewControl({
+    required String commandId,
+    required String idempotencyKey,
+    required ClientControlLeaseSnapshot lease,
+  }) {}
+
+  @override
+  void createConversation({
+    required String commandId,
+    required String idempotencyKey,
+    required ClientConversationDirectoryEntry conversation,
+  }) {}
+
+  @override
+  void requestDirectory({
+    required String commandId,
+    required String idempotencyKey,
+  }) {}
+
+  @override
+  void sendConfirmedText({
+    required String commandId,
+    required String idempotencyKey,
+    required String requestId,
+    required ClientConversationDirectoryEntry conversation,
+    required ClientControlLeaseSnapshot lease,
+    required String confirmedText,
+  }) {}
+
+  @override
+  void interruptRequest({
+    required String commandId,
+    required String idempotencyKey,
+    required String conversationId,
+    required String requestId,
+    required ClientControlLeaseSnapshot lease,
+  }) {}
+
+  @override
+  void resolveApproval({
+    required String commandId,
+    required String idempotencyKey,
+    required String conversationId,
+    required String requestId,
+    required String approvalId,
+    required String operationSummarySha256,
+    required ClientApprovalDecision decision,
+    required ClientDeviceSignature deviceSignature,
+    required ClientControlLeaseSnapshot lease,
+  }) {}
+
+  @override
+  void resolveClarification({
+    required String commandId,
+    required String idempotencyKey,
+    required String conversationId,
+    required String requestId,
+    required String clarificationId,
+    required String confirmedText,
+    required ClientControlLeaseSnapshot lease,
+  }) {}
+
+  @override
   void acknowledge(ClientGatewayAcknowledgement acknowledgement) {
     acknowledgements.add(acknowledgement);
   }
@@ -206,7 +279,7 @@ ClientRequestStatusSnapshot status({
 
 GatewayFrameRouter router(
   FakeEventLedger ledger, {
-  FutureOr<void> Function(ClientEventRecord)? onCommitted,
+  GatewayCommittedEventCallback? onCommitted,
   FutureOr<void> Function(ClientRequestStatusSnapshot)? onRequestStatus,
 }) {
   var nextId = 0;
@@ -241,7 +314,11 @@ void main() {
       ledger.events['conversation-1'] = {BigInt.from(2): event(2)};
       final commands = FakeCommandPort();
       final frames = StreamController<ClientGatewayFrame>();
-      final running = router(ledger).run(frames.stream, commands);
+      final origins = <ClientEventOrigin>[];
+      final running = router(
+        ledger,
+        onCommitted: (_, origin) => origins.add(origin),
+      ).run(frames.stream, commands);
 
       await waitUntil(() => commands.replays.length == 1);
       expect(commands.replays.single.afterSequence, BigInt.from(2));
@@ -281,6 +358,7 @@ void main() {
       await running;
 
       expect(commands.acknowledgements.single.eventId, 'event-3');
+      expect(origins, [ClientEventOrigin.replay]);
       expect(commands.replays, hasLength(2));
       expect(commands.closed, isFalse);
     },
@@ -296,7 +374,10 @@ void main() {
       final statuses = <ClientRequestStatusSnapshot>[];
       final running = router(
         ledger,
-        onCommitted: (value) => committed.add(value.eventId),
+        onCommitted: (value, origin) {
+          expect(origin, ClientEventOrigin.live);
+          committed.add(value.eventId);
+        },
         onRequestStatus: statuses.add,
       ).run(frames.stream, commands);
 

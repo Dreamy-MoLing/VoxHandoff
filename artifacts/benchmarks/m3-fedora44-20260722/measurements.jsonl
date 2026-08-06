@@ -1,0 +1,110 @@
+{"gate": "tts-30", "case_id": "stt-01", "success": true, "latency_ms": 3174.56}
+{"gate": "stt-30", "case_id": "stt-01", "success": true, "latency_ms": 440.25, "cer": 0.15}
+{"gate": "tts-30", "case_id": "stt-02", "success": true, "latency_ms": 2369.36}
+{"gate": "stt-30", "case_id": "stt-02", "success": false, "latency_ms": 417.84, "cer": 1.0}
+{"gate": "tts-30", "case_id": "stt-03", "success": true, "latency_ms": 4682.93}
+{"gate": "stt-30", "case_id": "stt-03", "success": true, "latency_ms": 526.98, "cer": 0.9643}
+{"gate": "tts-30", "case_id": "stt-04", "success": true, "latency_ms": 3424.21}
+{"gate": "stt-30", "case_id": "stt-04", "success": true, "latency_ms": 438.48, "cer": 0.5263}
+{"gate": "tts-30", "case_id": "stt-05", "success": true, "latency_ms": 2119.66}
+{"gate": "stt-30", "case_id": "stt-05", "success": false, "latency_ms": 429.17, "cer": 1.0}
+{"gate": "tts-30", "case_id": "stt-06", "success": true, "latency_ms": 5428.33}
+{"gate": "stt-30", "case_id": "stt-06", "success": true, "latency_ms": 505.78, "cer": 0.5385}
+{"gate": "tts-30", "case_id": "stt-07", "success": true, "latency_ms": 2971.82}
+{"gate": "stt-30", "case_id": "stt-07", "success": true, "latency_ms": 452.38, "cer": 0.75}
+{"gate": "tts-30", "case_id": "stt-08", "success": true, "latency_ms": 3937.34}
+{"gate": "stt-30", "case_id": "stt-08", "success": true, "latency_ms": 558.75, "cer": 0.5455}
+{"gate": "tts-30", "case_id": "stt-09", "success": true, "latency_ms": 3574.26}
+{"gate": "stt-30", "case_id": "stt-09", "success": true, "latency_ms": 545.99, "cer": 0.75}
+{"gate": "tts-30", "case_id": "stt-10", "success": true, "latency_ms": 4631.56}
+{"gate": "stt-30", "case_id": "stt-10", "success": true, "latency_ms": 549.0, "cer": 0.5625}
+{"gate": "tts-30", "case_id": "stt-11", "success": true, "latency_ms": 3874.93}
+{"gate": "stt-30", "case_id": "stt-11", "success": true, "latency_ms": 582.33, "cer": 0.35}
+{"gate": "tts-30", "case_id": "stt-12", "success": true, "latency_ms": 3977.65}
+{"gate": "stt-30", "case_id": "stt-12", "success": true, "latency_ms": 499.3, "cer": 0.3333}
+{"gate": "tts-30", "case_id": "stt-13", "success": true, "latency_ms": 4231.6}
+{"gate": "stt-30", "case_id": "stt-13", "success": true, "latency_ms": 2116.84, "cer": 0.56}
+{"gate": "tts-30", "case_id": "stt-14", "success": true, "latency_ms": 5080.66}
+{"gate": "stt-30", "case_id": "stt-14", "success": true, "latency_ms": 508.46, "cer": 0.6429}
+{"gate": "tts-30", "case_id": "stt-15", "success": true, "latency_ms": 3673.35}
+{"gate": "stt-30", "case_id": "stt-15", "success": true, "latency_ms": 466.74, "cer": 0.875}
+{"gate": "tts-30", "case_id": "stt-16", "success": true, "latency_ms": 4826.39}
+{"gate": "stt-30", "case_id": "stt-16", "success": true, "latency_ms": 1953.18, "cer": 1.1111}
+{"gate": "tts-30", "case_id": "stt-17", "success": true, "latency_ms": 3423.04}
+{"gate": "stt-30", "case_id": "stt-17", "success": true, "latency_ms": 494.03, "cer": 0.65}
+{"gate": "tts-30", "case_id": "stt-18", "success": true, "latency_ms": 4077.08}
+{"gate": "stt-30", "case_id": "stt-18", "success": true, "latency_ms": 510.09, "cer": 0.5625}
+{"gate": "tts-30", "case_id": "stt-19", "success": true, "latency_ms": 3723.92}
+{"gate": "stt-30", "case_id": "stt-19", "success": true, "latency_ms": 465.96, "cer": 0.6316}
+{"gate": "tts-30", "case_id": "stt-20", "success": true, "latency_ms": 2471.73}
+{"gate": "stt-30", "case_id": "stt-20", "success": false, "latency_ms": 2795.0, "cer": 1.0}
+{"gate": "tts-30", "case_id": "stt-21", "success": true, "latency_ms": 3673.71}
+{"gate": "stt-30", "case_id": "stt-21", "success": true, "latency_ms": 533.38, "cer": 0.5909}
+{"gate": "tts-30", "case_id": "stt-22", "success": true, "latency_ms": 5228.76}
+{"gate": "stt-30", "case_id": "stt-22", "success": true, "latency_ms": 437.21, "cer": 0.75}
+{"gate": "tts-30", "case_id": "stt-23", "success": true, "latency_ms": 4376.32}
+{"gate": "stt-30", "case_id": "stt-23", "success": true, "latency_ms": 478.4, "cer": 0.6667}
+{"gate": "tts-30", "case_id": "stt-24", "success": true, "latency_ms": 3825.27}
+{"gate": "stt-30", "case_id": "stt-24", "success": true, "latency_ms": 545.89, "cer": 0.7917}
+{"gate": "tts-30", "case_id": "stt-25", "success": true, "latency_ms": 3472.01}
+{"gate": "stt-30", "case_id": "stt-25", "success": true, "latency_ms": 500.04, "cer": 0.5385}
+{"gate": "tts-30", "case_id": "stt-26", "success": true, "latency_ms": 3978.85}
+{"gate": "stt-30", "case_id": "stt-26", "success": true, "latency_ms": 465.91, "cer": 0.7895}
+{"gate": "tts-30", "case_id": "stt-27", "success": true, "latency_ms": 3422.59}
+{"gate": "stt-30", "case_id": "stt-27", "success": true, "latency_ms": 459.35, "cer": 0.7}
+{"gate": "tts-30", "case_id": "stt-28", "success": true, "latency_ms": 3323.93}
+{"gate": "stt-30", "case_id": "stt-28", "success": true, "latency_ms": 531.81, "cer": 0.8889}
+{"gate": "tts-30", "case_id": "stt-29", "success": true, "latency_ms": 5879.31}
+{"gate": "stt-30", "case_id": "stt-29", "success": true, "latency_ms": 489.14, "cer": 0.6667}
+{"gate": "tts-30", "case_id": "stt-30", "success": true, "latency_ms": 3625.04}
+{"gate": "stt-30", "case_id": "stt-30", "success": true, "latency_ms": 473.31, "cer": 0.4545}
+{"gate": "e2e-50", "case_id": "e2e-01", "success": true, "latency_ms": 6625.12}
+{"gate": "e2e-50", "case_id": "e2e-02", "success": false, "latency_ms": 429.07}
+{"gate": "e2e-50", "case_id": "e2e-03", "success": true, "latency_ms": 6493.21}
+{"gate": "e2e-50", "case_id": "e2e-04", "success": true, "latency_ms": 6151.67}
+{"gate": "e2e-50", "case_id": "e2e-05", "success": false, "latency_ms": 370.27}
+{"gate": "e2e-50", "case_id": "e2e-06", "success": true, "latency_ms": 6181.93}
+{"gate": "e2e-50", "case_id": "e2e-07", "success": true, "latency_ms": 6062.41}
+{"gate": "e2e-50", "case_id": "e2e-08", "success": true, "latency_ms": 6386.75}
+{"gate": "e2e-50", "case_id": "e2e-09", "success": true, "latency_ms": 5969.29}
+{"gate": "e2e-50", "case_id": "e2e-10", "success": true, "latency_ms": 6599.57}
+{"gate": "e2e-50", "case_id": "e2e-11", "success": true, "latency_ms": 5601.26}
+{"gate": "e2e-50", "case_id": "e2e-12", "success": true, "latency_ms": 6192.1}
+{"gate": "e2e-50", "case_id": "e2e-13", "success": true, "latency_ms": 7350.25}
+{"gate": "e2e-50", "case_id": "e2e-14", "success": true, "latency_ms": 6560.73}
+{"gate": "e2e-50", "case_id": "e2e-15", "success": true, "latency_ms": 5909.91}
+{"gate": "e2e-50", "case_id": "e2e-16", "success": true, "latency_ms": 8360.41}
+{"gate": "e2e-50", "case_id": "e2e-17", "success": true, "latency_ms": 6126.6}
+{"gate": "e2e-50", "case_id": "e2e-18", "success": true, "latency_ms": 6261.8}
+{"gate": "e2e-50", "case_id": "e2e-19", "success": true, "latency_ms": 6493.55}
+{"gate": "e2e-50", "case_id": "e2e-20", "success": false, "latency_ms": 2336.94}
+{"gate": "e2e-50", "case_id": "e2e-21", "success": true, "latency_ms": 6246.55}
+{"gate": "e2e-50", "case_id": "e2e-22", "success": true, "latency_ms": 5985.5}
+{"gate": "e2e-50", "case_id": "e2e-23", "success": true, "latency_ms": 6022.98}
+{"gate": "e2e-50", "case_id": "e2e-24", "success": true, "latency_ms": 6459.14}
+{"gate": "e2e-50", "case_id": "e2e-25", "success": true, "latency_ms": 6297.54}
+{"gate": "e2e-50", "case_id": "e2e-26", "success": true, "latency_ms": 6149.81}
+{"gate": "e2e-50", "case_id": "e2e-27", "success": true, "latency_ms": 6318.54}
+{"gate": "e2e-50", "case_id": "e2e-28", "success": true, "latency_ms": 6528.19}
+{"gate": "e2e-50", "case_id": "e2e-29", "success": true, "latency_ms": 6001.05}
+{"gate": "e2e-50", "case_id": "e2e-30", "success": true, "latency_ms": 6391.78}
+{"gate": "e2e-50", "case_id": "e2e-31", "success": true, "latency_ms": 6369.75}
+{"gate": "e2e-50", "case_id": "e2e-32", "success": false, "latency_ms": 561.14}
+{"gate": "e2e-50", "case_id": "e2e-33", "success": true, "latency_ms": 6385.96}
+{"gate": "e2e-50", "case_id": "e2e-34", "success": true, "latency_ms": 5552.5}
+{"gate": "e2e-50", "case_id": "e2e-35", "success": false, "latency_ms": 354.9}
+{"gate": "e2e-50", "case_id": "e2e-36", "success": true, "latency_ms": 5809.12}
+{"gate": "e2e-50", "case_id": "e2e-37", "success": true, "latency_ms": 6421.08}
+{"gate": "e2e-50", "case_id": "e2e-38", "success": true, "latency_ms": 6267.82}
+{"gate": "e2e-50", "case_id": "e2e-39", "success": true, "latency_ms": 6082.82}
+{"gate": "e2e-50", "case_id": "e2e-40", "success": true, "latency_ms": 6135.28}
+{"gate": "e2e-50", "case_id": "e2e-41", "success": true, "latency_ms": 5331.61}
+{"gate": "e2e-50", "case_id": "e2e-42", "success": true, "latency_ms": 6105.89}
+{"gate": "e2e-50", "case_id": "e2e-43", "success": true, "latency_ms": 7058.13}
+{"gate": "e2e-50", "case_id": "e2e-44", "success": true, "latency_ms": 7040.96}
+{"gate": "e2e-50", "case_id": "e2e-45", "success": true, "latency_ms": 6531.88}
+{"gate": "e2e-50", "case_id": "e2e-46", "success": true, "latency_ms": 7773.67}
+{"gate": "e2e-50", "case_id": "e2e-47", "success": true, "latency_ms": 6332.17}
+{"gate": "e2e-50", "case_id": "e2e-48", "success": true, "latency_ms": 6253.69}
+{"gate": "e2e-50", "case_id": "e2e-49", "success": true, "latency_ms": 6600.47}
+{"gate": "e2e-50", "case_id": "e2e-50", "success": false, "latency_ms": 2170.28}

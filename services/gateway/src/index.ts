@@ -5,6 +5,7 @@ export * from "./device-crypto.js";
 export * from "./device-identity.js";
 export * from "./event-publication.js";
 export * from "./client-ledger.js";
+export * from "./directory-ledger.js";
 export * from "./ledger-handlers.js";
 export * from "./ledger.js";
 export * from "./live-events.js";

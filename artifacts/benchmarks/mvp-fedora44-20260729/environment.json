@@ -1,0 +1,16 @@
+{
+  "captured_at": "2026-07-29T09:38:47-04:00",
+  "os": "Fedora Linux 44",
+  "kernel": "Linux 7.1.4-204.fc44.x86_64",
+  "cpu": "11th Gen Intel Core i5-1155G7, 8 logical CPUs",
+  "gpu": "Intel TigerLake-LP GT2 Iris Xe, i915",
+  "ram_bytes": 16528785408,
+  "display": "1920x1080 at 60.001 Hz",
+  "session": "niri on Wayland",
+  "flutter": "3.44.6 stable",
+  "dart": "3.12.2",
+  "mesa": "26.1.5-1.fc44",
+  "build": "Linux x64 release",
+  "network_profile": "not applicable; local synthetic rendering only",
+  "state_profile": "real HomeScreen with 2000 durable events, concurrent delta, recording level, TTS level, and SignalCore updates followed by idle"
+}

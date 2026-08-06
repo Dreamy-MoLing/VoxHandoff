@@ -18,6 +18,54 @@ RequestStatus requestStatus() => RequestStatus(
 );
 
 void main() {
+  test('maps directory and conversation route facts', () async {
+    final descriptor = ConversationDescriptor(
+      conversationId: 'conversation-1',
+      title: 'Hermes work',
+      nodeId: 'node-1',
+      agentId: 'agent-1',
+      capabilityRevision: 'capability-1',
+      sessionId: 'session-1',
+      revision: Int64.ONE,
+      lastSequence: Int64(4),
+    );
+    final mapped = await GatewayFrameMapper().map(
+      GatewayDirectoryFrame(
+        GatewayDirectory(
+          commandId: 'directory-command-1',
+          nodes: [
+            NodeDescriptor(
+              nodeId: 'node-1',
+              displayName: 'Workstation',
+              platform: 'linux',
+              version: '0.1.0',
+            ),
+          ],
+          agents: [
+            AgentDescriptor(
+              agentId: 'agent-1',
+              nodeId: 'node-1',
+              displayName: 'Hermes',
+              adapter: 'hermes',
+              version: '0.19.0',
+              capabilityRevision: 'capability-1',
+              capabilities: AgentCapabilities(
+                eventStream: true,
+                approval: true,
+              ),
+            ),
+          ],
+          conversations: [descriptor],
+        ),
+      ),
+    );
+
+    final directory = (mapped as ClientGatewayDirectoryFrame).directory;
+    expect(directory.nodes.single.displayName, 'Workstation');
+    expect(directory.agents.single.supportsApprovals, isTrue);
+    expect(directory.conversations.single.lastSequence, BigInt.from(4));
+  });
+
   test('maps the complete request route needed for unknown recovery', () async {
     final mapped = await GatewayFrameMapper().map(
       GatewayRequestStatusFrame(requestStatus()),

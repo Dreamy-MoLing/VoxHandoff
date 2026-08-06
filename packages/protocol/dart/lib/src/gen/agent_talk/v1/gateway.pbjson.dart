@@ -146,6 +146,24 @@ const ConnectClientResponse$json = {
       '9': 0,
       '10': 'replayCompleted'
     },
+    {
+      '1': 'directory',
+      '3': 8,
+      '4': 1,
+      '5': 11,
+      '6': '.agent_talk.v1.GatewayDirectory',
+      '9': 0,
+      '10': 'directory'
+    },
+    {
+      '1': 'conversation',
+      '3': 9,
+      '4': 1,
+      '5': 11,
+      '6': '.agent_talk.v1.ConversationDescriptor',
+      '9': 0,
+      '10': 'conversation'
+    },
   ],
   '8': [
     {'1': 'body'},
@@ -162,7 +180,10 @@ final $typed_data.Uint8List connectClientResponseDescriptor = $convert.base64Dec
     '9udHJvbF9sZWFzZRgFIAEoCzIbLmFnZW50X3RhbGsudjEuQ29udHJvbExlYXNlSABSDGNvbnRy'
     'b2xMZWFzZRJFCg5wcm90b2NvbF9lcnJvchgGIAEoCzIcLmFnZW50X3RhbGsudjEuUHJvdG9jb2'
     'xFcnJvckgAUg1wcm90b2NvbEVycm9yEksKEHJlcGxheV9jb21wbGV0ZWQYByABKAsyHi5hZ2Vu'
-    'dF90YWxrLnYxLlJlcGxheUNvbXBsZXRlZEgAUg9yZXBsYXlDb21wbGV0ZWRCBgoEYm9keQ==');
+    'dF90YWxrLnYxLlJlcGxheUNvbXBsZXRlZEgAUg9yZXBsYXlDb21wbGV0ZWQSPwoJZGlyZWN0b3'
+    'J5GAggASgLMh8uYWdlbnRfdGFsay52MS5HYXRld2F5RGlyZWN0b3J5SABSCWRpcmVjdG9yeRJL'
+    'Cgxjb252ZXJzYXRpb24YCSABKAsyJS5hZ2VudF90YWxrLnYxLkNvbnZlcnNhdGlvbkRlc2NyaX'
+    'B0b3JIAFIMY29udmVyc2F0aW9uQgYKBGJvZHk=');
 
 @$core.Deprecated('Use nodeDescriptorDescriptor instead')
 const NodeDescriptor$json = {
@@ -204,6 +225,7 @@ const AgentDescriptor$json = {
       '6': '.agent_talk.v1.AgentCapabilities',
       '10': 'capabilities'
     },
+    {'1': 'node_id', '3': 7, '4': 1, '5': 9, '10': 'nodeId'},
   ],
 };
 
@@ -213,7 +235,77 @@ final $typed_data.Uint8List agentDescriptorDescriptor = $convert.base64Decode(
     '9uYW1lGAIgASgJUgtkaXNwbGF5TmFtZRIYCgdhZGFwdGVyGAMgASgJUgdhZGFwdGVyEhgKB3Zl'
     'cnNpb24YBCABKAlSB3ZlcnNpb24SLwoTY2FwYWJpbGl0eV9yZXZpc2lvbhgFIAEoCVISY2FwYW'
     'JpbGl0eVJldmlzaW9uEkQKDGNhcGFiaWxpdGllcxgGIAEoCzIgLmFnZW50X3RhbGsudjEuQWdl'
-    'bnRDYXBhYmlsaXRpZXNSDGNhcGFiaWxpdGllcw==');
+    'bnRDYXBhYmlsaXRpZXNSDGNhcGFiaWxpdGllcxIXCgdub2RlX2lkGAcgASgJUgZub2RlSWQ=');
+
+@$core.Deprecated('Use conversationDescriptorDescriptor instead')
+const ConversationDescriptor$json = {
+  '1': 'ConversationDescriptor',
+  '2': [
+    {'1': 'conversation_id', '3': 1, '4': 1, '5': 9, '10': 'conversationId'},
+    {'1': 'title', '3': 2, '4': 1, '5': 9, '10': 'title'},
+    {'1': 'node_id', '3': 3, '4': 1, '5': 9, '10': 'nodeId'},
+    {'1': 'agent_id', '3': 4, '4': 1, '5': 9, '10': 'agentId'},
+    {
+      '1': 'capability_revision',
+      '3': 5,
+      '4': 1,
+      '5': 9,
+      '10': 'capabilityRevision'
+    },
+    {'1': 'session_id', '3': 6, '4': 1, '5': 9, '10': 'sessionId'},
+    {'1': 'revision', '3': 7, '4': 1, '5': 4, '10': 'revision'},
+    {'1': 'last_sequence', '3': 8, '4': 1, '5': 4, '10': 'lastSequence'},
+  ],
+};
+
+/// Descriptor for `ConversationDescriptor`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List conversationDescriptorDescriptor = $convert.base64Decode(
+    'ChZDb252ZXJzYXRpb25EZXNjcmlwdG9yEicKD2NvbnZlcnNhdGlvbl9pZBgBIAEoCVIOY29udm'
+    'Vyc2F0aW9uSWQSFAoFdGl0bGUYAiABKAlSBXRpdGxlEhcKB25vZGVfaWQYAyABKAlSBm5vZGVJ'
+    'ZBIZCghhZ2VudF9pZBgEIAEoCVIHYWdlbnRJZBIvChNjYXBhYmlsaXR5X3JldmlzaW9uGAUgAS'
+    'gJUhJjYXBhYmlsaXR5UmV2aXNpb24SHQoKc2Vzc2lvbl9pZBgGIAEoCVIJc2Vzc2lvbklkEhoK'
+    'CHJldmlzaW9uGAcgASgEUghyZXZpc2lvbhIjCg1sYXN0X3NlcXVlbmNlGAggASgEUgxsYXN0U2'
+    'VxdWVuY2U=');
+
+@$core.Deprecated('Use gatewayDirectoryDescriptor instead')
+const GatewayDirectory$json = {
+  '1': 'GatewayDirectory',
+  '2': [
+    {'1': 'command_id', '3': 1, '4': 1, '5': 9, '10': 'commandId'},
+    {
+      '1': 'nodes',
+      '3': 2,
+      '4': 3,
+      '5': 11,
+      '6': '.agent_talk.v1.NodeDescriptor',
+      '10': 'nodes'
+    },
+    {
+      '1': 'agents',
+      '3': 3,
+      '4': 3,
+      '5': 11,
+      '6': '.agent_talk.v1.AgentDescriptor',
+      '10': 'agents'
+    },
+    {
+      '1': 'conversations',
+      '3': 4,
+      '4': 3,
+      '5': 11,
+      '6': '.agent_talk.v1.ConversationDescriptor',
+      '10': 'conversations'
+    },
+  ],
+};
+
+/// Descriptor for `GatewayDirectory`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List gatewayDirectoryDescriptor = $convert.base64Decode(
+    'ChBHYXRld2F5RGlyZWN0b3J5Eh0KCmNvbW1hbmRfaWQYASABKAlSCWNvbW1hbmRJZBIzCgVub2'
+    'RlcxgCIAMoCzIdLmFnZW50X3RhbGsudjEuTm9kZURlc2NyaXB0b3JSBW5vZGVzEjYKBmFnZW50'
+    'cxgDIAMoCzIeLmFnZW50X3RhbGsudjEuQWdlbnREZXNjcmlwdG9yUgZhZ2VudHMSSwoNY29udm'
+    'Vyc2F0aW9ucxgEIAMoCzIlLmFnZW50X3RhbGsudjEuQ29udmVyc2F0aW9uRGVzY3JpcHRvclIN'
+    'Y29udmVyc2F0aW9ucw==');
 
 @$core.Deprecated('Use nodeRegistrationDescriptor instead')
 const NodeRegistration$json = {

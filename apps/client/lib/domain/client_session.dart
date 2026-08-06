@@ -1,3 +1,5 @@
+import 'confirmed_draft.dart';
+
 enum GatewayConnectionPhase {
   unpaired,
   connecting,
@@ -16,6 +18,7 @@ class ClientSessionState {
     this.draftRevision = 0,
     this.draftPhase = DraftPhase.editing,
     this.requestId,
+    this.confirmedDraft,
   });
 
   final GatewayConnectionPhase connectionPhase;
@@ -23,6 +26,7 @@ class ClientSessionState {
   final int draftRevision;
   final DraftPhase draftPhase;
   final String? requestId;
+  final ConfirmedDraft? confirmedDraft;
 
   bool get canEditDraft =>
       draftPhase == DraftPhase.editing || draftPhase == DraftPhase.confirmed;
@@ -40,7 +44,9 @@ class ClientSessionState {
     int? draftRevision,
     DraftPhase? draftPhase,
     String? requestId,
+    ConfirmedDraft? confirmedDraft,
     bool clearRequestId = false,
+    bool clearConfirmedDraft = false,
   }) {
     return ClientSessionState(
       connectionPhase: connectionPhase ?? this.connectionPhase,
@@ -48,6 +54,9 @@ class ClientSessionState {
       draftRevision: draftRevision ?? this.draftRevision,
       draftPhase: draftPhase ?? this.draftPhase,
       requestId: clearRequestId ? null : requestId ?? this.requestId,
+      confirmedDraft: clearConfirmedDraft
+          ? null
+          : confirmedDraft ?? this.confirmedDraft,
     );
   }
 }

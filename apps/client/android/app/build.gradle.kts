@@ -19,6 +19,7 @@ android {
         applicationId = "dev.agenttalk.agent_talk_client"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // record requires API 23; Flutter 3.44.6 sets the effective floor at 24.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

@@ -1,7 +1,7 @@
 version: v2
 clean: true
 plugins:
-  - remote: buf.build/protocolbuffers/dart:v25.0.0
+  - local: ["node", "scripts/run-dart-protoc-plugin.mjs"]
     out: packages/protocol/dart/lib/src/gen
     opt:
       - grpc

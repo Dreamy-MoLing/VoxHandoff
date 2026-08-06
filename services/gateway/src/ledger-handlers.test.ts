@@ -6,6 +6,12 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { AckSchema, AgentEventType, ClientCommandSchema, type ClientCommand } from "@agent-talk/protocol";
 
 import type { ClientLedger, GatewayRequestStatusRecord, PersistedEventRecord } from "./client-ledger.js";
+import type {
+  CreateConversationInput,
+  DirectoryConversationRecord,
+  DirectoryLedger,
+  GatewayDirectoryRecord,
+} from "./directory-ledger.js";
 import type { ControlLeaseLedger, ControlLeaseTransaction } from "./control-lease.js";
 import type { InteractionLedger, InteractionLedgerTransaction } from "./interaction-ledger.js";
 import type { ClientCommandContext } from "./control-service.js";
@@ -14,16 +20,19 @@ import type {
   AcceptanceFacts,
   AcceptedRequestRecord,
   AgentTargetRecord,
+  ConversationRouteRecord,
   ControlLeaseRecord,
   DeviceRecord,
   GatewayLedger,
   GatewayLedgerTransaction,
 } from "./ledger.js";
 
-class StubStore implements GatewayLedger, ControlLeaseLedger, ClientLedger, InteractionLedger, GatewayLedgerTransaction {
+class StubStore implements GatewayLedger, ControlLeaseLedger, ClientLedger, InteractionLedger, DirectoryLedger, GatewayLedgerTransaction {
   request: GatewayRequestStatusRecord | undefined;
   events: PersistedEventRecord[] = [];
   acknowledged: { deviceId: string; conversationId: string; sequence: bigint; eventId: string } | undefined;
+  directory: GatewayDirectoryRecord = { nodes: [], agents: [], conversations: [] };
+  createdConversation: DirectoryConversationRecord | undefined;
 
   async transaction<T>(work: (transaction: GatewayLedgerTransaction) => Promise<T>): Promise<T> {
     return work(this);
@@ -43,6 +52,10 @@ class StubStore implements GatewayLedger, ControlLeaseLedger, ClientLedger, Inte
 
   async lockConversation(): Promise<boolean> {
     return true;
+  }
+
+  async lockConversationRoute(): Promise<ConversationRouteRecord | undefined> {
+    return undefined;
   }
 
   async findRequestByIdempotency(): Promise<AcceptedRequestRecord | undefined> {
@@ -87,6 +100,25 @@ class StubStore implements GatewayLedger, ControlLeaseLedger, ClientLedger, Inte
   ): Promise<boolean> {
     this.acknowledged = { deviceId, conversationId, sequence, eventId };
     return eventId !== "missing";
+  }
+
+  async listDirectory(): Promise<GatewayDirectoryRecord> {
+    return this.directory;
+  }
+
+  async createConversation(input: CreateConversationInput): Promise<DirectoryConversationRecord> {
+    const created = {
+      conversationId: input.conversationId,
+      title: input.title,
+      nodeId: input.nodeId,
+      agentId: input.agentId,
+      capabilityRevision: input.capabilityRevision,
+      sessionId: input.sessionId,
+      revision: 1n,
+      lastSequence: 0n,
+    };
+    this.createdConversation = created;
+    return created;
   }
 }
 
@@ -162,7 +194,7 @@ test("replay remains ordered and preserves unsupported events without inventing 
       requestId: "request-1",
       sequence: 1n,
       eventType: "request.accepted",
-      safePayload: {},
+      safePayload: { confirmedText: "Confirmed user turn." },
       occurredAt: new Date("2030-01-01T00:00:00.000Z"),
     },
     {
@@ -222,6 +254,15 @@ test("replay remains ordered and preserves unsupported events without inventing 
   const firstEvent = responses[0]?.body;
   const secondEvent = responses[1]?.body;
   assert.equal(firstEvent?.case === "event" ? firstEvent.value.event?.type : undefined, AgentEventType.REQUEST_ACCEPTED);
+  const firstPayload = firstEvent?.case === "event"
+    ? firstEvent.value.event?.payload
+    : undefined;
+  assert.equal(
+    firstPayload?.case === "requestProgress"
+      ? firstPayload.value.confirmedText
+      : undefined,
+    "Confirmed user turn.",
+  );
   assert.equal(secondEvent?.case === "event" ? secondEvent.value.event?.type : undefined, AgentEventType.UNSPECIFIED);
   if (secondEvent?.case === "event") {
     assert.equal(secondEvent.value?.event?.payload?.case, "unsupported");
@@ -257,6 +298,64 @@ test("Ack advances only an exact persisted event identity", async () => {
     sequence: 2n,
     eventId: "event-2",
   });
+});
+
+test("lists the authenticated Gateway directory without exposing native payloads", async () => {
+  const { store, handlers } = setup();
+  store.directory = {
+    nodes: [{ nodeId: "node-1", displayName: "Workstation", platform: "linux", version: "1" }],
+    agents: [{
+      agentId: "agent-1",
+      nodeId: "node-1",
+      displayName: "Codex",
+      adapter: "codex",
+      version: "1",
+      capabilityRevision: "cap-1",
+      capabilities: { eventStream: true, replay: true, sequenceRecovery: true },
+    }],
+    conversations: [{
+      conversationId: "conversation-1",
+      title: "M2 review",
+      nodeId: "node-1",
+      agentId: "agent-1",
+      capabilityRevision: "cap-1",
+      sessionId: null,
+      revision: 1n,
+      lastSequence: 4n,
+    }],
+  };
+  const [response] = await handlers.onClientCommand(command({
+    commandId: "directory-command",
+    idempotencyKey: "directory-idempotency",
+    command: { case: "listDirectory", value: {} },
+  }), context);
+  assert.equal(response?.body?.case, "directory");
+  if (response?.body?.case === "directory") {
+    assert.equal(response.body.value.commandId, "directory-command");
+    assert.equal(response.body.value.nodes?.[0]?.nodeId, "node-1");
+    assert.equal(response.body.value.agents?.[0]?.capabilityRevision, "cap-1");
+    assert.equal(response.body.value.conversations?.[0]?.lastSequence, 4n);
+  }
+});
+
+test("creates a conversation only from an explicit send-scoped command", async () => {
+  const { store, handlers } = setup();
+  const [response] = await handlers.onClientCommand(command({
+    conversationId: "conversation-new",
+    commandId: "create-command",
+    idempotencyKey: "create-idempotency",
+    command: {
+      case: "createConversation",
+      value: {
+        nodeId: "node-1",
+        agentId: "agent-1",
+        capabilityRevision: "cap-1",
+        title: "New work",
+      },
+    },
+  }), context);
+  assert.equal(store.createdConversation?.conversationId, "conversation-new");
+  assert.equal(response?.body?.case, "conversation");
 });
 
 test("maps durable authorization rejection to a safe Connect permission error", async () => {

@@ -1,0 +1,62 @@
+{
+  "benchmark": "m4_signal_core",
+  "recorded_at_local": "2026-07-25",
+  "device": {
+    "name": "vivo X100s",
+    "model": "V2359A",
+    "product": "PD2309",
+    "os": "Android 16",
+    "api_level": 36,
+    "build_id": "BP2A.250605.031.A3",
+    "build_fingerprint": "vivo/PD2309M/PD2309:16/BP2A.250605.031.A3/compiler260611211327:user/release-keys",
+    "security_patch": "2026-05-01",
+    "soc": "MediaTek MT6989",
+    "gpu": "Mali-G720-Immortalis MC12",
+    "gpu_driver": "v1.r44p1-01eac0.7c759d1daf93e2baa476e2d4d07e761b",
+    "ram_kib": 15691500,
+    "serial_redacted": true
+  },
+  "display": {
+    "physical_pixels": "1260x2800",
+    "density_dpi": 560,
+    "refresh_rate_hz": 120.00000762939453,
+    "profile": "highRefresh120",
+    "frame_budget_us": 8333
+  },
+  "power": {
+    "low_power_mode": false,
+    "usb_powered": true,
+    "battery_percent_before": 73,
+    "battery_percent_after": 80
+  },
+  "thermal": {
+    "status_before": 0,
+    "status_after": 0,
+    "skin_celsius_before": 36.158,
+    "skin_celsius_after": 33.636,
+    "throttling_observed": false
+  },
+  "runtime": {
+    "build_mode": "profile",
+    "renderer": "Impeller",
+    "graphics_api": "Vulkan",
+    "warmup_frames": 5,
+    "measured_frames_per_run": 55,
+    "states": 11,
+    "frames_per_state": 5,
+    "network_profile": "local USB; rendering probe has no network dependency"
+  },
+  "toolchain": {
+    "host": "Fedora Linux 44, Linux 7.1.4-204.fc44.x86_64",
+    "flutter": "3.44.6",
+    "dart": "3.12.2",
+    "java": "OpenJDK 25.0.3",
+    "gradle": "9.1.0",
+    "android_gradle_plugin": "9.0.1",
+    "kotlin": "2.3.20",
+    "android_sdk_platform": "36 revision 2",
+    "android_build_tools": "36.0.0",
+    "android_platform_tools": "37.0.0",
+    "android_ndk": "28.2.13676358"
+  }
+}

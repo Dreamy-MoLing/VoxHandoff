@@ -1,8 +1,10 @@
 import { Code, ConnectError } from "@connectrpc/connect";
-import type { MessageInitShape } from "@bufbuild/protobuf";
+import { fromJson, type JsonValue, type MessageInitShape } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import {
   AgentEventType,
+  AgentCapabilitiesSchema,
+  ConversationDescriptorSchema,
   AgentEventSchema,
   ApprovalDecision,
   FailureCategory,
@@ -26,6 +28,12 @@ import {
 import type { InteractionLedger } from "./interaction-ledger.js";
 import type { ClientLedger, GatewayRequestStatusRecord, PersistedEventRecord } from "./client-ledger.js";
 import {
+  DirectoryLedgerError,
+  type DirectoryConversationRecord,
+  type DirectoryLedger,
+  type GatewayDirectoryRecord,
+} from "./directory-ledger.js";
+import {
   acquireControlLease,
   type ControlLeaseLedger,
   renewControlLease,
@@ -40,7 +48,7 @@ import type { GatewayLedger } from "./ledger.js";
 type ClientResponseInit = MessageInitShape<typeof ConnectClientResponseSchema>;
 type AgentPayloadInit = NonNullable<MessageInitShape<typeof AgentEventSchema>["payload"]>;
 
-export interface LedgerBackedGatewayStore extends GatewayLedger, ControlLeaseLedger, ClientLedger, InteractionLedger {}
+export interface LedgerBackedGatewayStore extends GatewayLedger, ControlLeaseLedger, ClientLedger, InteractionLedger, DirectoryLedger {}
 
 export interface LedgerHandlerDependencies {
   now(): Date;
@@ -123,6 +131,62 @@ function requireObserveOrControl(context: ClientCommandContext): void {
   }
 }
 
+function requireSend(context: ClientCommandContext): void {
+  if (!context.principal.scopes.includes("send")) {
+    throw new ConnectError("The device cannot create conversations.", Code.PermissionDenied);
+  }
+}
+
+function requireOpaque(value: string, label: string): void {
+  if (value.length === 0 || value.length > 256 || /[\u0000-\u001f\u007f\s]/u.test(value)) {
+    throw new ConnectError(`${label} is invalid.`, Code.InvalidArgument);
+  }
+}
+
+function conversationValue(record: DirectoryConversationRecord): MessageInitShape<typeof ConversationDescriptorSchema> {
+  return {
+    conversationId: record.conversationId,
+    title: record.title,
+    nodeId: record.nodeId,
+    agentId: record.agentId,
+    capabilityRevision: record.capabilityRevision,
+    sessionId: record.sessionId ?? "",
+    revision: record.revision,
+    lastSequence: record.lastSequence,
+  };
+}
+
+function conversationResponse(record: DirectoryConversationRecord): ClientResponseInit {
+  return { body: { case: "conversation", value: conversationValue(record) } };
+}
+
+function directoryResponse(commandId: string, record: GatewayDirectoryRecord): ClientResponseInit {
+  return {
+    body: {
+      case: "directory",
+      value: {
+        commandId,
+        nodes: record.nodes.map((node) => ({
+          nodeId: node.nodeId,
+          displayName: node.displayName,
+          platform: node.platform,
+          version: node.version,
+        })),
+        agents: record.agents.map((agent) => ({
+          agentId: agent.agentId,
+          nodeId: agent.nodeId,
+          displayName: agent.displayName,
+          adapter: agent.adapter,
+          version: agent.version,
+          capabilityRevision: agent.capabilityRevision,
+          capabilities: fromJson(AgentCapabilitiesSchema, agent.capabilities as JsonValue),
+        })),
+        conversations: record.conversations.map(conversationValue),
+      },
+    },
+  };
+}
+
 function toConnectError(error: GatewayCommandError): ConnectError {
   const code =
     error.category === "authorization"
@@ -194,7 +258,14 @@ function safeString(value: Record<string, unknown>, key: string): string | undef
 
 function safePayload(record: PersistedEventRecord): AgentPayloadInit | undefined {
   if (record.eventType === "request.accepted") {
-    return { case: "requestProgress", value: { safeMessage: "Request accepted." } };
+    const value = safeObject(record.safePayload);
+    return {
+      case: "requestProgress",
+      value: {
+        safeMessage: "Request accepted.",
+        confirmedText: value === undefined ? "" : safeString(value, "confirmedText") ?? "",
+      },
+    };
   }
   const value = safeObject(record.safePayload);
   if (value === undefined) return undefined;
@@ -496,10 +567,50 @@ export class LedgerBackedGatewayHandlers implements GatewayStreamHandlers {
             },
           ];
         }
+        case "listDirectory": {
+          requireObserveOrControl(context);
+          return [directoryResponse(command.commandId, await this.store.listDirectory())];
+        }
+        case "createConversation": {
+          requireSend(context);
+          requireOpaque(command.conversationId, "conversationId");
+          requireOpaque(command.commandId, "commandId");
+          requireOpaque(command.idempotencyKey, "idempotencyKey");
+          const create = command.command.value;
+          requireOpaque(create.nodeId, "nodeId");
+          requireOpaque(create.agentId, "agentId");
+          requireOpaque(create.capabilityRevision, "capabilityRevision");
+          if (create.sessionId.length > 0) requireOpaque(create.sessionId, "sessionId");
+          const title = create.title.trim();
+          if (title.length === 0 || Buffer.byteLength(title, "utf8") > 256 || /[\u0000-\u001f\u007f]/u.test(title)) {
+            throw new ConnectError("The conversation title is invalid.", Code.InvalidArgument);
+          }
+          const conversation = await this.store.createConversation({
+            conversationId: command.conversationId,
+            commandId: command.commandId,
+            idempotencyKey: command.idempotencyKey,
+            deviceId: context.principal.principalId,
+            title,
+            nodeId: create.nodeId,
+            agentId: create.agentId,
+            capabilityRevision: create.capabilityRevision,
+            sessionId: create.sessionId.length === 0 ? null : create.sessionId,
+            now: this.dependencies.now(),
+          });
+          return [conversationResponse(conversation)];
+        }
         default:
           throw new ConnectError("This Client command is not implemented yet.", Code.Unimplemented);
       }
     } catch (error) {
+      if (error instanceof DirectoryLedgerError) {
+        const code = error.code === "agent_not_found"
+          ? Code.NotFound
+          : error.code === "capability_revision_changed"
+            ? Code.FailedPrecondition
+            : Code.AlreadyExists;
+        throw new ConnectError(error.message, code);
+      }
       if (error instanceof GatewayCommandError) {
         throw toConnectError(error);
       }

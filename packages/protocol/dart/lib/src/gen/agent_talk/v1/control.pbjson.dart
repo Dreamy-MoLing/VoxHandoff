@@ -405,6 +405,40 @@ const GetRequest$json = {
 final $typed_data.Uint8List getRequestDescriptor = $convert.base64Decode(
     'CgpHZXRSZXF1ZXN0Eh0KCnJlcXVlc3RfaWQYASABKAlSCXJlcXVlc3RJZA==');
 
+@$core.Deprecated('Use listDirectoryDescriptor instead')
+const ListDirectory$json = {
+  '1': 'ListDirectory',
+};
+
+/// Descriptor for `ListDirectory`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List listDirectoryDescriptor =
+    $convert.base64Decode('Cg1MaXN0RGlyZWN0b3J5');
+
+@$core.Deprecated('Use createConversationDescriptor instead')
+const CreateConversation$json = {
+  '1': 'CreateConversation',
+  '2': [
+    {'1': 'node_id', '3': 1, '4': 1, '5': 9, '10': 'nodeId'},
+    {'1': 'agent_id', '3': 2, '4': 1, '5': 9, '10': 'agentId'},
+    {
+      '1': 'capability_revision',
+      '3': 3,
+      '4': 1,
+      '5': 9,
+      '10': 'capabilityRevision'
+    },
+    {'1': 'session_id', '3': 4, '4': 1, '5': 9, '10': 'sessionId'},
+    {'1': 'title', '3': 5, '4': 1, '5': 9, '10': 'title'},
+  ],
+};
+
+/// Descriptor for `CreateConversation`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List createConversationDescriptor = $convert.base64Decode(
+    'ChJDcmVhdGVDb252ZXJzYXRpb24SFwoHbm9kZV9pZBgBIAEoCVIGbm9kZUlkEhkKCGFnZW50X2'
+    'lkGAIgASgJUgdhZ2VudElkEi8KE2NhcGFiaWxpdHlfcmV2aXNpb24YAyABKAlSEmNhcGFiaWxp'
+    'dHlSZXZpc2lvbhIdCgpzZXNzaW9uX2lkGAQgASgJUglzZXNzaW9uSWQSFAoFdGl0bGUYBSABKA'
+    'lSBXRpdGxl');
+
 @$core.Deprecated('Use clientCommandDescriptor instead')
 const ClientCommand$json = {
   '1': 'ClientCommand',
@@ -487,6 +521,24 @@ const ClientCommand$json = {
       '9': 0,
       '10': 'getRequest'
     },
+    {
+      '1': 'list_directory',
+      '3': 18,
+      '4': 1,
+      '5': 11,
+      '6': '.agent_talk.v1.ListDirectory',
+      '9': 0,
+      '10': 'listDirectory'
+    },
+    {
+      '1': 'create_conversation',
+      '3': 19,
+      '4': 1,
+      '5': 11,
+      '6': '.agent_talk.v1.CreateConversation',
+      '9': 0,
+      '10': 'createConversation'
+    },
   ],
   '8': [
     {'1': 'command'},
@@ -508,8 +560,10 @@ final $typed_data.Uint8List clientCommandDescriptor = $convert.base64Decode(
     'ZUNvbnRyb2xMZWFzZUgAUgxhY3F1aXJlTGVhc2USQwoLcmVuZXdfbGVhc2UYDyABKAsyIC5hZ2'
     'VudF90YWxrLnYxLlJlbmV3Q29udHJvbExlYXNlSABSCnJlbmV3TGVhc2USNQoGcmVwbGF5GBAg'
     'ASgLMhsuYWdlbnRfdGFsay52MS5SZXBsYXlFdmVudHNIAFIGcmVwbGF5EjwKC2dldF9yZXF1ZX'
-    'N0GBEgASgLMhkuYWdlbnRfdGFsay52MS5HZXRSZXF1ZXN0SABSCmdldFJlcXVlc3RCCQoHY29t'
-    'bWFuZA==');
+    'N0GBEgASgLMhkuYWdlbnRfdGFsay52MS5HZXRSZXF1ZXN0SABSCmdldFJlcXVlc3QSRQoObGlz'
+    'dF9kaXJlY3RvcnkYEiABKAsyHC5hZ2VudF90YWxrLnYxLkxpc3REaXJlY3RvcnlIAFINbGlzdE'
+    'RpcmVjdG9yeRJUChNjcmVhdGVfY29udmVyc2F0aW9uGBMgASgLMiEuYWdlbnRfdGFsay52MS5D'
+    'cmVhdGVDb252ZXJzYXRpb25IAFISY3JlYXRlQ29udmVyc2F0aW9uQgkKB2NvbW1hbmQ=');
 
 @$core.Deprecated('Use requestStatusDescriptor instead')
 const RequestStatus$json = {

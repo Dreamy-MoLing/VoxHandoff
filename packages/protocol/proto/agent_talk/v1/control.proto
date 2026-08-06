@@ -100,6 +100,16 @@ message GetRequest {
   string request_id = 1;
 }
 
+message ListDirectory {}
+
+message CreateConversation {
+  string node_id = 1;
+  string agent_id = 2;
+  string capability_revision = 3;
+  string session_id = 4;
+  string title = 5;
+}
+
 message ClientCommand {
   string command_id = 1;
   string idempotency_key = 2;
@@ -116,6 +126,8 @@ message ClientCommand {
     RenewControlLease renew_lease = 15;
     ReplayEvents replay = 16;
     GetRequest get_request = 17;
+    ListDirectory list_directory = 18;
+    CreateConversation create_conversation = 19;
   }
 }
 

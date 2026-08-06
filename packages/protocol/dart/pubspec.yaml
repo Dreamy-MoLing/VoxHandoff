@@ -10,3 +10,6 @@ dependencies:
   fixnum: ^1.1.1
   grpc: ^5.1.0
   protobuf: ^6.0.0
+
+dev_dependencies:
+  protoc_plugin: 25.0.0

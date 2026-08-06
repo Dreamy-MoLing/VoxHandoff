@@ -74,6 +74,7 @@ if (mismatches.length > 0) {
 const clientRoot = path.join(root, "apps/client");
 const generatedFiles = [
   path.join(clientRoot, "lib/infrastructure/storage/drift_client_event_ledger.g.dart"),
+  path.join(clientRoot, "lib/infrastructure/storage/drift_local_transcript_store.g.dart"),
 ];
 const generatedBefore = await Promise.all(
   generatedFiles.map((file) => readFile(file)),
