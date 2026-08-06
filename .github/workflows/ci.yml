@@ -91,11 +91,12 @@ jobs:
           libnotify-dev dbus-x11 gnome-keyring xvfb ffmpeg pulseaudio-utils
 
       - name: Install pinned uv for the STT release sidecar
-        run: >-
-          python3 -m pip install --disable-pip-version-check
-          --no-warn-script-location --prefix "$RUNNER_TEMP/uv"
-          uv==0.11.28
-          && echo "$RUNNER_TEMP/uv/bin" >> "$GITHUB_PATH"
+        run: |
+          python3 -m pip install --disable-pip-version-check \
+            --no-warn-script-location --prefix "$RUNNER_TEMP/uv" \
+            uv==0.11.28
+          test -x "$RUNNER_TEMP/uv/bin/uv"
+          echo "$RUNNER_TEMP/uv/bin" >> "$GITHUB_PATH"
 
       - name: Install locked Node dependencies
         run: npm ci
@@ -121,7 +122,11 @@ jobs:
       - name: Build bundled Linux STT executable
         env:
           VOXHANDOFF_STT_OUTPUT_DIR: ${{ github.workspace }}/artifacts/stt
-        run: services/stt/scripts/build-linux.sh
+        run: |
+          export PATH="$RUNNER_TEMP/uv/bin:$PATH"
+          command -v uv
+          uv --version
+          services/stt/scripts/build-linux.sh
 
       - name: Verify packaged STT fails closed without a model
         env:

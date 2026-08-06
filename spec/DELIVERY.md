@@ -1,8 +1,16 @@
 # VoxHandoff 开发与交付规范
 
-## 1. 当前状态
+> **归档状态：Archived / Frozen（2026-08-06）**
+>
+> 本文件是最终历史交付记录。VoxHandoff 不再进入新的产品批次，也不
+> 再以本文件中的“下一轮开发”或“后续开发批次”作为执行计划。根目录
+> [`README.md`](../README.md) 是当前归档入口。Hermes Agent v0.20.0 已将
+> 流式会话语音、barge-in、设备端唤醒词、可配置 STT 和多 profile 语音
+> 路由等核心体验纳入官方产品；本仓库保留实现与证据，停止平行维护。
 
-### 1.1 2026-08-02 权威快照
+## 1. 归档时的状态
+
+### 1.1 2026-08-02 权威快照（归档前）
 
 当前产品基线是“统一个人助手”：Hermes 是主要且唯一具有 Agent 语义的工作后端，用户自接 OpenAI-compatible API 是纯聊天/陪伴后端。M0–M4 的历史交付不回退；M5 批次 1–5 的本地实现基座已完成（Provider/凭据/历史隔离、确认目标绑定、request lifecycle、消息终态、AssistantProfile、conversation context、语音配置与播报策略），阶段未关闭，剩余门集中在真实语音与实体设备证据（连续 10 轮 GUI、至少一轮实体麦克风全链路、正式 STT sidecar bundle、remote STT 契约）；批次 6 正在收口 PR #4 事实、review map 与证据登记。H1 独立受 Hermes 上游能力阻断，不是 M5 完成条件。
 
