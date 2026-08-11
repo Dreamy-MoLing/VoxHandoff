@@ -40,9 +40,9 @@ class GrpcGatewayLiveTransport {
     }
   }
 
-  static const schemaBuild = 'agent-talk-proto-v1.0';
+  static const schemaBuild = 'agent-talk-proto-v1.1';
   static const schemaSha256 =
-      'ff60edd0d233123d10f0ede78feb9bc8de3e8eed5608678441918fa574bddac2';
+      'd9953c98a2c699d12f9e17c8d0fae57761daf17db8192534087077ab380d914a';
   static const componentVersion = '0.1.0';
   static const capabilityRevision = 'client-m2-live-v1';
 
@@ -171,11 +171,11 @@ class GrpcGatewayLiveTransport {
   }
 
   HandshakeOffer _offer(Iterable<String> scopes) => HandshakeOffer(
-    currentProtocol: ProtocolVersion(major: 1, minor: 0),
+    currentProtocol: ProtocolVersion(major: 1, minor: 1),
     acceptedProtocols: ProtocolVersionRange(
       major: 1,
       minimumMinor: 0,
-      maximumMinor: 0,
+      maximumMinor: 1,
     ),
     schemaBuild: schemaBuild,
     schemaSha256: schemaSha256,

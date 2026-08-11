@@ -11,6 +11,7 @@ import {
   ConnectNodeRequestSchema,
   GatewayControlService,
   HandshakeOfferSchema,
+  NodeEventReceiptSchema,
   type HandshakeOffer,
 } from "@agent-talk/protocol";
 
@@ -47,10 +48,10 @@ class FakeVerifier implements StreamIdentityVerifier {
   }
 }
 
-function offer(role: ComponentRole, attachments = false): HandshakeOffer {
+function offer(role: ComponentRole, attachments = false, minor = 0): HandshakeOffer {
   return create(HandshakeOfferSchema, {
-    currentProtocol: { major: 1, minor: 0 },
-    acceptedProtocols: { major: 1, minimumMinor: 0, maximumMinor: 0 },
+    currentProtocol: { major: 1, minor },
+    acceptedProtocols: { major: 1, minimumMinor: 0, maximumMinor: minor },
     schemaBuild: "client-test-build",
     schemaSha256: "a".repeat(64),
     componentVersion: "0.1.0-test",
@@ -106,8 +107,16 @@ function setup(liveEvents?: BoundedLiveEventHub) {
     async onNodeDispatchAck() {
       calls.dispatchAcks += 1;
     },
-    async onNodeEvent() {
+    async onNodeEvent(event) {
       calls.nodeEvents += 1;
+      return create(NodeEventReceiptSchema, {
+        eventId: event.eventId,
+        requestId: event.requestId,
+        conversationId: event.conversationId,
+        sourceSequence: event.sequence,
+        gatewaySequence: 1n,
+        duplicate: false,
+      });
     },
   };
   let nextConnection = 0;
@@ -313,6 +322,54 @@ test("binds Node registration to the authenticated opaque node identity", async 
   }
   assert.deepEqual(responses, ["handshake"]);
   assert.equal(calls.registrations, 1);
+});
+
+test("returns a durable Node event receipt only after the handler completes", async () => {
+  const { client, calls } = setup();
+  async function* requests() {
+    yield create(ConnectNodeRequestSchema, {
+      body: { case: "handshake", value: offer(ComponentRole.NODE, false, 1) },
+    });
+    yield create(ConnectNodeRequestSchema, {
+      body: {
+        case: "registration",
+        value: {
+          node: { nodeId: "node-1", displayName: "display only", platform: "linux", version: "test" },
+          agents: [],
+        },
+      },
+    });
+    yield create(ConnectNodeRequestSchema, {
+      body: {
+        case: "event",
+        value: {
+          eventId: "event-1",
+          requestId: "request-1",
+          conversationId: "conversation-1",
+          sequence: 2n,
+        },
+      },
+    });
+  }
+
+  const responses = [];
+  for await (const response of client.connectNode(requests(), {
+    headers: new Headers({ authorization: "Bearer node-token" }),
+  })) {
+    responses.push(response);
+  }
+
+  assert.deepEqual(responses.map((response) => response.body.case), ["handshake", "eventReceipt"]);
+  const receipt = responses[1]?.body;
+  assert.equal(receipt?.case, "eventReceipt");
+  if (receipt?.case === "eventReceipt") {
+    assert.equal(receipt.value.eventId, "event-1");
+    assert.equal(receipt.value.requestId, "request-1");
+    assert.equal(receipt.value.conversationId, "conversation-1");
+    assert.equal(receipt.value.sourceSequence, 2n);
+    assert.equal(receipt.value.gatewaySequence, 1n);
+  }
+  assert.equal(calls.nodeEvents, 1);
 });
 
 test("rejects Node business frames until the authenticated Node registers", async () => {

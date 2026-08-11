@@ -116,9 +116,9 @@ void main() {
       );
       final offer = rpc.requests.single.handshake;
       expect(offer.currentProtocol.major, 1);
-      expect(offer.currentProtocol.minor, 0);
+      expect(offer.currentProtocol.minor, 1);
       expect(offer.acceptedProtocols.minimumMinor, 0);
-      expect(offer.acceptedProtocols.maximumMinor, 0);
+      expect(offer.acceptedProtocols.maximumMinor, 1);
       expect(offer.schemaSha256, GrpcGatewayLiveTransport.schemaSha256);
       expect(offer.componentRole, ComponentRole.COMPONENT_ROLE_CLIENT);
       expect(offer.capabilities.attachments, isFalse);

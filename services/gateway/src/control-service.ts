@@ -12,6 +12,7 @@ import {
   type HandshakeOffer,
   type NodeRegistration,
   type EventEnvelope,
+  type NodeEventReceipt,
   type Ack,
   type AgentCapabilities,
   type ProtocolError,
@@ -56,7 +57,7 @@ export interface GatewayStreamHandlers {
   onNodeRegistration(registration: NodeRegistration, context: NodeMessageContext): Promise<readonly NodeResponseInit[]>;
   onNodeHeartbeat(context: NodeMessageContext): Promise<readonly NodeResponseInit[]>;
   onNodeDispatchAck(ack: DispatchAck, context: NodeMessageContext): Promise<void>;
-  onNodeEvent(event: EventEnvelope, context: NodeMessageContext): Promise<void>;
+  onNodeEvent(event: EventEnvelope, context: NodeMessageContext): Promise<NodeEventReceipt>;
 }
 
 export interface GatewayHandshakeIdentity {
@@ -303,6 +304,7 @@ async function* connectNode(
   const connectionId = options.newConnectionId();
   let handshaken = false;
   let registered = false;
+  let selectedNodeProtocolMinor: number | undefined;
 
   for await (const request of requests) {
     await options.identityVerifier.revalidate(principal);
@@ -319,13 +321,15 @@ async function* connectNode(
         invalid("Handshake is required before Node business messages.");
       }
       assertRemoteRole(body.value, ComponentRole.NODE);
+      const accepted = handshakeResponse(body.value, connectionId, principal.scopes, options);
       yield {
         body: {
           case: "handshake",
-          value: handshakeResponse(body.value, connectionId, principal.scopes, options),
+          value: accepted,
         },
       };
       handshaken = true;
+      selectedNodeProtocolMinor = accepted.selectedProtocol?.minor;
       continue;
     }
 
@@ -354,7 +358,15 @@ async function* connectNode(
         break;
       case "event":
         if (!registered) invalid("Node registration is required before events.");
-        await options.handlers.onNodeEvent(body.value, messageContext);
+        const receipt = await options.handlers.onNodeEvent(body.value, messageContext);
+        if ((selectedNodeProtocolMinor ?? 0) >= 1) {
+          yield {
+            body: {
+              case: "eventReceipt",
+              value: receipt,
+            },
+          };
+        }
         break;
       case "protocolError":
         return;

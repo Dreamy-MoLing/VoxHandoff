@@ -24,11 +24,14 @@ import {
   FailureStage,
   GatewayControlService,
   HandshakeOfferSchema,
+  ProtocolVersionSchema,
   type ConnectNodeRequest,
   type ConnectNodeResponse,
   type DispatchApproval,
   type DispatchInterrupt,
   type DispatchRequest,
+  type EventEnvelope,
+  type NodeEventReceipt,
 } from "@agent-talk/protocol";
 
 import { AsyncQueue } from "./async-queue.js";
@@ -37,9 +40,14 @@ import {
   type HermesSessionStore,
 } from "./session-store.js";
 
-const schemaBuild = "agent-talk-proto-v1.0";
+const schemaBuild = "agent-talk-proto-v1.1";
 const schemaSha256 =
-  "ff60edd0d233123d10f0ede78feb9bc8de3e8eed5608678441918fa574bddac2";
+  "d9953c98a2c699d12f9e17c8d0fae57761daf17db8192534087077ab380d914a";
+// AsyncQueue is independently bounded at 500 frames. Keep durable replay well
+// below that limit so a reconnect has space for registration, heartbeats, and
+// normal control frames; an abusive control backlog still fails closed at the
+// queue boundary.
+const maximumPendingEventFrames = 256;
 
 export interface HermesAgentPort {
   health(): Promise<unknown>;
@@ -88,14 +96,30 @@ interface ApprovalFact {
   expiresAt: string;
 }
 
+interface PendingEventFrame {
+  frame: ConnectNodeRequest;
+  sentOutputEpoch?: number;
+  legacyEnqueued?: boolean;
+}
+
 type DispatchState = "processing" | "accepted" | "rejected" | "uncertain";
 
 export class HermesNodeConnector {
   readonly #runs = new Map<string, ActiveRun>();
   readonly #dispatchStates = new Map<string, DispatchState>();
+  readonly #dispatchAcks = new Map<string, ConnectNodeRequest>();
   readonly #tasks = new Set<Promise<void>>();
   readonly #sessionResolutions = new Map<string, Promise<string>>();
+  readonly #outputWaiters = new Set<() => void>();
+  readonly #eventReceiptWaiters = new Set<() => void>();
+  readonly #pendingEvents = new Map<string, PendingEventFrame>();
+  readonly #pendingTerminalEvents = new Map<string, string>();
   #capabilities: CoreCapabilities | undefined;
+  #activeOutput: AsyncQueue<ConnectNodeRequest> | undefined;
+  #activeOutputEpoch: number | undefined;
+  #activeProtocolMinor: number | undefined;
+  #nextOutputEpoch = 0;
+  #stopped = false;
 
   constructor(
     private readonly hermes: HermesAgentPort,
@@ -120,8 +144,8 @@ export class HermesNodeConnector {
       body: {
         case: "handshake",
         value: create(HandshakeOfferSchema, {
-          currentProtocol: { major: 1, minor: 0 },
-          acceptedProtocols: { major: 1, minimumMinor: 0, maximumMinor: 0 },
+          currentProtocol: { major: 1, minor: 1 },
+          acceptedProtocols: { major: 1, minimumMinor: 0, maximumMinor: 1 },
           schemaBuild,
           schemaSha256,
           componentVersion: this.identity.nodeVersion ?? "0.1.0",
@@ -184,8 +208,15 @@ export class HermesNodeConnector {
     if (gatewayToken.length === 0) throw new Error("Gateway Node token is required");
     const output = new AsyncQueue<ConnectNodeRequest>();
     output.push(this.initialHandshake());
-    const onAbort = () => output.finish();
-    signal?.addEventListener("abort", onAbort, { once: true });
+    const onAbort = () => {
+      this.#stop();
+      output.finish();
+    };
+    if (signal?.aborted) {
+      onAbort();
+    } else {
+      signal?.addEventListener("abort", onAbort, { once: true });
+    }
     const heartbeat = setInterval(() => {
       try {
         output.push(create(ConnectNodeRequestSchema, {
@@ -199,16 +230,27 @@ export class HermesNodeConnector {
     try {
       for await (const response of client.connectNode(output, {
         headers: new Headers({ authorization: `Bearer ${gatewayToken}` }),
+        // ConnectRPC applies a transport default to bidirectional streams too.
+        // This connection has its own cancellation signal and must not inherit a
+        // finite RPC deadline merely because it stays healthy for a long time.
+        timeoutMs: 0,
         ...(signal === undefined ? {} : { signal }),
       })) {
         this.handle(response, output);
       }
-      await Promise.allSettled(this.#tasks);
+    } catch (error) {
+      // A caller-requested stop is cancellation, not a failed Gateway session.
+      // The reconnect supervisor only sees unplanned stream endings or errors.
+      if (!signal?.aborted) throw error;
     } finally {
       clearInterval(heartbeat);
       signal?.removeEventListener("abort", onAbort);
-      for (const active of this.#runs.values()) active.abortController.abort();
+      this.#deactivateOutput(output);
       output.finish();
+      if (signal?.aborted) {
+        this.#stop();
+        await Promise.allSettled(this.#tasks);
+      }
     }
   }
 
@@ -221,30 +263,39 @@ export class HermesNodeConnector {
       case "handshake":
         if (
           body.value.componentRole !== ComponentRole.GATEWAY ||
-          body.value.selectedProtocol?.major !== 1
+          body.value.selectedProtocol?.major !== 1 ||
+          body.value.selectedProtocol?.minor === undefined ||
+          body.value.selectedProtocol.minor < 0 ||
+          body.value.selectedProtocol.minor > 1
         ) {
           throw new Error("Gateway returned an incompatible Node handshake");
         }
         output.push(this.registration());
+        this.#activateOutput(output, body.value.selectedProtocol.minor);
         return;
       case "heartbeat":
         return;
       case "dispatchRequest":
-        this.#spawn(this.#send(body.value, output));
+        this.#spawn(this.#send(body.value));
         return;
       case "dispatchInterrupt":
-        this.#spawn(this.#interrupt(body.value, output));
+        this.#spawn(this.#interrupt(body.value));
         return;
       case "dispatchApproval":
-        this.#spawn(this.#approval(body.value, output));
+        this.#spawn(this.#approval(body.value));
         return;
       case "dispatchClarification":
-        output.push(rejectedAck(
-          body.value.dispatchId,
-          body.value.requestId,
-          "hermes_clarification_not_supported",
-          "Hermes did not advertise clarification support.",
-        ));
+        this.#spawn(
+          this.#emit(rejectedAck(
+            body.value.dispatchId,
+            body.value.requestId,
+            "hermes_clarification_not_supported",
+            "Hermes did not advertise clarification support.",
+          )).then(() => undefined),
+        );
+        return;
+      case "eventReceipt":
+        this.#acknowledgeEvent(body.value);
         return;
       case "protocolError":
         throw new Error(`Gateway protocol error: ${body.value.code}`);
@@ -260,14 +311,24 @@ export class HermesNodeConnector {
 
   async #send(
     dispatch: DispatchRequest,
-    output: AsyncQueue<ConnectNodeRequest>,
   ): Promise<void> {
     const prior = this.#dispatchStates.get(dispatch.dispatchId);
-    if (prior === "accepted") {
-      output.push(acceptedAck(dispatch.dispatchId, dispatch.requestId));
+    if (prior === "accepted" || prior === "rejected") {
+      const acknowledgement = this.#dispatchAcks.get(dispatch.dispatchId);
+      if (
+        acknowledgement === undefined ||
+        acknowledgement.body.case !== "dispatchAck" ||
+        acknowledgement.body.value.dispatchId !== dispatch.dispatchId ||
+        acknowledgement.body.value.requestId !== dispatch.requestId
+      ) {
+        throw new Error(
+          "A completed Gateway dispatch changed identity or is missing its cached acknowledgement",
+        );
+      }
+      await this.#emit(acknowledgement);
       return;
     }
-    if (prior === "rejected" || prior === "uncertain" || prior === "processing") {
+    if (prior === "uncertain" || prior === "processing") {
       return;
     }
     this.#dispatchStates.set(dispatch.dispatchId, "processing");
@@ -278,7 +339,7 @@ export class HermesNodeConnector {
       dispatch.confirmedText.trim().length === 0
     ) {
       this.#dispatchStates.set(dispatch.dispatchId, "rejected");
-      output.push(rejectedAck(
+      await this.#emitDispatchAck(dispatch.dispatchId, rejectedAck(
         dispatch.dispatchId,
         dispatch.requestId,
         "hermes_dispatch_route_invalid",
@@ -304,13 +365,16 @@ export class HermesNodeConnector {
       };
       this.#runs.set(dispatch.requestId, active);
       this.#dispatchStates.set(dispatch.dispatchId, "accepted");
-      output.push(acceptedAck(dispatch.dispatchId, dispatch.requestId));
-      await this.#stream(active, output);
+      await this.#emitDispatchAck(
+        dispatch.dispatchId,
+        acceptedAck(dispatch.dispatchId, dispatch.requestId),
+      );
+      await this.#stream(active);
     } catch (error) {
       if (this.#dispatchStates.get(dispatch.dispatchId) !== "accepted") {
         if (error instanceof HermesHttpError) {
           this.#dispatchStates.set(dispatch.dispatchId, "rejected");
-          output.push(rejectedAck(
+          await this.#emitDispatchAck(dispatch.dispatchId, rejectedAck(
             dispatch.dispatchId,
             dispatch.requestId,
             `hermes_http_${error.status}`,
@@ -319,11 +383,11 @@ export class HermesNodeConnector {
           return;
         }
         this.#dispatchStates.set(dispatch.dispatchId, "uncertain");
-        output.push(acceptanceUncertainEvent(dispatch));
+        await this.#emit(acceptanceUncertainEvent(dispatch, this.#eventProtocolMinor()));
       } else {
         const active = this.#runs.get(dispatch.requestId);
         if (active !== undefined && !active.abortController.signal.aborted) {
-          output.push(streamLostEvent(active));
+          await this.#emit(streamLostEvent(active, this.#eventProtocolMinor()));
         }
       }
     }
@@ -365,7 +429,6 @@ export class HermesNodeConnector {
 
   async #stream(
     active: ActiveRun,
-    output: AsyncQueue<ConnectNodeRequest>,
   ): Promise<void> {
     let consecutiveResumeAttempts = 0;
     while (!active.abortController.signal.aborted) {
@@ -401,9 +464,24 @@ export class HermesNodeConnector {
         if (approval !== undefined) {
           active.approvals.set(approval.approvalId, approval.fact);
         }
-        output.push(mapEvent(active, event));
+        const frame = mapEvent(active, event, this.#eventProtocolMinor());
         if (terminal(event)) {
-          this.#runs.delete(active.run.requestId);
+          const envelope = eventEnvelope(frame);
+          if (envelope === undefined) throw new Error("Hermes terminal event did not map to a Gateway envelope");
+          this.#pendingTerminalEvents.set(envelope.eventId, active.run.requestId);
+        }
+        if (!await this.#emit(frame, active.abortController.signal)) {
+          return;
+        }
+        if (terminal(event)) {
+          // Protocol 1.0 did not define durable event receipts. Its
+          // enqueue-only fallback cannot keep a completed run resident while
+          // waiting for a receipt that will never arrive.
+          if (this.#activeProtocolMinor === 0) {
+            const envelope = eventEnvelope(frame);
+            if (envelope !== undefined) this.#pendingTerminalEvents.delete(envelope.eventId);
+            this.#runs.delete(active.run.requestId);
+          }
           return;
         }
       }
@@ -429,11 +507,10 @@ export class HermesNodeConnector {
 
   async #interrupt(
     dispatch: DispatchInterrupt,
-    output: AsyncQueue<ConnectNodeRequest>,
   ): Promise<void> {
     const active = this.#runs.get(dispatch.requestId);
     if (active === undefined || !this.#requiredCapabilities().interrupt) {
-      output.push(rejectedAck(
+      await this.#emit(rejectedAck(
         dispatch.dispatchId,
         dispatch.requestId,
         "hermes_interrupt_unavailable",
@@ -443,9 +520,9 @@ export class HermesNodeConnector {
     }
     try {
       await this.hermes.stopRun(active.run.runId, dispatch.idempotencyKey);
-      output.push(acceptedAck(dispatch.dispatchId, dispatch.requestId));
+      await this.#emit(acceptedAck(dispatch.dispatchId, dispatch.requestId));
     } catch {
-      output.push(rejectedAck(
+      await this.#emit(rejectedAck(
         dispatch.dispatchId,
         dispatch.requestId,
         "hermes_interrupt_failed",
@@ -456,7 +533,6 @@ export class HermesNodeConnector {
 
   async #approval(
     dispatch: DispatchApproval,
-    output: AsyncQueue<ConnectNodeRequest>,
   ): Promise<void> {
     const active = this.#runs.get(dispatch.requestId);
     const approval = active?.approvals.get(dispatch.approvalId);
@@ -468,7 +544,7 @@ export class HermesNodeConnector {
       !this.#requiredCapabilities().approval ||
       dispatch.decision === ApprovalDecision.UNSPECIFIED
     ) {
-      output.push(rejectedAck(
+      await this.#emit(rejectedAck(
         dispatch.dispatchId,
         dispatch.requestId,
         "hermes_approval_identity_invalid",
@@ -477,7 +553,7 @@ export class HermesNodeConnector {
       return;
     }
     if (this.hermes.approvalResolutionMode() !== "exact") {
-      output.push(rejectedAck(
+      await this.#emit(rejectedAck(
         dispatch.dispatchId,
         dispatch.requestId,
         "hermes_approval_resolution_ambiguous",
@@ -492,15 +568,236 @@ export class HermesNodeConnector {
         dispatch.decision === ApprovalDecision.APPROVE,
         dispatch.idempotencyKey,
       );
-      output.push(acceptedAck(dispatch.dispatchId, dispatch.requestId));
+      await this.#emit(acceptedAck(dispatch.dispatchId, dispatch.requestId));
     } catch {
-      output.push(rejectedAck(
+      await this.#emit(rejectedAck(
         dispatch.dispatchId,
         dispatch.requestId,
         "hermes_approval_failed",
         "Hermes did not confirm the approval decision.",
       ));
     }
+  }
+
+  #activateOutput(output: AsyncQueue<ConnectNodeRequest>, protocolMinor: number): void {
+    if (this.#stopped) return;
+    const outputEpoch = ++this.#nextOutputEpoch;
+    this.#activeOutput = output;
+    this.#activeOutputEpoch = outputEpoch;
+    this.#activeProtocolMinor = protocolMinor;
+    try {
+      for (const pending of this.#pendingEvents.values()) {
+        pending.frame = withEventProtocolMinor(pending.frame, protocolMinor);
+        output.push(pending.frame);
+        pending.sentOutputEpoch = outputEpoch;
+      }
+      if (protocolMinor === 0) {
+        // Protocol 1.0 has no durable receipt. Once its replay frames have
+        // entered this output queue, release the v1.1 journal rather than
+        // waiting forever for receipts that this peer cannot emit. The retained
+        // record lets emitters already waiting for this reconnect
+        // observe the enqueue without adding a duplicate frame.
+        for (const [eventId, pending] of this.#pendingEvents) {
+          pending.legacyEnqueued = true;
+          const terminalRequestId = this.#pendingTerminalEvents.get(eventId);
+          if (terminalRequestId !== undefined) {
+            this.#pendingTerminalEvents.delete(eventId);
+            this.#runs.delete(terminalRequestId);
+          }
+        }
+        this.#pendingEvents.clear();
+        this.#wakeEventReceiptWaiters();
+      }
+    } catch {
+      this.#activeOutput = undefined;
+      this.#activeOutputEpoch = undefined;
+      this.#activeProtocolMinor = undefined;
+      this.#wakeOutputWaiters();
+      return;
+    }
+    this.#wakeOutputWaiters();
+  }
+
+  #deactivateOutput(output: AsyncQueue<ConnectNodeRequest>): void {
+    if (this.#activeOutput !== output) return;
+    this.#activeOutput = undefined;
+    this.#activeOutputEpoch = undefined;
+    this.#activeProtocolMinor = undefined;
+    this.#wakeOutputWaiters();
+  }
+
+  #stop(): void {
+    if (this.#stopped) return;
+    this.#stopped = true;
+    this.#activeOutput = undefined;
+    this.#activeOutputEpoch = undefined;
+    this.#activeProtocolMinor = undefined;
+    for (const active of this.#runs.values()) active.abortController.abort();
+    this.#pendingEvents.clear();
+    this.#pendingTerminalEvents.clear();
+    this.#dispatchAcks.clear();
+    this.#wakeOutputWaiters();
+    this.#wakeEventReceiptWaiters();
+  }
+
+  async #emit(
+    frame: ConnectNodeRequest,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    const retained = await this.#retainEventUntilReceipt(frame, signal);
+    if (retained === false) return false;
+    let frameToEmit = retained?.frame ?? frame;
+    while (!this.#stopped && !signal?.aborted) {
+      const output = this.#activeOutput;
+      const outputEpoch = this.#activeOutputEpoch;
+      if (output === undefined) {
+        await this.#waitForOutput(signal);
+        continue;
+      }
+      if (outputEpoch === undefined) {
+        this.#deactivateOutput(output);
+        continue;
+      }
+      const protocolMinor = this.#activeProtocolMinor;
+      if (retained !== undefined && protocolMinor !== undefined) {
+        retained.frame = withEventProtocolMinor(retained.frame, protocolMinor);
+        frameToEmit = retained.frame;
+      } else if (protocolMinor !== undefined && eventEnvelope(frameToEmit) !== undefined) {
+        frameToEmit = withEventProtocolMinor(frameToEmit, protocolMinor);
+      }
+      if (retained?.legacyEnqueued || retained?.sentOutputEpoch === outputEpoch) return true;
+      try {
+        output.push(frameToEmit);
+        if (retained !== undefined) retained.sentOutputEpoch = outputEpoch;
+        return true;
+      } catch {
+        // A transport can fail after an event has been created. Do not drop or
+        // re-submit it: keep the same frame and wait for the reconnecting
+        // stream to complete its handshake and registration.
+        this.#deactivateOutput(output);
+      }
+    }
+    return false;
+  }
+
+  async #emitDispatchAck(
+    dispatchId: string,
+    acknowledgement: ConnectNodeRequest,
+  ): Promise<boolean> {
+    this.#dispatchAcks.set(dispatchId, acknowledgement);
+    return await this.#emit(acknowledgement);
+  }
+
+  async #retainEventUntilReceipt(
+    frame: ConnectNodeRequest,
+    signal?: AbortSignal,
+  ): Promise<PendingEventFrame | false | undefined> {
+    const envelope = eventEnvelope(frame);
+    if (envelope === undefined) return undefined;
+    // Protocol 1.0 has no receipt frame. Once its live output is established,
+    // use its historical enqueue-only behavior. Frames created while no output
+    // is available stay journaled until the next negotiated stream replays or
+    // degrades them.
+    if (this.#activeProtocolMinor === 0) return undefined;
+    const existing = this.#pendingEvents.get(envelope.eventId);
+    if (existing !== undefined) {
+      const prior = eventEnvelope(existing.frame);
+      if (
+        prior === undefined ||
+        prior.requestId !== envelope.requestId ||
+        prior.sequence !== envelope.sequence
+      ) {
+        throw new Error("Gateway event identity was reused with a different request or sequence");
+      }
+      return existing;
+    }
+    while (
+      !this.#stopped &&
+      !signal?.aborted &&
+      this.#pendingEvents.size >= maximumPendingEventFrames
+    ) {
+      await this.#waitForEventReceipt(signal);
+    }
+    if (this.#stopped || signal?.aborted) return false;
+    if (this.#activeProtocolMinor === 0) return undefined;
+    const pending = { frame };
+    this.#pendingEvents.set(envelope.eventId, pending);
+    return pending;
+  }
+
+  #acknowledgeEvent(receipt: NodeEventReceipt): void {
+    if ((this.#activeProtocolMinor ?? 0) < 1) {
+      throw new Error("Gateway sent an event receipt without selecting protocol minor 1");
+    }
+    const pending = this.#pendingEvents.get(receipt.eventId);
+    if (pending === undefined) {
+      throw new Error("Gateway returned an event receipt that was not pending");
+    }
+    const envelope = eventEnvelope(pending.frame);
+    if (
+      envelope === undefined ||
+      envelope.requestId !== receipt.requestId ||
+      envelope.conversationId !== receipt.conversationId ||
+      envelope.sequence !== receipt.sourceSequence ||
+      receipt.gatewaySequence === 0n
+    ) {
+      throw new Error("Gateway returned an event receipt with a different identity");
+    }
+    this.#pendingEvents.delete(receipt.eventId);
+    const terminalRequestId = this.#pendingTerminalEvents.get(receipt.eventId);
+    if (terminalRequestId !== undefined) {
+      this.#pendingTerminalEvents.delete(receipt.eventId);
+      this.#runs.delete(terminalRequestId);
+    }
+    this.#wakeEventReceiptWaiters();
+  }
+
+  #waitForOutput(signal?: AbortSignal): Promise<void> {
+    if (this.#stopped || signal?.aborted || this.#activeOutput !== undefined) {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      const wake = () => {
+        this.#outputWaiters.delete(wake);
+        signal?.removeEventListener("abort", wake);
+        resolve();
+      };
+      this.#outputWaiters.add(wake);
+      signal?.addEventListener("abort", wake, { once: true });
+      if (this.#stopped || signal?.aborted || this.#activeOutput !== undefined) {
+        wake();
+      }
+    });
+  }
+
+  #waitForEventReceipt(signal?: AbortSignal): Promise<void> {
+    if (this.#stopped || signal?.aborted || this.#pendingEvents.size < maximumPendingEventFrames) {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      const wake = () => {
+        this.#eventReceiptWaiters.delete(wake);
+        signal?.removeEventListener("abort", wake);
+        resolve();
+      };
+      this.#eventReceiptWaiters.add(wake);
+      signal?.addEventListener("abort", wake, { once: true });
+      if (this.#stopped || signal?.aborted || this.#pendingEvents.size < maximumPendingEventFrames) {
+        wake();
+      }
+    });
+  }
+
+  #wakeOutputWaiters(): void {
+    for (const wake of [...this.#outputWaiters]) wake();
+  }
+
+  #wakeEventReceiptWaiters(): void {
+    for (const wake of [...this.#eventReceiptWaiters]) wake();
+  }
+
+  #eventProtocolMinor(): number {
+    return this.#activeProtocolMinor ?? 1;
   }
 
   #requiredCapabilities(): CoreCapabilities {
@@ -582,7 +879,10 @@ function rejectedAck(
   });
 }
 
-function acceptanceUncertainEvent(dispatch: DispatchRequest): ConnectNodeRequest {
+function acceptanceUncertainEvent(
+  dispatch: DispatchRequest,
+  protocolMinor: number,
+): ConnectNodeRequest {
   return eventFrame({
     eventId: stableId(`acceptance-uncertain:${dispatch.dispatchId}`),
     connectionId: "hermes-acceptance-uncertain",
@@ -591,6 +891,7 @@ function acceptanceUncertainEvent(dispatch: DispatchRequest): ConnectNodeRequest
     requestId: dispatch.requestId,
     sequence: 1,
     type: AgentEventType.CONNECTION_LOST,
+    protocolMinor,
     payload: {
       case: "connection",
       value: {
@@ -601,7 +902,7 @@ function acceptanceUncertainEvent(dispatch: DispatchRequest): ConnectNodeRequest
   });
 }
 
-function streamLostEvent(active: ActiveRun): ConnectNodeRequest {
+function streamLostEvent(active: ActiveRun, protocolMinor: number): ConnectNodeRequest {
   return eventFrame({
     eventId: stableId(
       `stream-lost:${active.run.runId}:${active.lastSequence + 1}`,
@@ -612,6 +913,7 @@ function streamLostEvent(active: ActiveRun): ConnectNodeRequest {
     requestId: active.run.requestId,
     sequence: active.lastSequence + 1,
     type: AgentEventType.CONNECTION_LOST,
+    protocolMinor,
     payload: {
       case: "connection",
       value: {
@@ -622,7 +924,11 @@ function streamLostEvent(active: ActiveRun): ConnectNodeRequest {
   });
 }
 
-function mapEvent(active: ActiveRun, event: CoreEvent): ConnectNodeRequest {
+function mapEvent(
+  active: ActiveRun,
+  event: CoreEvent,
+  protocolMinor: number,
+): ConnectNodeRequest {
   const payload = asRecord(event.payload);
   const mapped = (() => {
     switch (event.type) {
@@ -745,6 +1051,7 @@ function mapEvent(active: ActiveRun, event: CoreEvent): ConnectNodeRequest {
     type: mapped.type,
     payload: mapped.payload,
     occurredAt: new Date(event.occurredAt),
+    protocolMinor,
   });
 }
 
@@ -785,6 +1092,7 @@ interface EventFrameInput {
   sequence: number;
   type: AgentEventType;
   payload: NonNullable<MessageInitShape<typeof AgentEventSchema>["payload"]>;
+  protocolMinor: number;
   occurredAt?: Date;
 }
 
@@ -793,7 +1101,7 @@ function eventFrame(input: EventFrameInput): ConnectNodeRequest {
     body: {
       case: "event",
       value: create(EventEnvelopeSchema, {
-        protocol: { major: 1, minor: 0 },
+        protocol: { major: 1, minor: input.protocolMinor },
         eventId: input.eventId,
         connectionId: input.connectionId,
         conversationId: input.conversationId,
@@ -805,6 +1113,27 @@ function eventFrame(input: EventFrameInput): ConnectNodeRequest {
           type: input.type,
           payload: input.payload,
         }),
+      }),
+    },
+  });
+}
+
+function eventEnvelope(frame: ConnectNodeRequest): EventEnvelope | undefined {
+  return frame.body.case === "event" ? frame.body.value : undefined;
+}
+
+function withEventProtocolMinor(
+  frame: ConnectNodeRequest,
+  protocolMinor: number,
+): ConnectNodeRequest {
+  const envelope = eventEnvelope(frame);
+  if (envelope === undefined || envelope.protocol?.minor === protocolMinor) return frame;
+  return create(ConnectNodeRequestSchema, {
+    body: {
+      case: "event",
+      value: create(EventEnvelopeSchema, {
+        ...envelope,
+        protocol: create(ProtocolVersionSchema, { major: 1, minor: protocolMinor }),
       }),
     },
   });

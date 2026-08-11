@@ -17,7 +17,7 @@
     "test:mvp-benchmark": "node --test scripts/summarize-mvp-home-benchmark.test.mjs",
     "test:stt": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=services/stt python3 -m unittest discover -s services/stt/tests -v",
     "test:postgres": "npm run test:postgres -w @agent-talk/gateway",
-    "test:transport": "npm run test:transport -w @agent-talk/gateway",
+    "test:transport": "npm run test:transport -w @agent-talk/gateway && npm run test:transport -w @agent-talk/node",
     "flutter:check": "node scripts/run-flutter-check.mjs",
     "benchmark:m4:summary": "node scripts/summarize-m4-frame-benchmark.mjs",
     "benchmark:mvp:summary": "node scripts/summarize-mvp-home-benchmark.mjs",

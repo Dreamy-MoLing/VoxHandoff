@@ -24,9 +24,9 @@ export type HandshakeNegotiation =
     };
 
 export const currentHandshakePolicy: HandshakePolicy = Object.freeze({
-  current: Object.freeze({ major: 1, minor: 0 }),
+  current: Object.freeze({ major: 1, minor: 1 }),
   minimumMinor: 0,
-  maximumMinor: 0,
+  maximumMinor: 1,
   attachmentsEnabled: false,
 });
 

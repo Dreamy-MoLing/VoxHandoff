@@ -45,3 +45,38 @@ IDs, an interrupted SSE stream is resumed from its last native cursor with
 bounded retries; only the stream is reopened, never the run submission.
 Approval and stop actions use the exact Gateway idempotency key and never run
 without an explicit dispatch.
+
+## Gateway stream lifecycle
+
+The production transport retains a finite `defaultTimeoutMs` for any future
+short RPC, but the long-lived `ConnectNode` call explicitly uses `timeoutMs: 0`.
+HTTP/2 pings and application heartbeats are liveness signals; they do not reset
+an RPC deadline.
+
+An unexpected retryable Gateway transport close is supervised with bounded
+backoff. The Connector keeps an accepted Hermes run and its stable event
+identity, waits for the replacement stream to finish its handshake and Node
+registration, and then continues forwarding frames. It never calls `startRun`
+again merely because the Gateway stream disconnected. A completed dispatch
+keeps its exact acceptance or rejection acknowledgement in memory so a
+redelivered Gateway outbox entry can be acknowledged after that reconnect.
+
+Protocol 1.1 adds `NodeEventReceipt`: Gateway sends it only after its Node
+ledger durably accepts the exact event. The Connector retains at most 256
+in-memory event frames, replays them in order after registration, and removes
+one only after its matching receipt; a terminal Hermes run remains present
+until that receipt. Output epochs prevent an event created during the
+disconnect/handshake window from being enqueued twice. This protects a
+transport reconnect inside the same Node process only. The retry journal is
+not persisted and does not promise process-crash recovery. Protocol 1.0 is a
+rolling-upgrade fallback with its historical enqueue-only semantics: it has no
+receipt and therefore no lossless reconnect guarantee.
+
+`SIGINT` and `SIGTERM` are explicit shutdown: they cancel active runs and do
+not start another connection attempt.
+
+Run the explicit socket gate after the normal Node tests:
+
+```bash
+AGENT_TALK_LOOPBACK_INTEGRATION=1 npm run test:transport
+```

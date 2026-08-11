@@ -1,6 +1,6 @@
 # VoxHandoff
 
-> **项目已归档：2026-08-06**
+> **项目已归档；有限验收维护：2026-08-11**
 
 VoxHandoff 曾是面向 Hermes 用户的本地优先、GUI 优先个人语音助手。项目
 组合了 Flutter 客户端、Gateway/PostgreSQL 耐久控制面、Hermes Node
@@ -9,7 +9,9 @@ Connector、可配置 STT/TTS 端口，以及独立的 OpenAI-compatible 纯聊�
 项目后续开发现已停止。Hermes Agent [v0.20.0](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.8.3) 于 2026-08-03 发布，已经把本项目原本要补齐的核心体验纳入官方产品：流式会话语音、barge-in 打断、设备端唤醒词、可配置 STT、多 profile 语音路由和支持语音的 Gateway surface，同时提供 A2A v1.0 集成。继续维护同一层 GUI 语音能力会与上游重复。
 
 本仓库作为公开工程记录保留。它不再是当前 Hermes 的替代实现，也不再
-承诺新的功能、兼容性适配或发行版本。
+承诺新的功能、兼容性适配或发行版本。2026-08-11 的维护范围仅修复已实测
+的 Node→Gateway 长连接验收故障，不重新开启产品路线或把未实测的服务、GUI
+和实体设备门写成通过。
 
 ## 已完成的工作
 
@@ -23,7 +25,7 @@ Connector、可配置 STT/TTS 端口，以及独立的 OpenAI-compatible 纯聊�
 | M5 | 实现基座完成；GUI/发行门未关闭 | Direct LLM 纯聊天、Provider/凭据/历史隔离、不可变 `ConfirmedDraft`、请求所有权与有界 I/O、conversation context、语音设置、Piper/GPT-SoVITS adapter 和 STT sidecar 打包工作。 |
 | H1 | 未关闭 | 真实 Flutter → Gateway/PostgreSQL → Connector → Hermes 链路仍对历史 Hermes 0.19 合约保持 fail closed；幂等 run submission 与精确 approval identity/resolution 没有完成兼容验证。 |
 
-详细证据、验收边界和已知缺口保留在[冻结的交付记录](spec/DELIVERY.md)。
+详细证据、验收边界和已知缺口保留在[交付记录](spec/DELIVERY.md)。
 产品与架构文档保留在 [`spec/`](spec/README.md)，用于理解历史设计和实现。
 
 ## 代码保留的关键边界
@@ -48,11 +50,9 @@ Connector、可配置 STT/TTS 端口，以及独立的 OpenAI-compatible 纯聊�
 
 ## 分支收敛
 
-`agent/m2-complete` 和 `agent/m3-voice-loop` 都是
-`agent/m4-fairy-desktop` 的祖先。M4 分支已经包含 M2、M3、M4、M6、H1 和
-M5 工作，最终通过累计 PR
-[#4](https://github.com/Dreamy-MoLing/VoxHandoff/pull/4) 合入 `main` 即可；
-重复合并会制造重复历史。历史 topic branch 保留用于追溯。
+`agent/m2-complete`、`agent/m3-voice-loop` 和 `agent/m4-fairy-desktop`
+的提交均已合入 `main`。维护分支 `agent/acceptance-repair` 用于保存本次
+验收修复和复验；合入后可删除已合并的历史 topic branch，不应重复合并其历史。
 
 ## 本地验证
 
@@ -62,6 +62,7 @@ M5 工作，最终通过累计 PR
 npm install
 npm run check
 npm test
+AGENT_TALK_LOOPBACK_INTEGRATION=1 npm run test:transport
 npm run poc -- doctor
 ```
 

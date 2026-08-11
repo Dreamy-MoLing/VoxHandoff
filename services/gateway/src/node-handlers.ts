@@ -1,4 +1,4 @@
-import { toJson, type MessageInitShape } from "@bufbuild/protobuf";
+import { create, toJson, type MessageInitShape } from "@bufbuild/protobuf";
 import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import {
@@ -8,8 +8,10 @@ import {
   ConnectNodeResponseSchema,
   FailureCategory,
   FailureStage,
+  NodeEventReceiptSchema,
   type DispatchAck,
   type EventEnvelope,
+  type NodeEventReceipt,
   type NodeRegistration,
 } from "@agent-talk/protocol";
 
@@ -374,13 +376,17 @@ export class LedgerBackedNodeHandlers implements NodeStreamDelegate {
     }
   }
 
-  async onEvent(envelope: EventEnvelope, context: NodeMessageContext): Promise<void> {
+  async onEvent(envelope: EventEnvelope, context: NodeMessageContext): Promise<NodeEventReceipt> {
     requireOpaqueId(envelope.eventId, "eventId");
     requireOpaqueId(envelope.requestId, "requestId");
     requireOpaqueId(envelope.conversationId, "conversationId");
     if (envelope.sessionId.length > 0) requireOpaqueId(envelope.sessionId, "sessionId");
-    if (envelope.protocol?.major !== 1 || envelope.sequence === 0n) {
-      invalid("Node events must use protocol major 1 and a positive source sequence.");
+    if (
+      envelope.protocol?.major !== 1 ||
+      (envelope.protocol.minor !== 0 && envelope.protocol.minor !== 1) ||
+      envelope.sequence === 0n
+    ) {
+      invalid("Node events must use protocol version 1.0 or 1.1 and a positive source sequence.");
     }
     const event = envelope.event;
     if (event === undefined) invalid("Node event payload is required.");
@@ -389,7 +395,7 @@ export class LedgerBackedNodeHandlers implements NodeStreamDelegate {
     const now = this.dependencies.now();
     const normalized = normalizePayload(event, now);
     try {
-      await this.ledger.ingestNodeEvent({
+      const stored = await this.ledger.ingestNodeEvent({
         eventId: envelope.eventId,
         nodeId: context.principal.principalId,
         connectionId: context.connectionId,
@@ -403,6 +409,14 @@ export class LedgerBackedNodeHandlers implements NodeStreamDelegate {
         failure: normalized.failure,
         interaction: normalized.interaction,
         occurredAt: now,
+      });
+      return create(NodeEventReceiptSchema, {
+        eventId: stored.eventId,
+        requestId: envelope.requestId,
+        conversationId: stored.conversationId,
+        sourceSequence: envelope.sequence,
+        gatewaySequence: stored.sequence,
+        duplicate: stored.duplicate,
       });
     } catch (error) {
       if (error instanceof NodeLedgerError) throw mapLedgerError(error);

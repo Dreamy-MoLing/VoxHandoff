@@ -11,6 +11,7 @@ import {
   ComponentRole,
   ConnectNodeResponseSchema,
   GatewayControlService,
+  NodeEventReceiptSchema,
 } from "@agent-talk/protocol";
 import {
   createGatewayControlService,
@@ -133,6 +134,14 @@ test("crosses the production Gateway stream boundary from dispatch through Herme
       if (type === AgentEventType.REQUEST_COMPLETED) {
         abortController.abort();
       }
+      return create(NodeEventReceiptSchema, {
+        eventId: event.eventId,
+        requestId: event.requestId,
+        conversationId: event.conversationId,
+        sourceSequence: event.sequence,
+        gatewaySequence: 1n,
+        duplicate: false,
+      });
     },
   };
   const service = createGatewayControlService({

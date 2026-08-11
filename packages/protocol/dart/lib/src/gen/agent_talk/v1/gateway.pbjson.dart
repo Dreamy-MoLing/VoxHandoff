@@ -467,6 +467,27 @@ final $typed_data.Uint8List dispatchAckDescriptor = $convert.base64Decode(
     'aWx1cmUYBCABKAsyGy5hZ2VudF90YWxrLnYxLlN0YWdlRmFpbHVyZUgAUgdmYWlsdXJliAEBQg'
     'oKCF9mYWlsdXJl');
 
+@$core.Deprecated('Use nodeEventReceiptDescriptor instead')
+const NodeEventReceipt$json = {
+  '1': 'NodeEventReceipt',
+  '2': [
+    {'1': 'event_id', '3': 1, '4': 1, '5': 9, '10': 'eventId'},
+    {'1': 'request_id', '3': 2, '4': 1, '5': 9, '10': 'requestId'},
+    {'1': 'conversation_id', '3': 3, '4': 1, '5': 9, '10': 'conversationId'},
+    {'1': 'source_sequence', '3': 4, '4': 1, '5': 4, '10': 'sourceSequence'},
+    {'1': 'gateway_sequence', '3': 5, '4': 1, '5': 4, '10': 'gatewaySequence'},
+    {'1': 'duplicate', '3': 6, '4': 1, '5': 8, '10': 'duplicate'},
+  ],
+};
+
+/// Descriptor for `NodeEventReceipt`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List nodeEventReceiptDescriptor = $convert.base64Decode(
+    'ChBOb2RlRXZlbnRSZWNlaXB0EhkKCGV2ZW50X2lkGAEgASgJUgdldmVudElkEh0KCnJlcXVlc3'
+    'RfaWQYAiABKAlSCXJlcXVlc3RJZBInCg9jb252ZXJzYXRpb25faWQYAyABKAlSDmNvbnZlcnNh'
+    'dGlvbklkEicKD3NvdXJjZV9zZXF1ZW5jZRgEIAEoBFIOc291cmNlU2VxdWVuY2USKQoQZ2F0ZX'
+    'dheV9zZXF1ZW5jZRgFIAEoBFIPZ2F0ZXdheVNlcXVlbmNlEhwKCWR1cGxpY2F0ZRgGIAEoCFIJ'
+    'ZHVwbGljYXRl');
+
 @$core.Deprecated('Use connectNodeRequestDescriptor instead')
 const ConnectNodeRequest$json = {
   '1': 'ConnectNodeRequest',
@@ -609,6 +630,15 @@ const ConnectNodeResponse$json = {
       '9': 0,
       '10': 'protocolError'
     },
+    {
+      '1': 'event_receipt',
+      '3': 8,
+      '4': 1,
+      '5': 11,
+      '6': '.agent_talk.v1.NodeEventReceipt',
+      '9': 0,
+      '10': 'eventReceipt'
+    },
   ],
   '8': [
     {'1': 'body'},
@@ -626,8 +656,9 @@ final $typed_data.Uint8List connectNodeResponseDescriptor = $convert.base64Decod
     'Hy5hZ2VudF90YWxrLnYxLkRpc3BhdGNoQXBwcm92YWxIAFIQZGlzcGF0Y2hBcHByb3ZhbBJdCh'
     'ZkaXNwYXRjaF9jbGFyaWZpY2F0aW9uGAYgASgLMiQuYWdlbnRfdGFsay52MS5EaXNwYXRjaENs'
     'YXJpZmljYXRpb25IAFIVZGlzcGF0Y2hDbGFyaWZpY2F0aW9uEkUKDnByb3RvY29sX2Vycm9yGA'
-    'cgASgLMhwuYWdlbnRfdGFsay52MS5Qcm90b2NvbEVycm9ySABSDXByb3RvY29sRXJyb3JCBgoE'
-    'Ym9keQ==');
+    'cgASgLMhwuYWdlbnRfdGFsay52MS5Qcm90b2NvbEVycm9ySABSDXByb3RvY29sRXJyb3ISRgoN'
+    'ZXZlbnRfcmVjZWlwdBgIIAEoCzIfLmFnZW50X3RhbGsudjEuTm9kZUV2ZW50UmVjZWlwdEgAUg'
+    'xldmVudFJlY2VpcHRCBgoEYm9keQ==');
 
 @$core.Deprecated('Use beginPairingRequestDescriptor instead')
 const BeginPairingRequest$json = {

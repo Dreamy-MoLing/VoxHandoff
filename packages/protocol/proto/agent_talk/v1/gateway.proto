@@ -112,6 +112,18 @@ message DispatchAck {
   optional StageFailure failure = 4;
 }
 
+// Sent only after the Gateway durably accepts an EventEnvelope. A Node retains
+// the frame across a transport reconnect until it receives this receipt, then
+// may discard its in-memory retry record.
+message NodeEventReceipt {
+  string event_id = 1;
+  string request_id = 2;
+  string conversation_id = 3;
+  uint64 source_sequence = 4;
+  uint64 gateway_sequence = 5;
+  bool duplicate = 6;
+}
+
 message ConnectNodeRequest {
   oneof body {
     HandshakeOffer handshake = 1;
@@ -132,6 +144,7 @@ message ConnectNodeResponse {
     DispatchApproval dispatch_approval = 5;
     DispatchClarification dispatch_clarification = 6;
     ProtocolError protocol_error = 7;
+    NodeEventReceipt event_receipt = 8;
   }
 }
 

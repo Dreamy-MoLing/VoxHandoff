@@ -1,12 +1,42 @@
 # VoxHandoff 开发与交付规范
 
-> **归档状态：Archived / Frozen（2026-08-06）**
+> **归档状态：Archived / Limited Maintenance（2026-08-11）**
 >
-> 本文件是最终历史交付记录。VoxHandoff 不再进入新的产品批次，也不
-> 再以本文件中的“下一轮开发”或“后续开发批次”作为执行计划。根目录
-> [`README.md`](../README.md) 是当前归档入口。Hermes Agent v0.20.0 已将
-> 流式会话语音、barge-in、设备端唤醒词、可配置 STT 和多 profile 语音
-> 路由等核心体验纳入官方产品；本仓库保留实现与证据，停止平行维护。
+> 本文件保留最终历史交付记录。VoxHandoff 不再进入新的产品批次，也不
+> 再以本文件中的“下一轮开发”或“后续开发批次”作为执行计划。2026-08-11
+> 仅恢复有复现证据的验收/安全故障维护；根目录 [`README.md`](../README.md)
+> 是当前入口。Hermes Agent v0.20.0 已将流式会话语音、barge-in、设备端
+> 唤醒词、可配置 STT 和多 profile 语音路由等核心体验纳入官方产品；本仓库
+> 保留实现与证据，不重新开启平行产品维护。
+
+## 0. 2026-08-11 验收修复（有限维护）
+
+验收报告记录的 VH-ACC-001 已有可复现根因：生产 Node 的 `ConnectNode`
+双向流继承了 transport 的 `defaultTimeoutMs: 30_000`。ConnectRPC 的 deadline
+覆盖整个 RPC，HTTP/2 ping 和应用 heartbeat 都不会重置它，因此健康连接会在约
+30 秒结束；原进程也没有重连监督。
+
+- `ConnectNode` 现在显式传入 `timeoutMs: 0`，保留 transport 的有限默认值给将来
+  的短 RPC；
+- 进程以有界指数退避重建 Gateway client/stream，只重试可恢复的 transport
+  错误，认证和协议错误保持失败；
+- Gateway 断开不会中止已接受的 Hermes run，也不会再次提交 `startRun`。事件会等到
+  新 stream 完成 handshake 和 Node registration 后再转发；显式 SIGINT/SIGTERM
+  才终止运行；
+- 协议升级为 1.1：Gateway 只在 Node event 已被 ledger 耐久接受后回传精确
+  `NodeEventReceipt`。Connector 以最多 256 帧的进程内 journal 保留未回执事件，
+  注册后按序重放，严格匹配回执后才移除；终态 Hermes run 也等待回执，output epoch
+  覆盖断流至新 handshake 窗口，避免同一 event 双帧。该 journal 不跨进程崩溃恢复。
+  1.0 仅作为滚动升级兼容的 enqueue-only 降级路径，没有 receipt 或无损重连承诺；
+- `AGENT_TALK_LOOPBACK_INTEGRATION=1 npm run test:transport` 于本次修复分支通过：
+  Gateway 的两项真实 loopback HTTP/2 门通过，Node 生产参数下的真实长流持续
+  超过 60,000 ms 后由测试显式取消；另有断流重连、丢失回执重放、断流到新 handshake
+  窗口事件不双帧、无重复 `startRun` 与 supervisor 单元回归。
+
+这只关闭 Node/Gateway transport 的本地自动化缺口。真实 PostgreSQL migration/restart、
+Hermes 0.20 capability 与 H1、实体 GUI/麦克风、真实 STT/TTS/provider、平台启动、
+10 分钟稳定性、备份恢复和发布证据仍须按下方独立证据轴复验，不能因此写为完整项目
+发布验收通过。
 
 ## 1. 归档时的状态
 

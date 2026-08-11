@@ -14,6 +14,7 @@ import {
   type ClientCommand,
   type DispatchAck,
   type EventEnvelope,
+  type NodeEventReceipt,
   type NodeRegistration,
   type Ack,
 } from "@agent-talk/protocol";
@@ -60,14 +61,19 @@ export interface NodeStreamDelegate {
   onRegistration(registration: NodeRegistration, context: NodeMessageContext): Promise<readonly MessageInitShape<typeof ConnectNodeResponseSchema>[]>;
   onHeartbeat(context: NodeMessageContext): Promise<readonly MessageInitShape<typeof ConnectNodeResponseSchema>[]>;
   onDispatchAck(ack: DispatchAck, context: NodeMessageContext): Promise<void>;
-  onEvent(event: EventEnvelope, context: NodeMessageContext): Promise<void>;
+  onEvent(event: EventEnvelope, context: NodeMessageContext): Promise<NodeEventReceipt>;
 }
 
 const noNodeDelegate: NodeStreamDelegate = {
   async onRegistration() { return []; },
   async onHeartbeat() { return []; },
   async onDispatchAck() {},
-  async onEvent() {},
+  async onEvent() {
+    throw new ConnectError(
+      "A durable Node event ledger is required before events can be acknowledged.",
+      Code.FailedPrecondition,
+    );
+  },
 };
 
 const eventTypes: Readonly<Record<string, AgentEventType>> = {
@@ -650,7 +656,7 @@ export class LedgerBackedGatewayHandlers implements GatewayStreamHandlers {
     await this.nodeDelegate.onDispatchAck(ack, context);
   }
 
-  async onNodeEvent(event: EventEnvelope, context: NodeMessageContext): Promise<void> {
-    await this.nodeDelegate.onEvent(event, context);
+  async onNodeEvent(event: EventEnvelope, context: NodeMessageContext): Promise<NodeEventReceipt> {
+    return await this.nodeDelegate.onEvent(event, context);
   }
 }

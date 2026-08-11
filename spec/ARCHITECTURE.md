@@ -442,6 +442,16 @@ PowerSync 类型和 schema 若被引入，只能存在于 `SyncAdapter`。移除
 - Hermes 0.19 的 `approval.request` 不含原生 approval ID/expiry：Connector 以 run+确定性事件 ID 生成 approval ID；运维者必须先人工保证显式 `VOXHANDOFF_HERMES_APPROVAL_TIMEOUT_SECONDS` 与 Hermes `approvals.timeout` 相同，代码再从事件 timestamp 推导 expiry，不能把该部署前提写成自动协商证明。摘要 hash 从已脱敏 description 确定性计算。经核对的 0.19 resolution API 只接收 `choice` 且按 FIFO 队首消费，不能把不可变 approval ID 传给上游；因此 Connector 将 approval capability 公布为不可用，收到任何具体 approval decision 都保留明确 `hermes_approval_resolution_ambiguous` 阻塞并且绝不调用 resolution API。Hermes profile 必须使用 `approvals.mode: manual`，smart/off 不得注册为生产 Connector；
 - Hermes 0.19 当前明确协商为 `idempotency=false`、`replay=false`、`sequenceRecovery=false`，因此生产 Connector 按 capability 门拒绝注册；不得依据请求头名称、版本号或一次成功调用推断支持；
 - Connector session store 以共享加载 promise 合并冷启动并发读，并以 conversation-scoped in-flight resolution 合并自动 session 创建；同一 conversation 的并发 dispatch 只能创建和持久化一个 session。Gateway 的持久 route 唯一约束继续负责防止跨 conversation 复用；
+- Gateway `ConnectNode` 是常驻双向流：即使 transport 为短 RPC 保留有限默认 deadline，
+  该调用也必须显式禁用 RPC deadline；HTTP/2 ping 和应用 heartbeat 只证明活性，不能
+  延长 deadline。可恢复的 Gateway 断流以有界退避重建 stream，但不得因该断流中止或
+  重提已接受的 Hermes run；待新 stream 完成 handshake 和 Node registration 后才继续
+  转发事件。协议 1.1 的 Node event 只有在 Gateway ledger 耐久接受后才回传精确的
+  `NodeEventReceipt`；Connector 以内存中最多 256 帧的 journal 按序重放，只有匹配
+  receipt 才移除事件，终态 run 也必须等 receipt 才清理，output epoch 防止断流到新
+  handshake 窗口的双帧。该 journal 不跨 Node 进程重启。协议 1.0 仅为滚动升级保留
+  历史 enqueue-only 语义，没有 receipt，不能承诺无损重连。认证、协议错误和显式
+  进程停止不进入重连；
 - 启动用户既有 gateway 前必须确认不会意外连接其消息平台；
 - 远程明文 HTTP 默认拒绝，loopback 开发例外必须显式配置。
 

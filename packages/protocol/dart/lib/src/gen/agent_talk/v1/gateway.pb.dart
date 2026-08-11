@@ -1441,6 +1441,127 @@ class DispatchAck extends $pb.GeneratedMessage {
   $3.StageFailure ensureFailure() => $_ensure(3);
 }
 
+/// Sent only after the Gateway durably accepts an EventEnvelope. A Node retains
+/// the frame across a transport reconnect until it receives this receipt, then
+/// may discard its in-memory retry record.
+class NodeEventReceipt extends $pb.GeneratedMessage {
+  factory NodeEventReceipt({
+    $core.String? eventId,
+    $core.String? requestId,
+    $core.String? conversationId,
+    $fixnum.Int64? sourceSequence,
+    $fixnum.Int64? gatewaySequence,
+    $core.bool? duplicate,
+  }) {
+    final result = create();
+    if (eventId != null) result.eventId = eventId;
+    if (requestId != null) result.requestId = requestId;
+    if (conversationId != null) result.conversationId = conversationId;
+    if (sourceSequence != null) result.sourceSequence = sourceSequence;
+    if (gatewaySequence != null) result.gatewaySequence = gatewaySequence;
+    if (duplicate != null) result.duplicate = duplicate;
+    return result;
+  }
+
+  NodeEventReceipt._();
+
+  factory NodeEventReceipt.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory NodeEventReceipt.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'NodeEventReceipt',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'eventId')
+    ..aOS(2, _omitFieldNames ? '' : 'requestId')
+    ..aOS(3, _omitFieldNames ? '' : 'conversationId')
+    ..a<$fixnum.Int64>(
+        4, _omitFieldNames ? '' : 'sourceSequence', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(
+        5, _omitFieldNames ? '' : 'gatewaySequence', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..aOB(6, _omitFieldNames ? '' : 'duplicate')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  NodeEventReceipt clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  NodeEventReceipt copyWith(void Function(NodeEventReceipt) updates) =>
+      super.copyWith((message) => updates(message as NodeEventReceipt))
+          as NodeEventReceipt;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static NodeEventReceipt create() => NodeEventReceipt._();
+  @$core.override
+  NodeEventReceipt createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static NodeEventReceipt getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<NodeEventReceipt>(create);
+  static NodeEventReceipt? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get eventId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set eventId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasEventId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearEventId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get requestId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set requestId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasRequestId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearRequestId() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get conversationId => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set conversationId($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasConversationId() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearConversationId() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $fixnum.Int64 get sourceSequence => $_getI64(3);
+  @$pb.TagNumber(4)
+  set sourceSequence($fixnum.Int64 value) => $_setInt64(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasSourceSequence() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearSourceSequence() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $fixnum.Int64 get gatewaySequence => $_getI64(4);
+  @$pb.TagNumber(5)
+  set gatewaySequence($fixnum.Int64 value) => $_setInt64(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasGatewaySequence() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearGatewaySequence() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $core.bool get duplicate => $_getBF(5);
+  @$pb.TagNumber(6)
+  set duplicate($core.bool value) => $_setBool(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasDuplicate() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearDuplicate() => $_clearField(6);
+}
+
 enum ConnectNodeRequest_Body {
   handshake,
   heartbeat,
@@ -1618,6 +1739,7 @@ enum ConnectNodeResponse_Body {
   dispatchApproval,
   dispatchClarification,
   protocolError,
+  eventReceipt,
   notSet
 }
 
@@ -1630,6 +1752,7 @@ class ConnectNodeResponse extends $pb.GeneratedMessage {
     DispatchApproval? dispatchApproval,
     DispatchClarification? dispatchClarification,
     $1.ProtocolError? protocolError,
+    NodeEventReceipt? eventReceipt,
   }) {
     final result = create();
     if (handshake != null) result.handshake = handshake;
@@ -1640,6 +1763,7 @@ class ConnectNodeResponse extends $pb.GeneratedMessage {
     if (dispatchClarification != null)
       result.dispatchClarification = dispatchClarification;
     if (protocolError != null) result.protocolError = protocolError;
+    if (eventReceipt != null) result.eventReceipt = eventReceipt;
     return result;
   }
 
@@ -1661,13 +1785,14 @@ class ConnectNodeResponse extends $pb.GeneratedMessage {
     5: ConnectNodeResponse_Body.dispatchApproval,
     6: ConnectNodeResponse_Body.dispatchClarification,
     7: ConnectNodeResponse_Body.protocolError,
+    8: ConnectNodeResponse_Body.eventReceipt,
     0: ConnectNodeResponse_Body.notSet
   };
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ConnectNodeResponse',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'agent_talk.v1'),
       createEmptyInstance: create)
-    ..oo(0, [1, 2, 3, 4, 5, 6, 7])
+    ..oo(0, [1, 2, 3, 4, 5, 6, 7, 8])
     ..aOM<$1.HandshakeAccepted>(1, _omitFieldNames ? '' : 'handshake',
         subBuilder: $1.HandshakeAccepted.create)
     ..aOM<$1.Heartbeat>(2, _omitFieldNames ? '' : 'heartbeat',
@@ -1683,6 +1808,8 @@ class ConnectNodeResponse extends $pb.GeneratedMessage {
         subBuilder: DispatchClarification.create)
     ..aOM<$1.ProtocolError>(7, _omitFieldNames ? '' : 'protocolError',
         subBuilder: $1.ProtocolError.create)
+    ..aOM<NodeEventReceipt>(8, _omitFieldNames ? '' : 'eventReceipt',
+        subBuilder: NodeEventReceipt.create)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1711,6 +1838,7 @@ class ConnectNodeResponse extends $pb.GeneratedMessage {
   @$pb.TagNumber(5)
   @$pb.TagNumber(6)
   @$pb.TagNumber(7)
+  @$pb.TagNumber(8)
   ConnectNodeResponse_Body whichBody() =>
       _ConnectNodeResponse_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(1)
@@ -1720,6 +1848,7 @@ class ConnectNodeResponse extends $pb.GeneratedMessage {
   @$pb.TagNumber(5)
   @$pb.TagNumber(6)
   @$pb.TagNumber(7)
+  @$pb.TagNumber(8)
   void clearBody() => $_clearField($_whichOneof(0));
 
   @$pb.TagNumber(1)
@@ -1799,6 +1928,17 @@ class ConnectNodeResponse extends $pb.GeneratedMessage {
   void clearProtocolError() => $_clearField(7);
   @$pb.TagNumber(7)
   $1.ProtocolError ensureProtocolError() => $_ensure(6);
+
+  @$pb.TagNumber(8)
+  NodeEventReceipt get eventReceipt => $_getN(7);
+  @$pb.TagNumber(8)
+  set eventReceipt(NodeEventReceipt value) => $_setField(8, value);
+  @$pb.TagNumber(8)
+  $core.bool hasEventReceipt() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearEventReceipt() => $_clearField(8);
+  @$pb.TagNumber(8)
+  NodeEventReceipt ensureEventReceipt() => $_ensure(7);
 }
 
 class BeginPairingRequest extends $pb.GeneratedMessage {

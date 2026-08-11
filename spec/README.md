@@ -1,12 +1,13 @@
 # VoxHandoff 正式开发基线
 
-> 基线版本：1.62<br>
-> 生效日期：2026-08-06<br>
-> 状态：Archived / Frozen
+> 基线版本：1.64<br>
+> 生效日期：2026-08-11<br>
+> 状态：Archived / Limited Maintenance
 
 > 归档说明：VoxHandoff 已停止后续产品开发。本目录保留原产品、架构和
 > 验收基线作为工程记录；其中“下一轮开发”“后续开发批次”等文字均是
-> 历史快照，不再代表当前执行计划。当前入口与归档结论见根目录
+> 历史快照，不再代表当前执行计划。归档后的有限维护只处理有复现证据的
+> 验收或安全故障，不重新开启功能路线。当前入口与归档结论见根目录
 > [`README.md`](../README.md)。Hermes Agent v0.20.0 已在上游提供本项目
 > 原本要补齐的核心 GUI 语音能力，详见其
 > [官方发布说明](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.8.3)。
@@ -42,6 +43,8 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.64 | 2026-08-11 | Node/Gateway 协议升至 1.1：以 ledger 耐久 `NodeEventReceipt`、有界进程内重放 journal 与 output epoch 收紧断流重连语义；协议 1.0 保留为无回执的滚动升级降级路径 |
+| 1.63 | 2026-08-11 | 进入有限验收维护：修复 Node→Gateway 常驻双向流错误继承 30 秒 deadline、补真实 loopback 长流与断流重连回归；产品、真实 Hermes、GUI 和实体设备门仍按原证据轴独立记录 |
 | 1.62 | 2026-08-06 | 归档 VoxHandoff：冻结产品/架构/交付基线，记录 Hermes Agent v0.20.0 上游能力重叠与停止后续开发的结论 |
 | 1.61 | 2026-08-02 | 刷新批次 6 收口事实：PR #4 真实规模 54 commits / 214 files、head `3f3a3c0`、当前 CI 两组 run 全绿；修正 46/208 与 in_progress 旧文字；记录 review map 与剩余未关门 |
 | 1.60 | 2026-08-01 | 重新确立统一个人助手产品基线；按当前代码与 PR #4 复核 Provider/凭据/历史隔离、确认目标绑定、Direct LLM 生命周期/终态/有界读取、长期上下文、语音配置与 H1 外部能力门，并给出 Luna Max 可直接执行的开发批次 |

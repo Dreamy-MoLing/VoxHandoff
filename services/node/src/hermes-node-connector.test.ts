@@ -15,6 +15,7 @@ import {
   ApprovalDecision,
   ComponentRole,
   ConnectNodeResponseSchema,
+  NodeEventReceiptSchema,
   type ConnectNodeRequest,
 } from "@agent-talk/protocol";
 
@@ -222,6 +223,7 @@ test("rejects approval B without resolving FIFO approval A", async () => {
   await connector.initialize();
   const output = new AsyncQueue<ConnectNodeRequest>();
   const iterator = output[Symbol.asyncIterator]();
+  await establishNodeStream(connector, output, iterator);
 
   connector.handle(create(ConnectNodeResponseSchema, {
     body: {
@@ -305,6 +307,7 @@ test("serializes concurrent cold dispatches onto one durable Hermes session", as
   await connector.initialize();
   const output = new AsyncQueue<ConnectNodeRequest>();
   const iterator = output[Symbol.asyncIterator]();
+  await establishNodeStream(connector, output, iterator);
 
   for (const suffix of ["a", "b"]) {
     connector.handle(create(ConnectNodeResponseSchema, {
@@ -353,6 +356,7 @@ test("distinguishes a confirmed Hermes HTTP rejection from uncertain acceptance"
   await connector.initialize();
   const output = new AsyncQueue<ConnectNodeRequest>();
   const iterator = output[Symbol.asyncIterator]();
+  await establishNodeStream(connector, output, iterator);
 
   connector.handle(create(ConnectNodeResponseSchema, {
     body: {
@@ -406,6 +410,7 @@ test("resumes only the Hermes event stream from a stable cursor without resubmit
   await connector.initialize();
   const output = new AsyncQueue<ConnectNodeRequest>();
   const iterator = output[Symbol.asyncIterator]();
+  await establishNodeStream(connector, output, iterator);
 
   connector.handle(create(ConnectNodeResponseSchema, {
     body: {
@@ -437,6 +442,70 @@ test("resumes only the Hermes event stream from a stable cursor without resubmit
   );
 });
 
+test("keeps a terminal event pending until its durable receipt matches", async () => {
+  const hermes = new FakeHermes();
+  hermes.streamRunEvents = async function* (run: HermesRun): AsyncGenerator<AgentEvent> {
+    yield event(run, 2, "request.completed", {});
+  };
+  const connector = new HermesNodeConnector(hermes, {
+    nodeId: "node-1",
+    agentId: "agent-1",
+    nodeDisplayName: "Node",
+    agentDisplayName: "Hermes",
+  });
+  await connector.initialize();
+  const output = new AsyncQueue<ConnectNodeRequest>();
+  const iterator = output[Symbol.asyncIterator]();
+  await establishNodeStream(connector, output, iterator, 1);
+
+  connector.handle(create(ConnectNodeResponseSchema, {
+    body: {
+      case: "dispatchRequest",
+      value: {
+        dispatchId: "dispatch-receipt-1",
+        requestId: "request-receipt-1",
+        idempotencyKey: "idempotency-receipt-1",
+        conversationId: "conversation-receipt-1",
+        nodeId: "node-1",
+        agentId: "agent-1",
+        capabilityRevision: connector.capabilityRevision(),
+        confirmedText: "Confirmed safe text",
+      },
+    },
+  }), output);
+
+  assert.equal((await iterator.next()).value?.body.case, "dispatchAck");
+  const eventFrame = (await iterator.next()).value?.body;
+  assert.equal(eventFrame?.case, "event");
+  if (eventFrame?.case !== "event") assert.fail("expected a Node event");
+
+  assert.throws(() => connector.handle(create(ConnectNodeResponseSchema, {
+    body: {
+      case: "eventReceipt",
+      value: create(NodeEventReceiptSchema, {
+        eventId: eventFrame.value.eventId,
+        requestId: eventFrame.value.requestId,
+        conversationId: eventFrame.value.conversationId,
+        sourceSequence: eventFrame.value.sequence + 1n,
+        gatewaySequence: 1n,
+      }),
+    },
+  }), output), /different identity/u);
+
+  assert.doesNotThrow(() => connector.handle(create(ConnectNodeResponseSchema, {
+    body: {
+      case: "eventReceipt",
+      value: create(NodeEventReceiptSchema, {
+        eventId: eventFrame.value.eventId,
+        requestId: eventFrame.value.requestId,
+        conversationId: eventFrame.value.conversationId,
+        sourceSequence: eventFrame.value.sequence,
+        gatewaySequence: 1n,
+      }),
+    },
+  }), output));
+});
+
 function event(
   run: HermesRun,
   sequence: number,
@@ -452,6 +521,30 @@ function event(
     type,
     payload,
   };
+}
+
+async function establishNodeStream(
+  connector: HermesNodeConnector,
+  output: AsyncQueue<ConnectNodeRequest>,
+  iterator: AsyncIterator<ConnectNodeRequest>,
+  protocolMinor = 0,
+): Promise<void> {
+  connector.handle(create(ConnectNodeResponseSchema, {
+    body: {
+      case: "handshake",
+      value: {
+        selectedProtocol: { major: 1, minor: protocolMinor },
+        connectionId: "gateway-connection-test",
+        schemaBuild: "test",
+        schemaSha256: "b".repeat(64),
+        componentVersion: "test",
+        componentRole: ComponentRole.GATEWAY,
+        capabilityRevision: "gateway-capability-test",
+        capabilities: create(AgentCapabilitiesSchema),
+      },
+    },
+  }), output);
+  assert.equal((await iterator.next()).value?.body.case, "registration");
 }
 
 function eventType(
