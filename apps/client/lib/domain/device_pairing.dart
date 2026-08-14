@@ -15,6 +15,7 @@ enum PairingOperation {
   begin,
   complete,
   confirm,
+  refresh,
   credentialCommit,
 }
 
@@ -374,6 +375,7 @@ class DeviceCredentialBundle {
     required this.refreshToken,
     required this.accessExpiresAt,
     required this.refreshExpiresAt,
+    this.generation = 1,
   }) : scopes = List.unmodifiable(scopes);
 
   final String keyReference;
@@ -385,6 +387,7 @@ class DeviceCredentialBundle {
   final String refreshToken;
   final DateTime accessExpiresAt;
   final DateTime refreshExpiresAt;
+  final int generation;
 
   @override
   String toString() =>

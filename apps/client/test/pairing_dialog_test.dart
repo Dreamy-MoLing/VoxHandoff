@@ -1,6 +1,7 @@
 import 'package:agent_talk_client/application/device_pairing_controller.dart';
 import 'package:agent_talk_client/application/device_pairing_workflow.dart';
 import 'package:agent_talk_client/domain/device_pairing.dart';
+import 'package:agent_talk_client/infrastructure/security/private_ca_certificate_picker.dart';
 import 'package:agent_talk_client/presentation/design/agent_talk_theme.dart';
 import 'package:agent_talk_client/presentation/pairing_dialog.dart';
 import 'package:flutter/material.dart';
@@ -141,11 +142,32 @@ class PairingDialogTestFactory implements DevicePairingWorkflowFactory {
       );
 }
 
-Widget pairingHarness(PairingDialogTestFactory factory) => ProviderScope(
+class TestPrivateCaCertificatePicker implements PrivateCaCertificatePicker {
+  TestPrivateCaCertificatePicker(this.certificate);
+
+  final String? certificate;
+  var calls = 0;
+
+  @override
+  Future<String?> pick() async {
+    calls += 1;
+    return certificate;
+  }
+}
+
+Widget pairingHarness(
+  PairingDialogTestFactory factory, {
+  PrivateCaCertificatePicker? certificatePicker,
+}) => ProviderScope(
   overrides: [pairingWorkflowFactoryProvider.overrideWithValue(factory)],
   child: MaterialApp(
     theme: buildAgentTalkDarkTheme(),
-    home: const Scaffold(body: DevicePairingDialog()),
+    home: Scaffold(
+      body: DevicePairingDialog(
+        certificatePicker:
+            certificatePicker ?? const PlatformPrivateCaCertificatePicker(),
+      ),
+    ),
   ),
 );
 
@@ -243,6 +265,62 @@ void main() {
     expect(factory.workflow!.acknowledged, isTrue);
     expect(factory.closeCalls, 1);
     expect(find.text('Name both ends of the relay'), findsOneWidget);
+  });
+
+  testWidgets('can abandon a pending owner approval locally', (tester) async {
+    final factory = PairingDialogTestFactory();
+    await tester.pumpWidget(pairingHarness(factory));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('pairing-gateway-field')),
+      'https://gateway.example',
+    );
+    await tester.ensureVisible(find.byKey(const Key('pairing-begin-button')));
+    await tester.tap(find.byKey(const Key('pairing-begin-button')));
+    await tester.pumpAndSettle();
+
+    final abandon = find.widgetWithText(
+      OutlinedButton,
+      'Abandon local pairing attempt',
+    );
+    await tester.ensureVisible(abandon);
+    await tester.tap(abandon);
+    await tester.pumpAndSettle();
+
+    expect(factory.workflow!.abandonCalls, 1);
+    expect(factory.workflow!.acknowledged, isFalse);
+    expect(factory.closeCalls, 1);
+    expect(find.text('Name both ends of the relay'), findsOneWidget);
+  });
+
+  testWidgets('imports a PEM certificate without multiline text injection', (
+    tester,
+  ) async {
+    const certificate = '''-----BEGIN CERTIFICATE-----
+ZmFrZS1jZXJ0aWZpY2F0ZQ==
+-----END CERTIFICATE-----''';
+    final picker = TestPrivateCaCertificatePicker(certificate);
+    await tester.pumpWidget(
+      pairingHarness(PairingDialogTestFactory(), certificatePicker: picker),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(
+      find.byKey(const Key('pairing-import-ca-button')),
+    );
+    await tester.tap(find.byKey(const Key('pairing-import-ca-button')));
+    await tester.pumpAndSettle();
+
+    expect(picker.calls, 1);
+    final caSection = find.text('Private CA certificate');
+    await tester.ensureVisible(caSection);
+    await tester.tap(caSection);
+    await tester.pumpAndSettle();
+    final certificateField = tester.widget<TextField>(
+      find.byKey(const Key('pairing-certificate-field')),
+    );
+    expect(certificateField.controller!.text, certificate);
   });
 
   testWidgets('has no overflow on a phone viewport and meets tap semantics', (

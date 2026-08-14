@@ -9,18 +9,24 @@ class FakePairingUnaryRpc implements PairingUnaryRpc {
   BeginPairingResponse beginResponse = BeginPairingResponse();
   CompletePairingResponse completeResponse = CompletePairingResponse();
   ConfirmPairingResponse confirmResponse = ConfirmPairingResponse();
+  RefreshDeviceCredentialResponse refreshResponse =
+      RefreshDeviceCredentialResponse();
   Object? beginError;
   Object? completeError;
   Object? confirmError;
+  Object? refreshError;
   BeginPairingRequest? beginRequest;
   CompletePairingRequest? completeRequest;
   ConfirmPairingRequest? confirmRequest;
+  RefreshDeviceCredentialRequest? refreshRequest;
   CallOptions? beginOptions;
   CallOptions? completeOptions;
   CallOptions? confirmOptions;
+  CallOptions? refreshOptions;
   var beginCalls = 0;
   var completeCalls = 0;
   var confirmCalls = 0;
+  var refreshCalls = 0;
 
   @override
   Future<BeginPairingResponse> beginPairing(
@@ -56,6 +62,18 @@ class FakePairingUnaryRpc implements PairingUnaryRpc {
     confirmOptions = options;
     if (confirmError case final Object error) throw error;
     return confirmResponse;
+  }
+
+  @override
+  Future<RefreshDeviceCredentialResponse> refreshDeviceCredential(
+    RefreshDeviceCredentialRequest request, {
+    CallOptions? options,
+  }) async {
+    refreshCalls += 1;
+    refreshRequest = request;
+    refreshOptions = options;
+    if (refreshError case final Object error) throw error;
+    return refreshResponse;
   }
 }
 
@@ -192,6 +210,54 @@ void main() {
           'The owner has not approved this device yet.',
         );
         expect(error.safeMessage, isNot(contains('secret-bearing')));
+      },
+    );
+
+    test(
+      'rotates an expired device credential through the signed refresh RPC',
+      () async {
+        final rpc = FakePairingUnaryRpc()
+          ..refreshResponse = RefreshDeviceCredentialResponse(
+            deviceId: 'device-1',
+            credentialId: 'credential-1',
+            accessToken: 'NEW_ACCESS_TOKEN_0123456789_abcdef',
+            refreshToken: 'NEW_REFRESH_TOKEN_0123456789_abcdefghijklmnop',
+            scopes: ['observe', 'send'],
+            accessExpiresAtUnixMs: Int64(1893456900000),
+            refreshExpiresAtUnixMs: Int64(1896048000000),
+            gatewayAudience: 'https://gateway.example',
+          );
+        final gateway = GrpcPairingGateway(rpc);
+        final refreshed = await gateway.refresh(
+          DeviceCredentialBundle(
+            keyReference: '0123456789abcdef0123456789abcdef',
+            deviceId: 'device-1',
+            credentialId: 'credential-1',
+            gatewayAudience: 'https://gateway.example',
+            scopes: const ['observe', 'send'],
+            accessToken: 'ACCESS_TOKEN_0123456789_abcdef',
+            refreshToken: 'REFRESH_TOKEN_0123456789_abcdefghijklmnop',
+            accessExpiresAt: DateTime.utc(2030, 1, 1),
+            refreshExpiresAt: DateTime.utc(2030, 2, 1),
+          ),
+          DeviceSignatureProof(
+            credentialId: 'credential-1',
+            nonce: [1, 2, 3],
+            signature: [4, 5, 6],
+          ),
+        );
+
+        expect(rpc.refreshCalls, 1);
+        expect(rpc.refreshRequest!.credentialId, 'credential-1');
+        expect(rpc.refreshRequest!.refreshToken, contains('REFRESH_TOKEN'));
+        expect(
+          rpc.refreshRequest!.deviceSignature.credentialId,
+          'credential-1',
+        );
+        expect(rpc.refreshRequest!.deviceSignature.nonce, [1, 2, 3]);
+        expect(refreshed.accessToken, contains('NEW_ACCESS_TOKEN'));
+        expect(refreshed.refreshToken, contains('NEW_REFRESH_TOKEN'));
+        expect(refreshed.generation, 2);
       },
     );
 

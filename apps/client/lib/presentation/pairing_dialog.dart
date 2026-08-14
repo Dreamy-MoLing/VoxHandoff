@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/device_pairing_controller.dart';
 import '../domain/device_pairing.dart';
+import '../infrastructure/security/private_ca_certificate_picker.dart';
 import 'design/agent_talk_theme.dart';
 
 Future<void> showDevicePairingDialog(BuildContext context) => showDialog<void>(
@@ -14,9 +15,14 @@ Future<void> showDevicePairingDialog(BuildContext context) => showDialog<void>(
 );
 
 class DevicePairingDialog extends ConsumerStatefulWidget {
-  const DevicePairingDialog({super.key, this.restoreOnOpen = true});
+  const DevicePairingDialog({
+    super.key,
+    this.restoreOnOpen = true,
+    this.certificatePicker = const PlatformPrivateCaCertificatePicker(),
+  });
 
   final bool restoreOnOpen;
+  final PrivateCaCertificatePicker certificatePicker;
 
   @override
   ConsumerState<DevicePairingDialog> createState() =>
@@ -94,6 +100,33 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
               : utf8.encode(certificateText),
         );
   });
+
+  Future<void> _importPrivateCaCertificate() async {
+    if (_actionPending) return;
+    setState(() {
+      _actionPending = true;
+      _localError = null;
+    });
+    try {
+      final certificate = await widget.certificatePicker.pick();
+      if (!mounted || certificate == null) return;
+      _certificate.value = TextEditingValue(
+        text: certificate,
+        selection: TextSelection.collapsed(offset: certificate.length),
+      );
+    } on PrivateCaCertificatePickerException catch (error) {
+      if (mounted) setState(() => _localError = error.message);
+    } on FormatException {
+      if (mounted) {
+        setState(
+          () => _localError =
+              'Certificate file is not valid UTF-8 PEM. Choose a CA certificate.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _actionPending = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -227,12 +260,23 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
           ),
         ),
         const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            key: const Key('pairing-import-ca-button'),
+            onPressed: _actionPending ? null : _importPrivateCaCertificate,
+            icon: const Icon(Icons.file_open_outlined),
+            label: const Text('Import PEM from file'),
+          ),
+        ),
+        const SizedBox(height: 4),
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
           title: const Text('Private CA certificate'),
           subtitle: const Text('Optional PEM for a self-hosted Gateway'),
           children: [
             TextField(
+              key: const Key('pairing-certificate-field'),
               controller: _certificate,
               minLines: 3,
               maxLines: 6,
@@ -303,6 +347,13 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
                       .completeAfterOwnerApproval,
                 ),
           child: const Text('I completed the owner-side review'),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton(
+          onPressed: _actionPending
+              ? null
+              : () => _run(ref.read(devicePairingProvider.notifier).abandon),
+          child: const Text('Abandon local pairing attempt'),
         ),
       ],
     );

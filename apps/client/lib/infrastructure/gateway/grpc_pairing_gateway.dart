@@ -18,6 +18,11 @@ abstract interface class PairingUnaryRpc {
     ConfirmPairingRequest request, {
     CallOptions? options,
   });
+
+  Future<RefreshDeviceCredentialResponse> refreshDeviceCredential(
+    RefreshDeviceCredentialRequest request, {
+    CallOptions? options,
+  });
 }
 
 class GeneratedPairingUnaryRpc implements PairingUnaryRpc {
@@ -42,6 +47,12 @@ class GeneratedPairingUnaryRpc implements PairingUnaryRpc {
     ConfirmPairingRequest request, {
     CallOptions? options,
   }) => _client.confirmPairing(request, options: options);
+
+  @override
+  Future<RefreshDeviceCredentialResponse> refreshDeviceCredential(
+    RefreshDeviceCredentialRequest request, {
+    CallOptions? options,
+  }) => _client.refreshDeviceCredential(request, options: options);
 }
 
 class GrpcPairingGateway implements PairingGatewayPort {
@@ -164,12 +175,70 @@ class GrpcPairingGateway implements PairingGatewayPort {
     );
   }
 
+  Future<DeviceCredentialBundle> refresh(
+    DeviceCredentialBundle credential,
+    DeviceSignatureProof proof,
+  ) async {
+    final response = await _call(
+      PairingOperation.refresh,
+      () => _rpc.refreshDeviceCredential(
+        RefreshDeviceCredentialRequest(
+          credentialId: credential.credentialId,
+          refreshToken: credential.refreshToken,
+          deviceSignature: _signature(proof),
+        ),
+        options: _options,
+      ),
+    );
+    final accessExpiresAt = DateTime.fromMillisecondsSinceEpoch(
+      response.accessExpiresAtUnixMs.toInt(),
+      isUtc: true,
+    );
+    final refreshExpiresAt = DateTime.fromMillisecondsSinceEpoch(
+      response.refreshExpiresAtUnixMs.toInt(),
+      isUtc: true,
+    );
+    if (response.deviceId != credential.deviceId ||
+        response.credentialId != credential.credentialId ||
+        response.gatewayAudience != credential.gatewayAudience ||
+        !_sameStrings(response.scopes, credential.scopes) ||
+        !_validOpaqueSecret(response.accessToken) ||
+        !_validOpaqueSecret(response.refreshToken) ||
+        !accessExpiresAt.isAfter(DateTime.now().toUtc()) ||
+        !refreshExpiresAt.isAfter(accessExpiresAt)) {
+      throw const FormatException('invalid refreshed credential');
+    }
+    return DeviceCredentialBundle(
+      keyReference: credential.keyReference,
+      deviceId: response.deviceId,
+      credentialId: response.credentialId,
+      gatewayAudience: response.gatewayAudience,
+      scopes: response.scopes,
+      accessToken: response.accessToken,
+      refreshToken: response.refreshToken,
+      accessExpiresAt: accessExpiresAt,
+      refreshExpiresAt: refreshExpiresAt,
+      generation: credential.generation + 1,
+    );
+  }
+
   DeviceSignature _signature(DeviceSignatureProof proof) => DeviceSignature(
     credentialId: proof.credentialId,
     nonce: proof.nonce,
     signature: proof.signature,
     algorithm: DeviceSignatureAlgorithm.DEVICE_SIGNATURE_ALGORITHM_ED25519,
   );
+
+  static bool _sameStrings(List<String> left, List<String> right) {
+    if (left.length != right.length) return false;
+    for (var index = 0; index < left.length; index += 1) {
+      if (left[index] != right[index]) return false;
+    }
+    return true;
+  }
+
+  static bool _validOpaqueSecret(String value) =>
+      RegExp(r'^[A-Za-z0-9_-]{24,512}$').hasMatch(value);
 
   Future<T> _call<T>(
     PairingOperation operation,

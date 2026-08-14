@@ -5,6 +5,6 @@ void main() {
   test('client compiles against the generated protocol package', () {
     final version = clientProtocolVersion();
     expect(version.major, 1);
-    expect(version.minor, 0);
+    expect(version.minor, 1);
   });
 }

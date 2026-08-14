@@ -169,15 +169,24 @@ class SecureDeviceCredentialStore implements DeviceCredentialStore {
     final key = await _key(credential.credentialId);
     final encoded = _encodeCredential(credential);
     final existing = await _store.read(key);
-    if (existing != null && existing != encoded) {
-      throw const SecurePairingStoreException(
-        'credential_conflict',
-        'A different secure credential already uses this identity.',
-      );
-    }
-    if (existing == null) {
+    if (existing != null) {
+      if (existing == encoded) return;
+      final current = _decodeCredential(existing);
+      final sameIdentity =
+          current.keyReference == credential.keyReference &&
+          current.deviceId == credential.deviceId &&
+          current.gatewayAudience == credential.gatewayAudience &&
+          _sameStrings(current.scopes, credential.scopes);
+      if (!sameIdentity || credential.generation <= current.generation) {
+        throw const SecurePairingStoreException(
+          'credential_conflict',
+          'A different secure credential already uses this identity.',
+        );
+      }
       await _store.write(key, encoded);
+      return;
     }
+    await _store.write(key, encoded);
     if (activeCredentialId == null) {
       await _store.write(_activeCredentialKey, credential.credentialId);
     }
@@ -289,6 +298,7 @@ String _encodeCredential(DeviceCredentialBundle value) => jsonEncode({
   'refresh_token': value.refreshToken,
   'access_expires_at': value.accessExpiresAt.toUtc().toIso8601String(),
   'refresh_expires_at': value.refreshExpiresAt.toUtc().toIso8601String(),
+  'generation': value.generation,
 });
 
 DeviceCredentialBundle _decodeCredential(String encoded) {
@@ -310,6 +320,9 @@ DeviceCredentialBundle _decodeCredential(String encoded) {
   }
   final accessExpiresAt = _requiredDate(map, 'access_expires_at');
   final refreshExpiresAt = _requiredDate(map, 'refresh_expires_at');
+  final generation = map['generation'] == null
+      ? 1
+      : _requiredPositiveInt(map, 'generation');
   if (!refreshExpiresAt.isAfter(accessExpiresAt)) {
     throw const SecurePairingStoreException(
       'corrupt_credential',
@@ -330,6 +343,7 @@ DeviceCredentialBundle _decodeCredential(String encoded) {
     refreshToken: refreshToken,
     accessExpiresAt: accessExpiresAt,
     refreshExpiresAt: refreshExpiresAt,
+    generation: generation,
   );
 }
 
@@ -527,6 +541,25 @@ T? _optionalEnumValue<T extends Enum>(
   String? name,
   String label,
 ) => name == null ? null : _enumValue(values, name, label);
+
+int _requiredPositiveInt(Map<String, Object?> map, String key) {
+  final value = map[key];
+  if (value is! int || value <= 0) {
+    throw SecurePairingStoreException(
+      'corrupt_secure_record',
+      'The secure record field "$key" is invalid.',
+    );
+  }
+  return value;
+}
+
+bool _sameStrings(List<String> left, List<String> right) {
+  if (left.length != right.length) return false;
+  for (var index = 0; index < left.length; index += 1) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
+}
 
 void _requireOpaque(String value, String label) {
   if (value.isEmpty ||

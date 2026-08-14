@@ -430,6 +430,10 @@ class DevicePairingCoordinator implements DevicePairingWorkflow {
           );
           await confirm();
           return;
+        case PairingOperation.refresh:
+          throw StateError(
+            'Credential refresh is not a pairing recovery step.',
+          );
         case PairingOperation.credentialCommit:
           final checkpoint = await _requireCheckpoint();
           final credential =
