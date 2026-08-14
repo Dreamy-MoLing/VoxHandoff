@@ -684,3 +684,15 @@ DELIVERY 对应章节。
   少量同音错字，属模型识别质量，非链路故障）。
 - 边界：Hermes 零改动；未 push；手机只经 `100.96.66.108:5555` Tailscale ADB；
   token/私钥/证书/音频内容未进入日志与提交。
+
+## D-036：STT 配置门槛简化客户端接入完成（Fetch disclosure）
+
+- 日期：2026-08-14
+- 状态：Implemented locally / 真机验证待做
+- 依据：Codex 提交 f267dbb（feat: 简化远程 STT 配置门槛）。设置页新增
+  "Fetch disclosure" 按钮：校验 HTTPS、token 优先输入值否则读 secure storage、
+  成功自动填充 TLS/retention/revision/providerId、失败内联显示；声明字段变更
+  自动撤销旧 consent。
+- 验证：flutter analyze 通过；全量 Flutter 239 通过（2 live smoke 跳过）；
+  服务端 unittest 15/15。
+- 未决：真机简化配置流程端到端验证（无 STT token 且服务未监听，未伪造结果）。
