@@ -17,6 +17,7 @@ class ProductionVoicePortFactory implements VoicePortFactory {
   ProductionVoicePortFactory({
     SecureValueStore? secureValueStore,
     List<int>? remoteTrustedRootCertificates,
+    this.remoteTrustedRootCertificatesProvider,
     this._remoteTransportFactory,
   }) : _secureValueStore = secureValueStore ?? FlutterSecureValueStore(),
        _remoteTrustedRootCertificates = remoteTrustedRootCertificates == null
@@ -25,6 +26,7 @@ class ProductionVoicePortFactory implements VoicePortFactory {
 
   final SecureValueStore _secureValueStore;
   final List<int>? _remoteTrustedRootCertificates;
+  final Future<List<int>?> Function()? remoteTrustedRootCertificatesProvider;
   final RemoteSttTransport Function(
     RemoteSttProviderConfiguration configuration,
     RemoteSttTokenProvider tokenProvider,
@@ -62,6 +64,8 @@ class ProductionVoicePortFactory implements VoicePortFactory {
           JsonHttpRemoteSttTransport(
             tokenProvider: tokenProvider,
             trustedRootCertificates: _remoteTrustedRootCertificates,
+            trustedRootCertificatesProvider:
+                remoteTrustedRootCertificatesProvider,
           );
       return ConsentedRemoteSttPort(
         disclosure: disclosure,

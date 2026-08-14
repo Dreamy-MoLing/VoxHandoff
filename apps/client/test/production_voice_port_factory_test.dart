@@ -63,6 +63,45 @@ void main() {
     },
   );
 
+  test('production factory forwards the current Gateway trust roots', () async {
+    var roots = <int>[1, 2, 3];
+    final resolved = <List<int>>[];
+    final factory = ProductionVoicePortFactory(
+      secureValueStore: _MemorySecureStore(),
+      remoteTrustedRootCertificatesProvider: () async {
+        resolved.add(List<int>.from(roots));
+        return roots;
+      },
+    );
+    final configuration = RemoteSttProviderConfiguration(
+      providerId: 'mobile-stt',
+      origin: Uri.parse('https://stt.example.test'),
+      tlsPolicy: 'system-roots-hostname-verified',
+      retentionPolicy: 'fixture-no-retention',
+      streaming: false,
+      revision: 'v1',
+      consentedAt: DateTime.utc(2026, 8, 13),
+    );
+
+    final first = factory.createStt(
+      SttProviderConfiguration.remote(remote: configuration),
+    );
+    await expectLater(first.warmUp(), throwsA(isA<FormatException>()));
+    await first.close();
+
+    roots = [4, 5, 6];
+    final second = factory.createStt(
+      SttProviderConfiguration.remote(remote: configuration),
+    );
+    await expectLater(second.warmUp(), throwsA(isA<FormatException>()));
+    await second.close();
+
+    expect(resolved, [
+      [1, 2, 3],
+      [4, 5, 6],
+    ]);
+  });
+
   test(
     'production remote STT completes the editable voice draft flow',
     () async {

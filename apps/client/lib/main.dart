@@ -52,11 +52,13 @@ Future<void> main() async {
   final directChatStore = await DriftLocalDirectChatStore.forApplication();
   final playback = MediaKitAudioPlayback();
   final secureValueStore = FlutterSecureValueStore();
+  final gatewayProfileStore = SecureGatewayConnectionProfileStore(
+    secureValueStore,
+  );
   List<int>? remoteTrustedRootCertificates;
   try {
-    remoteTrustedRootCertificates = (await SecureGatewayConnectionProfileStore(
-      secureValueStore,
-    ).load())?.trustedRootCertificates;
+    remoteTrustedRootCertificates =
+        (await gatewayProfileStore.load())?.trustedRootCertificates;
   } on Object {
     // A malformed Gateway profile must not prevent the app from opening. The
     // remote provider will fail closed unless it uses system trust.
@@ -70,6 +72,14 @@ Future<void> main() async {
           ProductionVoicePortFactory(
             secureValueStore: secureValueStore,
             remoteTrustedRootCertificates: remoteTrustedRootCertificates,
+            remoteTrustedRootCertificatesProvider: () async {
+              try {
+                return (await gatewayProfileStore.load())
+                    ?.trustedRootCertificates;
+              } on Object {
+                return remoteTrustedRootCertificates;
+              }
+            },
           ),
         ),
         voiceProviderSettingsStoreProvider.overrideWithValue(

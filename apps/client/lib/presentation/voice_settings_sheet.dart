@@ -7,7 +7,21 @@ import '../application/voice_session_controller.dart';
 import '../application/voice_provider_settings_controller.dart';
 import '../domain/voice_provider_settings.dart';
 import '../domain/voice.dart';
+import '../infrastructure/security/flutter_secure_value_store.dart';
+import '../infrastructure/security/gateway_trusted_root_certificate_importer.dart';
+import '../infrastructure/security/private_ca_certificate_picker.dart';
+import '../infrastructure/security/secure_pairing_stores.dart';
 import 'direct_llm_settings_sheet.dart';
+
+final gatewayTrustedRootCertificateImporterProvider =
+    Provider<GatewayTrustedRootCertificateImporter>(
+      (_) => SecureGatewayTrustedRootCertificateImporter(
+        profileStore: SecureGatewayConnectionProfileStore(
+          FlutterSecureValueStore(),
+        ),
+        certificatePicker: const PlatformPrivateCaCertificatePicker(),
+      ),
+    );
 
 Future<void> showVoiceSettingsSheet(BuildContext context) =>
     showModalBottomSheet<void>(
@@ -51,6 +65,8 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
   var _ttsKindDirty = false;
   List<AudioInputDevice> _microphones = const [];
   String? _microphoneLoadMessage;
+  bool _gatewayTrustImportPending = false;
+  String? _gatewayTrustMessage;
 
   @override
   void initState() {
@@ -184,6 +200,32 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                 icon: const Icon(Icons.key_outlined),
                 label: const Text('Configure direct LLM API'),
               ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                key: const Key('gateway-import-ca-button'),
+                onPressed: _gatewayTrustImportPending
+                    ? null
+                    : _importGatewayTrustCertificate,
+                icon: const Icon(Icons.verified_user_outlined),
+                label: Text(
+                  _gatewayTrustImportPending
+                      ? 'Importing trusted CA…'
+                      : 'Re-import trusted CA',
+                ),
+              ),
+              if (_gatewayTrustMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    _gatewayTrustMessage!,
+                    key: const Key('gateway-import-ca-message'),
+                    style: TextStyle(
+                      color: _gatewayTrustMessage!.startsWith('Trusted CA')
+                          ? Colors.green
+                          : Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
               const Divider(height: 28),
               const Text(
                 'Local faster-whisper STT',
@@ -568,6 +610,44 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
             promptLanguage: _gptPromptLanguage.text.trim(),
           ),
         );
+  }
+
+  Future<void> _importGatewayTrustCertificate() async {
+    setState(() {
+      _gatewayTrustImportPending = true;
+      _gatewayTrustMessage = null;
+    });
+    try {
+      final imported = await ref
+          .read(gatewayTrustedRootCertificateImporterProvider)
+          .import();
+      if (mounted && imported) {
+        setState(
+          () => _gatewayTrustMessage =
+              'Trusted CA imported. Test STT readiness again.',
+        );
+      }
+    } on PrivateCaCertificatePickerException catch (error) {
+      if (mounted) setState(() => _gatewayTrustMessage = error.message);
+    } on GatewayTrustedRootCertificateImportException catch (error) {
+      if (mounted) setState(() => _gatewayTrustMessage = error.message);
+    } on FormatException {
+      if (mounted) {
+        setState(
+          () => _gatewayTrustMessage =
+              'Certificate file is not valid UTF-8 PEM. Choose a CA certificate.',
+        );
+      }
+    } on Object {
+      if (mounted) {
+        setState(
+          () => _gatewayTrustMessage =
+              'The Gateway trust certificate could not be updated. The existing profile was kept.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _gatewayTrustImportPending = false);
+    }
   }
 
   Future<void> _saveStt() {

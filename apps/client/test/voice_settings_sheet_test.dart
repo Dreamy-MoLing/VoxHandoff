@@ -29,6 +29,7 @@ void main() {
       expect(find.text('Local faster-whisper STT'), findsOneWidget);
       expect(find.text('Local Piper TTS'), findsOneWidget);
       expect(find.text('Configure direct LLM API'), findsOneWidget);
+      expect(find.byKey(const Key('gateway-import-ca-button')), findsOneWidget);
       expect(find.text('Test STT readiness'), findsOneWidget);
       final testButton = find.widgetWithText(
         OutlinedButton,

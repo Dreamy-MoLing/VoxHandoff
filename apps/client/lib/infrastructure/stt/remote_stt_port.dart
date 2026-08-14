@@ -94,12 +94,22 @@ class JsonHttpRemoteSttTransport implements RemoteSttTransport {
   JsonHttpRemoteSttTransport({
     required this.tokenProvider,
     List<int>? trustedRootCertificates,
+    Future<List<int>?> Function()? trustedRootCertificatesProvider,
     HttpClient? client,
     this.timeout = const Duration(seconds: 30),
-  }) : _client = client ?? _httpClientWithTrustedRoots(trustedRootCertificates);
+  }) : _trustedRootCertificates = trustedRootCertificates,
+       _trustedRootCertificatesProvider = trustedRootCertificatesProvider,
+       _client =
+           client ??
+           (trustedRootCertificatesProvider == null
+               ? _httpClientWithTrustedRoots(trustedRootCertificates)
+               : null);
 
   final RemoteSttTokenProvider tokenProvider;
-  final HttpClient _client;
+  final List<int>? _trustedRootCertificates;
+  final Future<List<int>?> Function()? _trustedRootCertificatesProvider;
+  HttpClient? _client;
+  Future<HttpClient>? _clientLoading;
   final Duration timeout;
   bool _closed = false;
 
@@ -107,7 +117,8 @@ class JsonHttpRemoteSttTransport implements RemoteSttTransport {
   Future<void> warmUp(RemoteSttDisclosure disclosure) async {
     if (_closed) throw StateError('The remote STT transport is closed.');
     _requireSecureDisclosure(disclosure);
-    final request = await _client
+    final client = await _clientForRequest();
+    final request = await client
         .getUrl(disclosure.origin.resolve('/v1/health'))
         .timeout(timeout);
     request.followRedirects = false;
@@ -129,7 +140,8 @@ class JsonHttpRemoteSttTransport implements RemoteSttTransport {
       final token = await tokenProvider(disclosure.providerId);
       if (token.isEmpty) throw const FormatException('Missing provider token.');
       final stopwatch = Stopwatch()..start();
-      final request = await _client
+      final client = await _clientForRequest();
+      final request = await client
           .postUrl(disclosure.origin.resolve('/v1/transcribe'))
           .timeout(timeout);
       request.followRedirects = false;
@@ -188,7 +200,30 @@ class JsonHttpRemoteSttTransport implements RemoteSttTransport {
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
-    _client.close(force: true);
+    _client?.close(force: true);
+  }
+
+  Future<HttpClient> _clientForRequest() {
+    if (_closed) {
+      return Future.error(StateError('The remote STT transport is closed.'));
+    }
+    final client = _client;
+    if (client != null) return Future.value(client);
+    return _clientLoading ??= _createClient();
+  }
+
+  Future<HttpClient> _createClient() async {
+    try {
+      final provider = _trustedRootCertificatesProvider;
+      final roots = provider == null
+          ? _trustedRootCertificates
+          : await provider();
+      final client = _httpClientWithTrustedRoots(roots);
+      _client = client;
+      return client;
+    } finally {
+      _clientLoading = null;
+    }
   }
 }
 

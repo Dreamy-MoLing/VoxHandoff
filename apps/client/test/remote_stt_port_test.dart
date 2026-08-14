@@ -64,6 +64,45 @@ void main() {
     );
   });
 
+  test(
+    'remote HTTPS transport resolves the latest trusted roots on demand',
+    () async {
+      var roots = <int>[1, 2, 3];
+      final resolved = <List<int>>[];
+
+      Future<List<int>?> trustedRoots() async {
+        resolved.add(List<int>.from(roots));
+        return roots;
+      }
+
+      final first = JsonHttpRemoteSttTransport(
+        tokenProvider: (_) async => 'fixture-token',
+        trustedRootCertificatesProvider: trustedRoots,
+      );
+      await expectLater(
+        first.warmUp(disclosure),
+        throwsA(isA<FormatException>()),
+      );
+      await first.close();
+
+      roots = [4, 5, 6];
+      final second = JsonHttpRemoteSttTransport(
+        tokenProvider: (_) async => 'fixture-token',
+        trustedRootCertificatesProvider: trustedRoots,
+      );
+      await expectLater(
+        second.warmUp(disclosure),
+        throwsA(isA<FormatException>()),
+      );
+      await second.close();
+
+      expect(resolved, [
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
+    },
+  );
+
   test('remote STT accepts only an exact HTTPS origin root', () async {
     for (final unsafeOrigin in [
       Uri.parse('http://stt.example.test'),
