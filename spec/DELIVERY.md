@@ -908,6 +908,16 @@ rebuild 和固定安全预算；若要求真正的 LLM 摘要，必须另定义�
 
 **2026-08-02 批次 6 收口进展**：事实核对完成（review map 草稿：`/tmp/voxhandoff-batch6-review-map.md`，按 M2–M6/H1/M5 边界归类全部 54 个提交）。PR #4 实际为 54 commits / 214 files、head `3f3a3c0`、Open/Draft/mergeable；当前 head 的两组 Actions run（[30706647988](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30706647988)、[30706647923](https://github.com/Dreamy-MoLing/VoxHandoff/actions/runs/30706647923)）均为 `completed/success`、各 5 jobs 全绿。本文件已同步修正：46/208 → 54/214；旧 CI `in_progress` → 当前 head 全绿；区分功能实现 head `ca6b794` 与 PR head `3f3a3c0`；PR body 旧 billing/security-workbench 表述已不存在，但仍保留旧的 pending CI 描述，待 Hermes 侧按本快照刷新 PR body。剩余未关：M5 连续 10 轮 GUI、实体麦克风全链路、正式 STT sidecar bundle、remote STT 契约、M6 移动 120 Hz profile；H1 保持上游阻断。
 
+**2026-08-14 批次 6 收口状态更新**：PR #4 已于 2026-08-06 05:30 UTC 由
+Dreamy-MoLing 合并（merge commit `e93fcee`，head 分支
+`agent/m4-fairy-desktop`，60 commits，标题“归档：合并 VoxHandoff
+M2–M6/H1/M5 最终快照”）。批次 6 的 PR 收口门已关闭；剩余未关仍是
+M5 实体 GUI 门（连续 10 轮 Direct conversation + 至少一轮实体麦克风
+全链路）、正式 STT sidecar bundle、M6 移动 120 Hz profile 与 H1 上游
+阻断。2026-08-14 同时完成 M5 结构治理第 3–5 项拆分（gateway
+postgres-ledger、node hermes-node-connector、client drift ledger 等，
+见提交 dcf252d/3231082/26c9c7b），结构治理全部 5 项已闭环。
+
 ### 5.7 批次 7（H1）：Hermes 上游能力具备后的真实纵向验收
 
 - **用户需求**：同一个人助手能够安全地把工作交给 Hermes，准确显示真实 session、工具、审批、lease、执行主机、完整回复和不确定状态。
