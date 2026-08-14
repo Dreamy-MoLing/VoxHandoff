@@ -116,6 +116,28 @@ The health frame must carry protocol `{ "major": 1, "minor": 0 }` and a
 the PCM16LE, mono, 16/24/48 kHz contract. `health` and `capabilities` do not
 load the model; run `warmup` separately when a real model is available.
 
+For an Android live acceptance provider, the repository also includes a narrow
+HTTPS adapter over the same backend and protocol. It binds to loopback by
+default, warms the explicitly selected local model before listening, exposes
+`GET /v1/health` and authenticated `POST /v1/transcribe`, and requires a
+separate Bearer token from `VOXHANDOFF_STT_HTTP_TOKEN`. TLS certificates and
+keys are supplied explicitly; the adapter does not download models or accept
+an unauthenticated transcription request:
+
+```bash
+cd services/stt
+VOXHANDOFF_STT_HTTP_TOKEN='独立的测试token' \
+  uv run python -m voxhandoff_stt.http_service \
+  --model /absolute/path/to/faster-whisper-model \
+  --tls-cert /absolute/path/to/provider.crt \
+  --tls-key /absolute/path/to/provider.key
+```
+
+The HTTPS adapter is intended to be placed behind a private Tailscale TCP
+forwarder for device acceptance. The mobile client must still validate the
+certificate chain and exact origin, and the user must accept the provider
+disclosure before audio is uploaded.
+
 The pinned Flutter 3.44.6 command does not expose arbitrary CMake `-D`
 arguments. Configure the same release build directory with CMake once, then
 run the normal Flutter build so its subsequent configure reuses the cache:

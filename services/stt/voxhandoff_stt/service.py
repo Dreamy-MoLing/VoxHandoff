@@ -181,7 +181,16 @@ class SttService:
         session = self._require_session(request.params)
         if session.final_request_id is not None:
             raise ProtocolError("stt_session_finalizing", "The STT session is already finalizing.")
-        if not _contains_voice(session.audio):
+        voice_rms = _audio_rms(session.audio)
+        if voice_rms is None or voice_rms < 32.0:
+            # This is bounded diagnostic metadata only: never log PCM bytes,
+            # speech text, credentials, or the temporary audio path.
+            self._error_output.write(
+                f"stt_audio_stats bytes={len(session.audio)} "
+                f"rms={voice_rms if voice_rms is not None else 0.0:.2f} "
+                "threshold=32.00\n"
+            )
+            self._error_output.flush()
             self._sessions.pop(session.session_id)
             session.audio.clear()
             raise ProtocolError("stt_no_audio", "No speech was detected in the recording.")
@@ -392,9 +401,9 @@ def _audio_duration_ms(session: _Session) -> int:
     return round(frames * 1000 / session.sample_rate)
 
 
-def _contains_voice(audio: bytearray) -> bool:
+def _audio_rms(audio: bytearray) -> float | None:
     if len(audio) < 3200 or len(audio) % 2:
-        return False
+        return None
     sample_count = len(audio) // 2
     stride = max(1, sample_count // 16000)
     squares = 0.0
@@ -404,5 +413,9 @@ def _contains_voice(audio: bytearray) -> bool:
         sample = int.from_bytes(view[offset : offset + 2], "little", signed=True)
         squares += float(sample * sample)
         inspected += 1
-    rms = math.sqrt(squares / max(inspected, 1))
-    return rms >= 32.0
+    return math.sqrt(squares / max(inspected, 1))
+
+
+def _contains_voice(audio: bytearray) -> bool:
+    rms = _audio_rms(audio)
+    return rms is not None and rms >= 32.0
