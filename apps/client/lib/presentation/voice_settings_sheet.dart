@@ -31,8 +31,18 @@ typedef RemoteSttTransportFactory =
 
 final remoteSttTransportFactoryProvider = Provider<RemoteSttTransportFactory>(
   (_) =>
-      (tokenProvider) =>
-          JsonHttpRemoteSttTransport(tokenProvider: tokenProvider),
+      (tokenProvider) => JsonHttpRemoteSttTransport(
+        tokenProvider: tokenProvider,
+        trustedRootCertificatesProvider: () async {
+          try {
+            return (await SecureGatewayConnectionProfileStore(
+              FlutterSecureValueStore(),
+            ).load())?.trustedRootCertificates;
+          } on Object {
+            return null;
+          }
+        },
+      ),
 );
 
 Future<void> showVoiceSettingsSheet(BuildContext context) =>
@@ -327,15 +337,6 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                 ),
               if (remoteSttEnabled) ...[
                 TextField(
-                  controller: _remoteSttProviderId,
-                  onChanged: (_) => _invalidateRemoteSttConsent(),
-                  decoration: const InputDecoration(
-                    labelText: 'Remote provider ID',
-                    helperText:
-                        'Opaque ID used only to select its secure token.',
-                  ),
-                ),
-                TextField(
                   controller: _remoteSttOrigin,
                   onChanged: (_) => _invalidateRemoteSttConsent(),
                   keyboardType: TextInputType.url,
@@ -343,6 +344,15 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                     labelText: 'Remote HTTPS origin',
                     helperText:
                         'Exact https://host root; redirects, paths, queries, and fragments are rejected.',
+                  ),
+                ),
+                TextField(
+                  controller: _remoteSttToken,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Remote provider token',
+                    helperText:
+                        'Stored separately in OS secure storage and never included in settings diagnostics.',
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -369,35 +379,44 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                       ),
                     ),
                   ),
-                TextField(
-                  controller: _remoteSttTlsPolicy,
-                  onChanged: (_) => _invalidateRemoteSttConsent(),
-                  decoration: const InputDecoration(
-                    labelText: 'TLS policy disclosure',
-                  ),
-                ),
-                TextField(
-                  controller: _remoteSttRetentionPolicy,
-                  onChanged: (_) => _invalidateRemoteSttConsent(),
-                  decoration: const InputDecoration(
-                    labelText: 'Retention policy disclosure',
-                  ),
-                ),
-                TextField(
-                  controller: _remoteSttRevision,
-                  onChanged: (_) => _invalidateRemoteSttConsent(),
-                  decoration: const InputDecoration(
-                    labelText: 'Provider contract revision',
-                  ),
-                ),
-                TextField(
-                  controller: _remoteSttToken,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Remote provider token',
-                    helperText:
-                        'Stored separately in OS secure storage and never included in settings diagnostics.',
-                  ),
+                ExpansionTile(
+                  key: const Key('remote-stt-advanced-disclosure'),
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(bottom: 8),
+                  title: const Text('Advanced provider disclosure'),
+                  subtitle: const Text('Filled from the provider declaration.'),
+                  children: [
+                    TextField(
+                      controller: _remoteSttProviderId,
+                      onChanged: (_) => _invalidateRemoteSttConsent(),
+                      decoration: const InputDecoration(
+                        labelText: 'Remote provider ID',
+                        helperText:
+                            'Opaque ID used only to select its secure token.',
+                      ),
+                    ),
+                    TextField(
+                      controller: _remoteSttTlsPolicy,
+                      onChanged: (_) => _invalidateRemoteSttConsent(),
+                      decoration: const InputDecoration(
+                        labelText: 'TLS policy disclosure',
+                      ),
+                    ),
+                    TextField(
+                      controller: _remoteSttRetentionPolicy,
+                      onChanged: (_) => _invalidateRemoteSttConsent(),
+                      decoration: const InputDecoration(
+                        labelText: 'Retention policy disclosure',
+                      ),
+                    ),
+                    TextField(
+                      controller: _remoteSttRevision,
+                      onChanged: (_) => _invalidateRemoteSttConsent(),
+                      decoration: const InputDecoration(
+                        labelText: 'Provider contract revision',
+                      ),
+                    ),
+                  ],
                 ),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,

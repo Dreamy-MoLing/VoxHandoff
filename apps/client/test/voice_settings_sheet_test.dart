@@ -54,6 +54,15 @@ void main() {
     await tester.tap(find.text('Consented HTTPS provider (Android)').last);
     await tester.pumpAndSettle();
 
+    expect(
+      tester
+          .widget<ExpansionTile>(
+            find.byKey(const Key('remote-stt-advanced-disclosure')),
+          )
+          .initiallyExpanded,
+      isFalse,
+    );
+
     final tokenField = find.byWidgetPredicate(
       (widget) =>
           widget is TextField &&
@@ -67,6 +76,9 @@ void main() {
     );
     await tester.ensureVisible(fetchButton);
     await tester.tap(fetchButton);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('remote-stt-advanced-disclosure')));
     await tester.pumpAndSettle();
 
     expect(fetchedProviderId, 'voxhandoff-stt');
