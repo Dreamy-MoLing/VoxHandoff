@@ -180,6 +180,43 @@ CA，release/base 仍只信 system roots。服务使用本地
   `422 stt_no_audio` 仍是历史失败事实，不能替代本轮新包证据。
 - 本轮追加日志：`/tmp/voxhandoff-acceptance-20260814.log`。Hermes 零改动，未 push。
 
+### 0.1.3 2026-08-14 长录音分块修复与 STT 配置简化（第五/六轮）
+
+- D-035（服务端单帧上限导致长录音空音频）：根因是
+  `services/stt/voxhandoff_stt/http_service.py` 的 `HttpSttProvider.transcribe`
+  把整个录音编码进单个 push 帧，而 stdio 协议 `MAX_CHUNK_BYTES = 262144`
+  限制单块音频；超过约 8 秒（>256KB）的录音被 `decode_chunk` 拒绝，
+  `session.audio` 为空，最终 `stt_no_audio`。此前所有手机录音（26 秒约
+  832KB、40 秒约 1.28MB）都因此失败，1 秒 curl 测试（32KB）能到
+  `stt_empty_transcript`，造成“客户端链路问题”误判。修复：按 262144
+  切分音频、sequence 递增 push、最后接 end 帧；curl 32000B/288000B/620800B
+  合成 PCM 验证（前两者 `stt_empty_transcript`、620800B 返回 200 与转写文本）。
+- D-035 客户端配套：`AndroidAudioRecordChannel.frames` 缓存单一
+  `receiveBroadcastStream()` 导致首次录音后第二次全丢；改为每次会话新建流，
+  并沿 capture/controller/transport 增加仅记录帧数/字节数的诊断日志。
+- D-035 真机证据：实体 `V2359A` 新进程录音约 19 秒，Dart 诊断
+  `audioBytes=620800 base64Chars=827736`；服务端 `POST /v1/transcribe 200`；
+  UI 显示中文草稿、`Transcript inserted · review and confirm before send`、
+  `Discard transcript` 与可用 `Confirm`。录音→远程 STT→可编辑终稿→确认
+  链路首次闭环（faster-whisper 对 TTS 测试音频有少量同音错字，属模型识别
+  质量，非链路故障）。
+- D-036（STT 配置门槛简化）：设置页新增 `Fetch disclosure` 按钮——校验
+  HTTPS、token 优先输入值否则读 secure storage、成功自动填充
+  TLS/retention/revision/providerId、失败内联显示；声明字段变更自动撤销
+  旧 consent。Codex 提交 `f267dbb`（feat: 简化远程 STT 配置门槛）。
+  验证：flutter analyze 通过；全量 Flutter 239 通过（2 live smoke 跳过）；
+  服务端 unittest 15/15。真机简化配置流程端到端验证待做（无 STT token 且
+  服务未监听，未伪造结果）。
+- 配套代码维护：Codex 完成结构减负重构（拆分 gateway/node/client 大文件，
+  见提交 dcf252d / 3231082 / 26c9c7b）。布洛妮娅验收：`npm run check` 通过、
+  `npm test` 168 过 / 0 失败、固定 Flutter 3.44.6 `flutter:check` 239 过 /
+  2 live smoke 跳过；已 push 至 GitHub（CI 仅 workflow_dispatch 手动触发，
+  未触发）。
+- 未关闭（真机验收）：D-036 简化配置端到端、连续 10 轮 GUI、实体麦克风
+  全链路、sidecar 产物打包（Linux release 未提供
+  `-DVOXHANDOFF_STT_EXECUTABLE`）、release signing（仍 debug signing）、
+  Hermes 真实纵向链路（上游能力阻断，非本仓库可解）。
+
 ## 0.2 2026-08-11 验收修复（历史维护）
 
 验收报告记录的 VH-ACC-001 已有可复现根因：生产 Node 的 `ConnectNode`
