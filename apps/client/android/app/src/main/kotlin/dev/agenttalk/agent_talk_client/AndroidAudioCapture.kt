@@ -159,8 +159,8 @@ class AndroidAudioCapture(
 
     private fun createAudioRecord(bufferSize: Int): AudioRecord? {
         val sources = intArrayOf(
-            MediaRecorder.AudioSource.MIC,
             MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.MIC,
         )
         for (source in sources) {
             try {
@@ -230,7 +230,7 @@ class AndroidAudioCapture(
         var lastHeartbeatAt = lastSuccessfulReadAt
         while (running) {
             val count = try {
-                record.read(buffer, 0, buffer.size, AudioRecord.READ_NON_BLOCKING)
+                record.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
             } catch (_: RuntimeException) {
                 Log.i(TAG, "readLoop read=exception sinkNull=${eventSink == null} discarding=$discarding")
                 if (!running) break

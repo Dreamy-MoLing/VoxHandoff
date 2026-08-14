@@ -1255,3 +1255,30 @@ provider token；手机 Voice settings 中清空密码字段后逐字符重新�
 Confirm 证据。按硬边界未重录、未伪造证据。结论：本轮 STT token 验收仍未通过，需由
 owner 后续核对 provider credential 传递链路后再开新一轮；本轮不再操作。阶段日志：
 `/tmp/voxhandoff-acceptance-20260814.log`。Hermes 零改动，未 push。
+
+## D-034 / 2026-08-14 第六轮 AudioRecord source/read-mode 对照
+
+- 源码核对：当前 `READ_SIZE=3200`，`AudioRecord` 缓冲区至少 `6400` 字节。官方
+  文档说明 `READ_NON_BLOCKING` 无可读数据时可以立即返回 0，返回值也可以是 0 或
+  正数；没有证据表明本缓冲区配置会让非阻塞读取永久为 0。
+- 实验 A：`VOICE_RECOGNITION(6) + READ_NON_BLOCKING`。APK SHA-256 为
+  `cef0271a1398889b3fc99b6660c55d5d5758afeccc83cf2f8dcf96b01f6d58ca`，安装时间
+  `2026-08-14 10:09:30`。原生日志选中 `source=6`，约 40 秒退出为
+  `reads=1983 zeroReads=3795`，`sinkNull=false`，诊断中有 `push success bytes=640`；
+  UI 失败，服务端对应 POST 422，`stt_audio_stats bytes=0 rms=0.00`，无文本、draft
+  或 Confirm。
+- 实验 B：`VOICE_RECOGNITION(6) + READ_BLOCKING`。APK SHA-256 为
+  `92bfb4a082ed3e46aea318da684d3d7468b9dae97fa4b05b946458ed6c35443e`，安装时间
+  `2026-08-14 10:14:17`。原生日志约 40 秒退出为 `reads=391 zeroReads=0`，每次
+  `readCount=3200`，heartbeat 的 `idleMs` 约 100，`sinkNull=false`，stop 与 join
+  均成功；服务端对应 `stt_audio_stats bytes=0 rms=0.00`、422 `stt_no_audio`，UI
+  仍为 `Remote speech recognition failed. No Agent request was sent.`，无中文转写、
+  draft 或 Confirm。
+- 结论：本轮新鲜原生日志没有重现“source 或 read mode 导致 read=0”。两种组合都
+  能读到正数并调用 EventSink；`bytes=0` 出现在 native EventSink 之后的端到端路径，
+  当前不足以安全归因到 Dart EventChannel 消费或 STT 缓冲的具体一行代码。保留 B
+  作为 native 侧最优组合：VOICE_RECOGNITION 优先、READ_BLOCKING、现有 heartbeat
+  和 stop/join 超时保护。端到端语音验收仍未关闭。
+- 边界：本轮最多两次录音已用完；没有第三次录音、伪造文本或 Confirm。Hermes 零改动，
+  设备只经 `100.96.66.108:5555` Tailscale ADB，未 push。阶段日志为
+  `/tmp/voxhandoff-acceptance-20260814.log`。

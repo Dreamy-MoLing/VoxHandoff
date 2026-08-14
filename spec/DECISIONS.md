@@ -640,3 +640,18 @@ DELIVERY 对应章节。
 - 下一步：由 owner 手动完成系统安装确认后，只执行任务书规定的一次录音并抓取
   `VoxHandoffAudio` 与服务端脱敏诊断；若仍为 `bytes=0`，按 readCount/sinkNull
   结果继续定位。Hermes 零改动，未 push。
+
+## D-034：Android AudioRecord 采用 VOICE_RECOGNITION + READ_BLOCKING 作为 native 组合
+
+- 日期：2026-08-14
+- 状态：Implemented locally / end-to-end STT unverified
+- 依据：第六轮最小对照中，`VOICE_RECOGNITION + READ_NON_BLOCKING` 约 40 秒得到
+  `reads=1983 zeroReads=3795`，并有 `push success bytes=640`；切换唯一变量为
+  `READ_BLOCKING` 后约 40 秒得到 `reads=391 zeroReads=0`，每次读取 3200 字节，
+  heartbeat 的 `idleMs` 约 100，stop/join 正常。两种组合的 `sinkNull` 均为 false。
+- 决策：保留 `VOICE_RECOGNITION` 优先和 `READ_BLOCKING`，利用现有 heartbeat、
+  `record.stop()`、1 秒 join 超时和线程 interrupt 保护阻止停流时永久等待。没有增加
+  重建/重试抽象，因为本轮两次实验都没有捕获足够证据证明需要它。
+- 未决：两次真机收口都得到服务端 `stt_audio_stats bytes=0 rms=0.00` 与 422，说明
+  失败发生在 native EventSink 之后；尚未证明 Dart EventChannel 消费、音频缓冲或
+  STT 请求组装的具体根因。中文转写、Editable draft、Confirm 继续保持未通过。
