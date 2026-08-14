@@ -37,6 +37,7 @@ The root `docs/` directory contains absorbed pre-development research. It is ign
 - Prefer official protocols and mature community components. Record license, platform coverage, maintenance evidence, and an exit path for each infrastructure dependency.
 - Keep adapter tests offline with fixtures/fakes. Live tests must be explicit and must not mutate user data without a clear prompt.
 - Use opaque IDs. Do not derive security decisions from display labels.
+- 每次功能实现/修复完成后立即创建本地提交（conventional commits），按功能域拆分、不积压跨域改动；收工前 `git status` 必须干净（仅剩被 ignore 项）。
 
 ## Commands
 
