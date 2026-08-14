@@ -93,9 +93,10 @@ typedef RemoteSttTokenProvider = Future<String> Function(String providerId);
 class JsonHttpRemoteSttTransport implements RemoteSttTransport {
   JsonHttpRemoteSttTransport({
     required this.tokenProvider,
+    List<int>? trustedRootCertificates,
     HttpClient? client,
     this.timeout = const Duration(seconds: 30),
-  }) : _client = client ?? HttpClient();
+  }) : _client = client ?? _httpClientWithTrustedRoots(trustedRootCertificates);
 
   final RemoteSttTokenProvider tokenProvider;
   final HttpClient _client;
@@ -212,6 +213,28 @@ VoicePortException _remoteFailure(String code) => VoicePortException(
     retryable: true,
   ),
 );
+
+HttpClient _httpClientWithTrustedRoots(List<int>? trustedRootCertificates) {
+  if (trustedRootCertificates == null) return HttpClient();
+  if (trustedRootCertificates.isEmpty) {
+    throw const FormatException(
+      'The trusted root certificate cannot be empty.',
+    );
+  }
+  // An explicitly imported private CA is the complete trust set for this
+  // provider. When no custom CA is supplied, HttpClient keeps the platform
+  // roots through its default context.
+  final context = SecurityContext(withTrustedRoots: false)
+    ..minimumTlsProtocolVersion = TlsProtocolVersion.tls1_2;
+  try {
+    context.setTrustedCertificatesBytes(
+      Uint8List.fromList(trustedRootCertificates),
+    );
+  } on Object {
+    throw const FormatException('The trusted root certificate is invalid.');
+  }
+  return HttpClient(context: context);
+}
 
 /// Explicit-consent remote fallback. It is impossible to construct an active
 /// adapter when origin, TLS, retention, streaming mode, or provider revision

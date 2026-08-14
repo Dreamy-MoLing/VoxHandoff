@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:agent_talk_client/domain/voice.dart';
@@ -39,6 +40,27 @@ void main() {
           'remote_stt_consent_required',
         ),
       ),
+    );
+  });
+
+  test('remote HTTPS transport accepts an explicitly imported CA', () async {
+    final certificate = await File(
+      'test/fixtures/agent_talk_test_ca.pem',
+    ).readAsBytes();
+    final transport = JsonHttpRemoteSttTransport(
+      tokenProvider: (_) async => 'fixture-token',
+      trustedRootCertificates: certificate,
+    );
+    await transport.close();
+  });
+
+  test('remote HTTPS transport rejects malformed imported CA', () {
+    expect(
+      () => JsonHttpRemoteSttTransport(
+        tokenProvider: (_) async => 'fixture-token',
+        trustedRootCertificates: [1, 2, 3],
+      ),
+      throwsA(isA<FormatException>()),
     );
   });
 

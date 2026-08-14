@@ -37,6 +37,15 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
   late final TextEditingController _gptPromptLanguage;
   late final TextEditingController _sttLanguage;
   late final TextEditingController _sttModelPath;
+  late final TextEditingController _remoteSttProviderId;
+  late final TextEditingController _remoteSttOrigin;
+  late final TextEditingController _remoteSttTlsPolicy;
+  late final TextEditingController _remoteSttRetentionPolicy;
+  late final TextEditingController _remoteSttRevision;
+  late final TextEditingController _remoteSttToken;
+  var _selectedSttKind = SttProviderKind.disabled;
+  var _sttKindDirty = false;
+  var _remoteSttConsent = false;
   var _selectedTtsKind = TtsProviderKind.disabled;
   var _lastEnabledTtsKind = TtsProviderKind.piperHttp;
   var _ttsKindDirty = false;
@@ -74,8 +83,25 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
     _gptTextLanguage = TextEditingController(text: tts.textLanguage);
     _gptPromptLanguage = TextEditingController(text: tts.promptLanguage);
     final stt = ref.read(voiceProviderSettingsProvider).settings.stt;
+    final remote = stt.remote;
+    _selectedSttKind = stt.kind;
     _sttLanguage = TextEditingController(text: stt.language);
     _sttModelPath = TextEditingController(text: stt.modelPath);
+    _remoteSttProviderId = TextEditingController(
+      text: remote?.providerId ?? 'voxhandoff-stt',
+    );
+    _remoteSttOrigin = TextEditingController(
+      text: remote?.origin.toString() ?? 'https://stt.example.com',
+    );
+    _remoteSttTlsPolicy = TextEditingController(
+      text: remote?.tlsPolicy ?? 'system-roots-hostname-verified',
+    );
+    _remoteSttRetentionPolicy = TextEditingController(
+      text: remote?.retentionPolicy ?? 'Provider retention must be reviewed',
+    );
+    _remoteSttRevision = TextEditingController(text: remote?.revision ?? 'v1');
+    _remoteSttToken = TextEditingController();
+    _remoteSttConsent = remote?.consentedAt != null;
     unawaited(_loadMicrophones());
   }
 
@@ -93,6 +119,12 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
     _gptPromptLanguage.dispose();
     _sttLanguage.dispose();
     _sttModelPath.dispose();
+    _remoteSttProviderId.dispose();
+    _remoteSttOrigin.dispose();
+    _remoteSttTlsPolicy.dispose();
+    _remoteSttRetentionPolicy.dispose();
+    _remoteSttRevision.dispose();
+    _remoteSttToken.dispose();
     super.dispose();
   }
 
@@ -100,7 +132,13 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
   Widget build(BuildContext context) {
     final state = ref.watch(voiceProviderSettingsProvider);
     final settings = state.settings;
-    final sttEnabled = settings.stt.kind != SttProviderKind.disabled;
+    final selectedSttKind = _sttKindDirty
+        ? _selectedSttKind
+        : settings.stt.kind;
+    final sttEnabled = selectedSttKind != SttProviderKind.disabled;
+    final localSttEnabled =
+        selectedSttKind == SttProviderKind.bundledFasterWhisper;
+    final remoteSttEnabled = selectedSttKind == SttProviderKind.remoteHttps;
     final tts = settings.tts;
     final selectedTtsKind = _ttsKindDirty ? _selectedTtsKind : tts.kind;
     final piperEnabled = selectedTtsKind == TtsProviderKind.piperHttp;
@@ -147,30 +185,44 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                 label: const Text('Configure direct LLM API'),
               ),
               const Divider(height: 28),
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Local faster-whisper STT',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
+              const Text(
+                'Local faster-whisper STT',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              DropdownButtonFormField<SttProviderKind>(
+                key: const Key('stt-provider-kind'),
+                initialValue: selectedSttKind,
+                decoration: const InputDecoration(labelText: 'STT provider'),
+                items: const [
+                  DropdownMenuItem(
+                    value: SttProviderKind.disabled,
+                    child: Text('Disabled'),
                   ),
-                  Switch(
-                    value: sttEnabled,
-                    onChanged: (enabled) => ref
-                        .read(voiceProviderSettingsProvider.notifier)
-                        .saveStt(
-                          settings.stt.copyWith(
-                            kind: enabled
-                                ? SttProviderKind.bundledFasterWhisper
-                                : SttProviderKind.disabled,
-                          ),
-                        ),
+                  DropdownMenuItem(
+                    value: SttProviderKind.bundledFasterWhisper,
+                    child: Text('Local faster-whisper STT'),
+                  ),
+                  DropdownMenuItem(
+                    value: SttProviderKind.remoteHttps,
+                    child: Text('Consented HTTPS provider (Android)'),
                   ),
                 ],
+                onChanged: (kind) {
+                  if (kind == null) return;
+                  setState(() {
+                    _sttKindDirty = true;
+                    _selectedSttKind = kind;
+                    if (kind != SttProviderKind.remoteHttps) {
+                      _remoteSttConsent = false;
+                    }
+                  });
+                },
               ),
-              const Text(
-                'The app only probes its versioned bundled-sidecar interface. It never downloads a model or accepts a command from this form.',
+              Text(
+                remoteSttEnabled
+                    ? 'Audio is buffered in memory and uploaded only after you stop recording and accept this exact provider disclosure.'
+                    : 'The local option probes only its versioned bundled-sidecar interface. It never downloads a model or accepts a command from this form.',
               ),
               const SizedBox(height: 8),
               if (_microphones.isEmpty)
@@ -198,22 +250,83 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                       .saveMicrophoneId(value),
                 ),
               const SizedBox(height: 8),
-              TextField(
-                controller: _sttLanguage,
-                decoration: const InputDecoration(
-                  labelText: 'STT language',
-                  helperText:
-                      'Passed to the local sidecar, for example zh or en.',
+              if (sttEnabled)
+                TextField(
+                  controller: _sttLanguage,
+                  decoration: InputDecoration(
+                    labelText: 'STT language',
+                    helperText: remoteSttEnabled
+                        ? 'Sent as metadata to the exact HTTPS provider.'
+                        : 'Passed to the local sidecar, for example zh or en.',
+                  ),
                 ),
-              ),
-              TextField(
-                controller: _sttModelPath,
-                decoration: const InputDecoration(
-                  labelText: 'Local faster-whisper model directory',
-                  helperText:
-                      'Absolute existing directory; no model download is allowed.',
+              if (localSttEnabled)
+                TextField(
+                  controller: _sttModelPath,
+                  decoration: const InputDecoration(
+                    labelText: 'Local faster-whisper model directory',
+                    helperText:
+                        'Absolute existing directory; no model download is allowed.',
+                  ),
                 ),
-              ),
+              if (remoteSttEnabled) ...[
+                TextField(
+                  controller: _remoteSttProviderId,
+                  decoration: const InputDecoration(
+                    labelText: 'Remote provider ID',
+                    helperText:
+                        'Opaque ID used only to select its secure token.',
+                  ),
+                ),
+                TextField(
+                  controller: _remoteSttOrigin,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'Remote HTTPS origin',
+                    helperText:
+                        'Exact https://host root; redirects, paths, queries, and fragments are rejected.',
+                  ),
+                ),
+                TextField(
+                  controller: _remoteSttTlsPolicy,
+                  decoration: const InputDecoration(
+                    labelText: 'TLS policy disclosure',
+                  ),
+                ),
+                TextField(
+                  controller: _remoteSttRetentionPolicy,
+                  decoration: const InputDecoration(
+                    labelText: 'Retention policy disclosure',
+                  ),
+                ),
+                TextField(
+                  controller: _remoteSttRevision,
+                  decoration: const InputDecoration(
+                    labelText: 'Provider contract revision',
+                  ),
+                ),
+                TextField(
+                  controller: _remoteSttToken,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Remote provider token',
+                    helperText:
+                        'Stored separately in OS secure storage and never included in settings diagnostics.',
+                  ),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _remoteSttConsent,
+                  onChanged: (value) =>
+                      setState(() => _remoteSttConsent = value ?? false),
+                  title: const Text(
+                    'I consent to this exact upload disclosure',
+                  ),
+                  subtitle: const Text(
+                    'Changing origin, TLS, retention, streaming, or revision requires consent again.',
+                  ),
+                ),
+              ],
               Align(
                 alignment: Alignment.centerRight,
                 child: FilledButton(
@@ -457,15 +570,35 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
         );
   }
 
-  Future<void> _saveStt() => ref
-      .read(voiceProviderSettingsProvider.notifier)
-      .saveStt(
-        SttProviderConfiguration(
-          kind: SttProviderKind.bundledFasterWhisper,
-          language: _sttLanguage.text.trim(),
-          modelPath: _sttModelPath.text.trim(),
-        ),
+  Future<void> _saveStt() {
+    final controller = ref.read(voiceProviderSettingsProvider.notifier);
+    final language = _sttLanguage.text.trim();
+    final selectedSttKind = _sttKindDirty
+        ? _selectedSttKind
+        : ref.read(voiceProviderSettingsProvider).settings.stt.kind;
+    if (selectedSttKind == SttProviderKind.remoteHttps) {
+      final origin = Uri.tryParse(_remoteSttOrigin.text.trim());
+      final remote = RemoteSttProviderConfiguration(
+        providerId: _remoteSttProviderId.text.trim(),
+        origin: origin ?? Uri(scheme: 'https'),
+        tlsPolicy: _remoteSttTlsPolicy.text.trim(),
+        retentionPolicy: _remoteSttRetentionPolicy.text.trim(),
+        streaming: false,
+        revision: _remoteSttRevision.text.trim(),
+        consentedAt: _remoteSttConsent ? DateTime.now().toUtc() : null,
       );
+      return controller.saveRemoteStt(remote, _remoteSttToken.text);
+    }
+    return controller.saveStt(
+      SttProviderConfiguration(
+        kind: selectedSttKind,
+        language: language,
+        modelPath: selectedSttKind == SttProviderKind.bundledFasterWhisper
+            ? _sttModelPath.text.trim()
+            : '',
+      ),
+    );
+  }
 
   Future<void> _loadMicrophones() async {
     final microphones = await ref

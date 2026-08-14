@@ -72,6 +72,16 @@ class VoiceProviderSettingsController
   }
 
   Future<void> saveStt(SttProviderConfiguration configuration) async {
+    if (configuration.kind == SttProviderKind.remoteHttps) {
+      state = state.copyWith(
+        sttTest: const VoiceProviderTestStatus(
+          phase: VoiceProviderTestPhase.failed,
+          safeMessage:
+              'Save the remote provider disclosure and token together before use.',
+        ),
+      );
+      return;
+    }
     if (!configuration.isSafe) {
       state = state.copyWith(
         sttTest: const VoiceProviderTestStatus(
@@ -83,6 +93,55 @@ class VoiceProviderSettingsController
     }
     final settings = state.settings.copyWith(stt: configuration);
     await ref.read(voiceProviderSettingsStoreProvider).save(settings);
+    state = state.copyWith(
+      settings: settings,
+      restored: true,
+      sttTest: const VoiceProviderTestStatus(),
+    );
+  }
+
+  Future<void> saveRemoteStt(
+    RemoteSttProviderConfiguration configuration,
+    String token,
+  ) async {
+    if (!configuration.isSafe || token.trim().isEmpty) {
+      state = state.copyWith(
+        sttTest: const VoiceProviderTestStatus(
+          phase: VoiceProviderTestPhase.failed,
+          safeMessage:
+              'Use a complete HTTPS disclosure, explicit consent, and a provider token.',
+        ),
+      );
+      return;
+    }
+    final current = state.settings.stt.remote;
+    final store = ref.read(voiceProviderSettingsStoreProvider);
+    var normalizedToken = token.trim();
+    if (normalizedToken.isEmpty &&
+        current?.providerId == configuration.providerId) {
+      normalizedToken =
+          await store.remoteSttSecrets.read(configuration.providerId) ?? '';
+    }
+    if (normalizedToken.isEmpty) {
+      state = state.copyWith(
+        sttTest: const VoiceProviderTestStatus(
+          phase: VoiceProviderTestPhase.failed,
+          safeMessage: 'Enter the remote provider token before saving.',
+        ),
+      );
+      return;
+    }
+    if (current != null && current.providerId != configuration.providerId) {
+      await store.remoteSttSecrets.delete(current.providerId);
+    }
+    await store.remoteSttSecrets.save(
+      configuration.providerId,
+      normalizedToken,
+    );
+    final settings = state.settings.copyWith(
+      stt: SttProviderConfiguration.remote(remote: configuration),
+    );
+    await store.save(settings);
     state = state.copyWith(
       settings: settings,
       restored: true,

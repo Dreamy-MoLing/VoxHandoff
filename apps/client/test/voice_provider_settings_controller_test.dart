@@ -143,6 +143,86 @@ void main() {
   );
 
   test(
+    'remote STT disclosure and token persist separately and test independently',
+    () async {
+      final store = _MemorySecureStore();
+      final factory = _FakeVoicePortFactory();
+      final container = ProviderContainer(
+        overrides: [
+          voiceProviderSettingsStoreProvider.overrideWithValue(
+            VoiceProviderSettingsStore(store),
+          ),
+          voicePortFactoryProvider.overrideWithValue(factory),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(voiceProviderSettingsProvider);
+      await Future<void>.delayed(Duration.zero);
+
+      final disclosure = RemoteSttProviderConfiguration(
+        providerId: 'mobile-stt',
+        origin: Uri.parse('https://stt.example.test'),
+        tlsPolicy: 'system-roots-hostname-verified',
+        retentionPolicy: 'fixture-no-retention',
+        streaming: false,
+        revision: 'v1',
+        consentedAt: DateTime.utc(2026, 8, 13),
+      );
+      final controller = container.read(voiceProviderSettingsProvider.notifier);
+      await controller.saveRemoteStt(disclosure, 'remote-token');
+      await controller.testStt();
+
+      final state = container.read(voiceProviderSettingsProvider);
+      expect(state.settings.stt.kind, SttProviderKind.remoteHttps);
+      expect(state.settings.stt.remote, disclosure);
+      expect(state.sttTest.phase, VoiceProviderTestPhase.ready);
+      expect(
+        await RemoteSttSecretStore(store).read('mobile-stt'),
+        'remote-token',
+      );
+      final settingsRecord = store.values.entries.singleWhere(
+        (entry) => entry.key.contains('voice-provider-settings'),
+      );
+      expect(settingsRecord.value, contains('stt.example.test'));
+      expect(settingsRecord.value, isNot(contains('remote-token')));
+    },
+  );
+
+  test('remote STT cannot be saved without explicit consent', () async {
+    final store = _MemorySecureStore();
+    final container = ProviderContainer(
+      overrides: [
+        voiceProviderSettingsStoreProvider.overrideWithValue(
+          VoiceProviderSettingsStore(store),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(voiceProviderSettingsProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    await container
+        .read(voiceProviderSettingsProvider.notifier)
+        .saveRemoteStt(
+          RemoteSttProviderConfiguration(
+            providerId: 'mobile-stt',
+            origin: Uri(scheme: 'https', host: 'stt.example.test'),
+            tlsPolicy: 'system-roots-hostname-verified',
+            retentionPolicy: 'fixture-no-retention',
+            streaming: false,
+            revision: 'v1',
+          ),
+          'remote-token',
+        );
+
+    expect(
+      container.read(voiceProviderSettingsProvider).sttTest.phase,
+      VoiceProviderTestPhase.failed,
+    );
+    expect(store.values, isEmpty);
+  });
+
+  test(
     'speech rate conversion is monotonic and inverse to Piper length scale',
     () {
       expect(piperLengthScaleForSpeechRate(0.5), 2);

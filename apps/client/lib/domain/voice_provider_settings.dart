@@ -1,32 +1,132 @@
 import 'speech.dart';
 import 'voice.dart';
 
-enum SttProviderKind { bundledFasterWhisper, disabled }
+enum SttProviderKind { bundledFasterWhisper, remoteHttps, disabled }
+
+class RemoteSttProviderConfiguration {
+  const RemoteSttProviderConfiguration({
+    required this.providerId,
+    required this.origin,
+    required this.tlsPolicy,
+    required this.retentionPolicy,
+    required this.streaming,
+    required this.revision,
+    this.consentedAt,
+  });
+
+  final String providerId;
+  final Uri origin;
+  final String tlsPolicy;
+  final String retentionPolicy;
+  final bool streaming;
+  final String revision;
+  final DateTime? consentedAt;
+
+  bool get isSafe {
+    final normalizedProviderId = providerId.trim();
+    final normalizedTlsPolicy = tlsPolicy.trim();
+    final normalizedRetentionPolicy = retentionPolicy.trim();
+    final normalizedRevision = revision.trim();
+    return normalizedProviderId.isNotEmpty &&
+        normalizedProviderId.length <= 128 &&
+        RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(normalizedProviderId) &&
+        origin.scheme == 'https' &&
+        origin.host.isNotEmpty &&
+        origin.userInfo.isEmpty &&
+        (origin.path.isEmpty || origin.path == '/') &&
+        !origin.hasQuery &&
+        !origin.hasFragment &&
+        normalizedTlsPolicy.isNotEmpty &&
+        normalizedTlsPolicy.length <= 256 &&
+        normalizedRetentionPolicy.isNotEmpty &&
+        normalizedRetentionPolicy.length <= 256 &&
+        normalizedRevision.isNotEmpty &&
+        normalizedRevision.length <= 128 &&
+        consentedAt != null;
+  }
+
+  RemoteSttProviderConfiguration copyWith({
+    String? providerId,
+    Uri? origin,
+    String? tlsPolicy,
+    String? retentionPolicy,
+    bool? streaming,
+    String? revision,
+    DateTime? consentedAt,
+    bool clearConsent = false,
+  }) => RemoteSttProviderConfiguration(
+    providerId: providerId ?? this.providerId,
+    origin: origin ?? this.origin,
+    tlsPolicy: tlsPolicy ?? this.tlsPolicy,
+    retentionPolicy: retentionPolicy ?? this.retentionPolicy,
+    streaming: streaming ?? this.streaming,
+    revision: revision ?? this.revision,
+    consentedAt: clearConsent ? null : consentedAt ?? this.consentedAt,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is RemoteSttProviderConfiguration &&
+      other.providerId == providerId &&
+      other.origin == origin &&
+      other.tlsPolicy == tlsPolicy &&
+      other.retentionPolicy == retentionPolicy &&
+      other.streaming == streaming &&
+      other.revision == revision &&
+      other.consentedAt == consentedAt;
+
+  @override
+  int get hashCode => Object.hash(
+    providerId,
+    origin,
+    tlsPolicy,
+    retentionPolicy,
+    streaming,
+    revision,
+    consentedAt,
+  );
+}
 
 class SttProviderConfiguration {
   const SttProviderConfiguration({
     this.kind = SttProviderKind.bundledFasterWhisper,
     this.language = 'zh',
     this.modelPath = '',
+    this.remote,
   });
+
+  const SttProviderConfiguration.remote({
+    required this.remote,
+    this.language = 'zh',
+  }) : kind = SttProviderKind.remoteHttps,
+       modelPath = '';
 
   final SttProviderKind kind;
   final String language;
   final String modelPath;
+  final RemoteSttProviderConfiguration? remote;
 
-  bool get isSafe =>
-      language.trim().isNotEmpty &&
-      language.length <= 32 &&
-      (kind == SttProviderKind.disabled || modelPath.trim().isNotEmpty);
+  bool get isSafe {
+    if (language.trim().isEmpty || language.length > 32) return false;
+    return switch (kind) {
+      SttProviderKind.disabled => true,
+      SttProviderKind.bundledFasterWhisper =>
+        remote == null && modelPath.trim().isNotEmpty,
+      SttProviderKind.remoteHttps => remote?.isSafe ?? false,
+    };
+  }
 
   SttProviderConfiguration copyWith({
     SttProviderKind? kind,
     String? language,
     String? modelPath,
+    RemoteSttProviderConfiguration? remote,
+    bool clearRemote = false,
   }) => SttProviderConfiguration(
     kind: kind ?? this.kind,
     language: language ?? this.language,
     modelPath: modelPath ?? this.modelPath,
+    remote: clearRemote ? null : remote ?? this.remote,
   );
 
   @override
@@ -34,10 +134,11 @@ class SttProviderConfiguration {
       other is SttProviderConfiguration &&
       other.kind == kind &&
       other.language == language &&
-      other.modelPath == modelPath;
+      other.modelPath == modelPath &&
+      other.remote == remote;
 
   @override
-  int get hashCode => Object.hash(kind, language, modelPath);
+  int get hashCode => Object.hash(kind, language, modelPath, remote);
 }
 
 const minSpeechRate = 0.5;
