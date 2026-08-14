@@ -4,8 +4,10 @@
 >
 > 2026-08-13 重新开启产品开发，但执行范围收敛为 Android 手机端单一纵向
 > 链路。本文件的历史阶段和旧验收结果继续保留；新的执行计划以本节为准。
-> iOS、桌面新功能、后台监听、唤醒词、全双工语音、本地手机 sidecar 和新
-> Agent 后端在 Android MVP 通过前不进入开发。
+> 当前产品客户端支持 Android（当前优先）、iOS（后续）、macOS 和 Windows；
+> Linux 仅作为 Hermes/Agent/服务端部署主机，不提供客户端。iOS、macOS/Windows
+> 新功能、后台监听、唤醒词、全双工语音、本地手机 sidecar 和新 Agent 后端在
+> Android MVP 通过前不进入开发。
 
 ## 0.1 Android-first 执行顺序
 
@@ -20,6 +22,9 @@
    结果独立于播放失败。
 6. 实体 Android 验收：安装、配对、重启、断网、重连、权限、连续交互、日志
    脱敏和发布构建。
+
+本轮只开发 Android 客户端；macOS/Windows 后续按同一阶段顺序适配，iOS 在后续
+移动端阶段适配；Linux 客户端不做，Linux 仅作为 Hermes/Agent/服务端部署主机。
 
 每个阶段都必须有可复现检查和独立结果；失败、阻塞和未验证不能写成完成。
 
@@ -248,6 +253,10 @@ Hermes 0.20 capability 与 H1、实体 GUI/麦克风、真实 STT/TTS/provider�
 
 ## 1. 归档时的状态
 
+以下内容是历史归档，不代表当前客户端支持范围。M3–M6 的 Fedora/Linux、Wayland、
+benchmark artifacts、Linux release 和 release bundle 记录均保留为真实历史证据；
+当前支持范围以本文开头和 0.1 节为准，Linux 不提供客户端。
+
 ### 1.1 2026-08-02 权威快照（归档前）
 
 当前产品基线是“统一个人助手”：Hermes 是主要且唯一具有 Agent 语义的工作后端，用户自接 OpenAI-compatible API 是纯聊天/陪伴后端。M0–M4 的历史交付不回退；M5 批次 1–5 的本地实现基座已完成（Provider/凭据/历史隔离、确认目标绑定、request lifecycle、消息终态、AssistantProfile、conversation context、语音配置与播报策略），阶段未关闭，剩余门集中在真实语音与实体设备证据（连续 10 轮 GUI、至少一轮实体麦克风全链路、正式 STT sidecar bundle、remote STT 契约）；批次 6 正在收口 PR #4 事实、review map 与证据登记。H1 独立受 Hermes 上游能力阻断，不是 M5 完成条件。
@@ -402,7 +411,7 @@ Hermes 默认 gateway 当前由 user systemd service 运行并关联 QQBot；它
 ```text
 apps/
   poc-cli/              # 可重复协议/故障 PoC
-  client/               # Flutter 五端共享 shell、领域/application 层与平台 runner
+  client/               # Flutter 客户端共享 shell、领域/application 层与平台 runner
 packages/
   core/                 # 无外部依赖的领域模型和状态机
   adapters/             # Hermes 正式适配器；Codex 历史回归隔离保留
@@ -429,7 +438,7 @@ scripts/                # 协议、质量与构建脚本
 - 外部 payload 从 `unknown` 校验，禁止在协议边界使用 `any`；
 - 错误必须包含 stage、稳定 code、是否可重试和脱敏 cause；
 - 取消、失败、超时和 uncertain 分别测试；
-- 依赖只有在明显改善正确性、五端覆盖或维护成本时加入；
+- 依赖只有在明显改善正确性、支持客户端平台覆盖或维护成本时加入；
 - 版本写入 lockfile，升级单独评审 breaking change 和许可证；
 - fixture/fake 测试离线运行，live test 显式开启且默认只读/低风险。
 - 规格未覆盖的普通实现问题可先以隔离 spike 和真实构建/测试决定；形成提交时必须同步写明稳定选择、拒绝方案、迁移/回滚和验收影响。涉及非协商安全、公共协议、权威数据或平台范围时仍须先更新规格。
@@ -501,7 +510,7 @@ scripts/                # 协议、质量与构建脚本
 | PostgreSQL test image | 17 Alpine，固定 manifest digest | PostgreSQL License；镜像含各组件许可证 | 官方镜像；本地隔离测试和 CI 使用同一 digest | 生产部署独立；测试可换受支持 PostgreSQL 版本并先跑 migration/fixture gate |
 | `@connectrpc/connect` / `@connectrpc/connect-node` | 2.1.2，npm lockfile | Apache-2.0 | Buf/CNCF Connect 官方 TypeScript 实现；支持 Node、gRPC 与 streaming，真实 HTTP/2 测试通过 | service 只依赖生成的标准 Protobuf descriptor；可换 `grpc-js` 而不改变 wire schema/账本 |
 
-TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖已锁定后不把私有 proto 上传到远程 generator。普通 `npm run check` 校验已提交 TypeScript 生成物并先 emit protocol `dist` 再检查消费者；CI 与显式 `protocol:check:dart` 使用固定 Flutter SDK 内嵌 Dart 重新生成并逐字比较。`npm run flutter:check` 已真编译 protocol package 并分析、测试共享客户端；在各目标平台 toolchain 和 runner build 实际通过前，仍不得把它表述为“五端编译成功”。
+TypeScript 与 Dart binding 都使用仓库固定的本地 Buf plugin；依赖已锁定后不把私有 proto 上传到远程 generator。普通 `npm run check` 校验已提交 TypeScript 生成物并先 emit protocol `dist` 再检查消费者；CI 与显式 `protocol:check:dart` 使用固定 Flutter SDK 内嵌 Dart 重新生成并逐字比较。`npm run flutter:check` 已真编译 protocol package 并分析、测试共享客户端；在各目标平台 toolchain 和 runner build 实际通过前，仍不得把它表述为所有目标平台编译成功。
 
 ## 4. 里程碑
 
@@ -962,7 +971,7 @@ postgres-ledger、node hermes-node-connector、client drift ledger 等，
 
 ### 6.3 Nightly/设备实验室
 
-- Windows、Linux、macOS、Android、iOS build + smoke；
+- Android、iOS、macOS、Windows build + smoke；
 - 真实安全存储写入/重启/读回/撤销；
 - 麦克风权限、设备断开和音频播放中断；
 - PostgreSQL/Drift/Gateway 重启和升级；启用 PowerSync 后再加入其退出/恢复矩阵；
@@ -1101,7 +1110,7 @@ UI 不展示虚构完成百分比。诊断页面显示最后真实事件、同�
 | Hermes capability 或 SSE 契约变化 | fail-closed 协商、稳定事件身份、fake 契约与隔离 live profile | 任一必需能力缺失或事件不可恢复即拒绝 Connector 上线 |
 | Hermes 当前纵向真链路未验证 | fake Hermes + 真实 Gateway stream 已覆盖 Connector 边界，不擅自复用默认 gateway | Hermes 同时补齐幂等 run 与精确 approval identity/resolution 后关闭完整 H1 live gate |
 | PowerSync 引入第二同步/授权平面 | 当前采用 Drift + 已认证 cursor sync；PowerSync 仅位于可选 Sync Adapter | 只有许可、运维、最小授权和量化收益同时过门才引入 |
-| 五端插件能力不一致 | record/media/security adapter + real device tests | 单平台失败显式降级或写原生 plugin |
+| 支持客户端平台插件能力不一致 | record/media/security adapter + real device tests | 单平台失败显式降级或写原生 plugin |
 | TTS 冷启动/崩溃 | 常驻预热、分段、纯文字降级 | 不达标时限制自动播报长度 |
 | adapter 证据被误作 GUI/发布证据 | 独立证据轴分栏、exact commit/device/service 记录 | synthetic/service smoke 被写成实体麦克风或发布通过即退回验收 |
 | STT 技术词误识别 | 默认确认、高风险审批独立 | 30 条基准不达标切换后端 |
@@ -1121,7 +1130,7 @@ UI 不展示虚构完成百分比。诊断页面显示最后真实事件、同�
 - Direct LLM 的 `completed/cancelled/failed/incomplete/truncated`、请求 owner 和有界读取经过相应 failure fixtures；
 - 发送前确认绑定精确 backend target；Profile、conversation、route 或执行主机变化会撤销确认；
 - 不引入明文秘密、静默重试或自动审批；
-- 五端影响和降级路径已评估；
+- Android、iOS、macOS、Windows 影响和降级路径已评估；
 - 新依赖的维护、许可证、体积和退出路径已记录；
 - 用户可见变化有可访问性和无动画路径；
 - 必要的 migration、protocol compatibility、回滚和诊断信息可用；

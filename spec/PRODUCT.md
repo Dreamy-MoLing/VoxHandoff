@@ -2,9 +2,12 @@
 
 ## 1. 产品定义
 
-> 当前执行优先级（2026-08-13）：只开发 Android 手机端 MVP。共享 Flutter
-> 代码库仍保留五端结构，但 iOS、桌面新功能、后台监听、唤醒词、全双工语音
-> 和本地手机 Agent/STT sidecar 均延后到 Android MVP 的实体设备验收之后。
+> 当前执行优先级（2026-08-13）：只开发 Android 手机端 MVP。产品支持范围为
+> Android（当前优先）、iOS（后续）、macOS 和 Windows；Linux 仅作为
+> Hermes/Agent/服务端部署主机，不提供客户端。共享 Flutter 语义和协议模型，
+> macOS/Windows 后续按同一里程碑适配，iOS 在后续移动端阶段适配；后台监听、
+> 唤醒词、全双工语音和本地手机 Agent/STT sidecar 均延后到 Android MVP 的实体
+> 设备验收之后。
 
 VoxHandoff 是面向 Hermes 用户的本地优先、GUI 优先个人语音助手。它服务于长期个人助理、自然聊天和情感陪伴：用户始终面对同一个可命名、可塑造人格、可选择声音并可管理记忆的助手，而不是在两个互不相干的产品之间切换。
 
@@ -28,24 +31,25 @@ VoxHandoff 不是新的 Agent 框架、公共模型中转服务、桌面 UI 自�
 
 ### 2.1 平台
 
-同一 Flutter 客户端代码库支持：
+同一 Flutter 客户端代码库支持以下平台：
 
-- Windows；
-- Linux；
+- Android（当前优先）；
+- iOS（后续）；
 - macOS；
-- iOS；
-- Android。
+- Windows。
 
 平台共享产品语义、协议、数据模型、视觉 token 和状态机。系统能力允许差异化实现：
 
-- 桌面端可以启动随应用分发的本地 sidecar、使用全局快捷键和托盘；
+- macOS/Windows 桌面端可以启动随应用分发的本地 sidecar、使用全局快捷键和托盘；
 - 移动端的 Agent/聊天后端只连接远程 Hermes Gateway 或用户配置的 LLM API，不启动 Node、Hermes 或本地语音 sidecar；语音可以使用用户明确同意的远程 STT/TTS；
 - iOS/Android 第一版只承诺前台按键说话，不承诺后台常听或自定义唤醒词；
-- Linux 全局快捷键和托盘按桌面环境、portal 能力明确降级，不伪装为完全一致。
+- Linux 不提供客户端支持，仅作为 Hermes/Agent/服务端部署主机。
 
 桌面全局快捷键只切换本地语音草稿录制，不确认草稿、不发送请求、不处理中断、审批或澄清。通知只使用固定的阶段文案，不携带完整回复、转写、审批摘要或澄清正文；只有托盘初始化成功后才允许“关闭到托盘”，否则保留平台正常退出行为。应用内 `Ctrl+Shift+Space` 是全局热键不可用时的可见回退。
 
-首个持续集成和开发目标是 Fedora 44；五端发行按 `DELIVERY.md` 的里程碑逐步验收，不能因首发顺序删减公共协议能力。
+首个持续集成和开发目标是 Android 实机；macOS/Windows 作为后续桌面目标、iOS
+作为后续移动目标，均按 `DELIVERY.md` 的里程碑逐步适配，不能因首发顺序删减
+公共协议能力。
 
 ### 2.2 Hermes 与自接 LLM API
 

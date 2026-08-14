@@ -4,11 +4,12 @@
 
 ### 1.0 当前执行变体：Android-first
 
-本轮只实现 Android Flutter 客户端的前台能力。Android 通过认证的远程
-Gateway 访问 Hermes 工作链路，或直接访问用户配置的 Direct LLM；手机不
-启动 Node、Hermes、Gateway、本地 PostgreSQL 或 STT sidecar。桌面 sidecar、
-iOS、后台监听、唤醒词和全双工实时媒体保持既有架构定义，但不属于当前
-实现批次。
+本轮只实现 Android Flutter 客户端的前台能力。产品客户端支持 Android（当前
+优先）、iOS（后续）、macOS 和 Windows；Linux 仅作为 Hermes/Agent/服务端部署
+主机，不提供客户端。Android 通过认证的远程 Gateway 访问 Hermes 工作链路，或
+直接访问用户配置的 Direct LLM；手机不启动 Node、Hermes、Gateway、本地
+PostgreSQL 或 STT sidecar。macOS/Windows 桌面 sidecar 与 iOS 保持既有架构
+定义，但不属于当前实现批次，后续按同一执行顺序适配。
 
 - 本地优先：录音、STT/TTS 配置、LLM API key 和离线历史尽量留在设备；
 - 助手统一：人格、记忆、语音和视觉由稳定 `assistantId` 关联，聊天/工作 backend 是能力端口，不是两个 UI 产品；
@@ -31,11 +32,11 @@ origin、TLS policy、retention disclosure、provider revision 和 consent times
 
 | 层 | 正式选择 | 约束 |
 | --- | --- | --- |
-| 五端客户端 | Flutter / Dart | Windows、Linux、macOS、iOS、Android 共用页面和领域接口 |
+| 移动端 + macOS/Windows 客户端 | Flutter / Dart | Android、iOS、macOS、Windows 共用页面和领域接口 |
 | 客户端状态 | Riverpod stable API | 不使用 experimental persistence 作为业务权威 |
-| 录音 | `record` 适配器 | 五端能力实测；权限和设备选择差异显式暴露 |
+| 录音 | `record` 适配器 | 各支持客户端平台能力实测；权限和设备选择差异显式暴露 |
 | 音频播放 | `media_kit` 适配器 | 只负责播放/停止；不得持有业务状态 |
-| 安全存储 | `flutter_secure_storage` + 平台复核 | Linux 打包 libsecret；Windows/macOS/iOS/Android 做真实读回和迁移测试 |
+| 安全存储 | `flutter_secure_storage` + 平台复核 | Windows/macOS/iOS/Android 做真实读回和迁移测试 |
 | 视觉 | Flutter widgets/CustomPainter + GLSL fragment shader | Rive 仅作辅助微动效，核心视觉有静态回退 |
 | 本地数据 | Drift 2.34.2 + path_provider 2.1.6 + SQLite 3.5.0 | 完整事件与 conversation cursor 同事务提交；uint64 使用规范定宽十进制 TEXT，SDK 隔离在 storage adapter |
 | 领域核心/Node/Gateway | TypeScript + Node.js 22 LTS 基线 | strict 模式；外部 payload 从 `unknown` 校验 |
@@ -53,7 +54,7 @@ origin、TLS policy、retention disclosure、provider revision 和 consent times
 ## 3. 系统拓扑
 
 ```text
-Windows / Linux / macOS / iOS / Android
+Android / iOS / macOS / Windows
 ┌──────────────────── Flutter Client ────────────────────┐
 │ AssistantProfile + conversation UI + SignalCore       │
 │ target confirmation + local audio/STT/TTS + lifecycle │
@@ -82,7 +83,7 @@ Windows / Linux / macOS / iOS / Android
 └─────────────────────────────────────────────────┘
 ```
 
-Direct LLM、STT/TTS 与本地记忆都通过明确 Profile/Port 进入 Assistant 层，不经过 Gateway，也不获得 Agent capability。Embedded 桌面模式可以把 Gateway 和 Node 打包为本地 sidecar，通过 stdio 与 Flutter host 通信，不监听固定入站端口。同步模式必须使用持续在线 Gateway；移动端永不启动本地 Agent 进程。
+Direct LLM、STT/TTS 与本地记忆都通过明确 Profile/Port 进入 Assistant 层，不经过 Gateway，也不获得 Agent capability。Embedded macOS/Windows 桌面模式可以把 Gateway 和 Node 打包为本地 sidecar，通过 stdio 与 Flutter host 通信，不监听固定入站端口。同步模式必须使用持续在线 Gateway；移动端永不启动本地 Agent 进程。
 
 ### 3.1 部署模式与耐久权威
 
@@ -437,7 +438,7 @@ PowerSync Open Edition 只保留为可选加速器，须同时满足以下条件
 
 - Client SDK 的 Apache-2.0 许可和 Service 的届时许可证通过发布复核；
 - 自托管认证、最小下载授权、升级、备份、监控和事故恢复有独立证据；
-- Flutter/Drift 桥接通过通知、离线读取、重连、schema 升级和五平台构建契约测试；
+- Flutter/Drift 桥接通过通知、离线读取、重连、schema 升级和 Android/iOS/macOS/Windows 构建契约测试；
 - 相比现有 cursor sync 有可量化收益，且没有复制审批、凭据或命令权威。
 
 PowerSync 类型和 schema 若被引入，只能存在于 `SyncAdapter`。移除它时保留 Drift schema、公共 Protobuf、领域模型和 UI，以 cursor sync 完整恢复；当前未通过上述 gate，因此不建立 `infra/powersync` 服务或配置。
@@ -524,7 +525,7 @@ transport 只暴露 request-scoped `test` 或 `streamCompletion`、明确 termin
 - 信号生命核心是只读 presentation，由规范 Agent 事件、本地 voice/speech 阶段、真实 `audioLevel` 和播放 segment identity 合成为有限视觉状态；它不持有 request、approval、lease 或命令权限，不直接解释 adapter 原始事件；
 - 状态优先级固定为 approval/clarification → uncertain → failed → recording/transcribing → submitting/working → speaking → completed → idle。同一时刻只发布一个主状态，次级连接、同步和播放事实由独立文字或图标呈现；
 - 桌面核心在会话工作台的固定视觉安全区布局，手机核心在标题、阅读和录音三种尺寸槽位间切换；布局约束先保证正文、审批、澄清、转写确认和取消/停止操作，再分配装饰空间；
-- `DesktopIntegrationPort` 是 platform plugin 的唯一 application 边界；生产 adapter 分别初始化窗口、托盘、通知和热键并发布每项 `available/degraded/unsupported` 安全状态。Linux Wayland 不调用 X11 Keybinder，而明确回落到应用内 `Ctrl+Shift+Space`；快捷键 callback 只能切换本地 voice draft。托盘成功后才启用 close-to-tray，初始化失败时不得拦截正常关闭；
+- `DesktopIntegrationPort` 是 platform plugin 的唯一 application 边界；macOS/Windows 生产 adapter 分别初始化窗口、托盘、通知和热键并发布每项 `available/degraded/unsupported` 安全状态；快捷键 callback 只能切换本地 voice draft。托盘成功后才启用 close-to-tray，初始化失败时不得拦截正常关闭；
 - 中央 router 在耐久 replay pending 期间把已提交事件标为 `replay`，其余标为 `live`；workspace 对每次 conversation selection 另暴露明确的本地 ledger hydration 边界。desktop attention controller 只有在 hydration 完成后建立每个 conversation 的 sequence 高水位，并且只消费 router 明确标记的当前 conversation `live` approval、clarification、completed、failed 事实，因此启动/分页/切换 replay 不触发通知或历史 TTS。高水位随 directory 清理且最多保留 256 个 conversation；通知 adapter 接收 enum 而非事件 payload，因此完整回复、交互正文和摘要 hash 不可能进入系统通知；
 
 设计系统组件以独立 catalog/use case 覆盖真实状态，再进入业务页面；catalog 工具、第三方组件库和 styling package 都只能是开发或表现层依赖，不得成为领域状态权威。优先使用 Flutter 内建语义、focus、Theme 和自有小组件；只有组件隔离测试或跨端一致性收益足以抵消依赖/迁移成本时才引入社区包。
