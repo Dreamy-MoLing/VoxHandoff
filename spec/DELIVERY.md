@@ -1193,3 +1193,27 @@ origin `https://100.103.253.87`、语言 `zh`，consent 为 `checked=true`；新
 证据，任务停在手机重新导入新 CA 后的 readiness 门。下一步需通过现有 pairing UI
 重新导入 CA 并完成其必要的人工 owner 门，再重启 app、重测 readiness，之后才能做
 外放录音和终稿确认。Hermes 零改动、未 push。
+
+**2026-08-14 CA 重新导入入口与第二轮真机证据**：新增入口位于 Voice settings 的
+Hermes 区域，已配对设备可直接走 `Re-import trusted CA`。流程复用现有 Private CA
+选择器和 PEM/私钥/大小校验，保留原 Gateway audience，仅在 profile 校验通过后把新
+CA 写回 secure storage；未增加 `onBadCertificate`、明文 HTTP 或测试 CA 路径。生产
+remote STT transport 在新请求创建时读取当前 Gateway profile 的 trusted roots，避免
+启动时旧 CA 快照继续生效。新增导入服务、动态 trust-root 测试和 Voice settings 入口
+测试；Dart format、Flutter analyze 均通过，定向 13 项和全客户端 232 项通过，2 项
+预置 live smoke 按条件跳过。
+
+使用 `/home/roco/develop/flutter-3.44.6/bin/flutter build apk --debug --no-pub` 构建
+Debug APK，版本 `0.1.0+1`，SHA-256 为
+`2565abe515b5b1bae3f921bf5f52a3f206090159596274b2f948138c292f1309`。通过
+`adb -s 100.96.66.108:5555 install --no-streaming -r -d` 安装成功，包
+`lastUpdateTime=2026-08-14 09:03:29`，没有代点系统安装确认。
+
+实机 UI 通过 ADB 注入新 CA 后显示 `Trusted CA imported. Test STT readiness again.`；
+点击 `Test STT readiness` 后显示 `Ready`，服务日志有 4 行
+`stt_http "GET /v1/health HTTP/1.1" 200 -`。随后按任务书只做一次外放录音：UI 进入
+Recording，停止后显示 `Remote speech recognition failed. No Agent request was sent.`；
+服务端收到 `stt_http "POST /v1/transcribe HTTP/1.1" 401 -`，未进入音频解析，因而没有
+`stt_audio_stats`、bytes/rms、中文转写、Editable draft 或 Confirm 证据。未重录；任务
+当前阻塞在 STT token 与服务端期望值不一致或为空的认证门，不能把它写成音频成功。
+阶段日志：`/tmp/voxhandoff-acceptance-20260814.log`。Hermes 零改动，未 push。

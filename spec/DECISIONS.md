@@ -576,3 +576,30 @@ DELIVERY 对应章节。
   宿主机 HTTP 200 或 token 保存写成移动 readiness 通过。下一步是通过 pairing UI
   重新导入新 CA 并完成必要的 owner 人工门，然后重启 app 重新验收。Hermes 零改动，
   未 push。
+
+## D-030：2026-08-14 已配对 CA 重导入入口完成，但 STT 认证阻塞录音
+
+- 日期：2026-08-14
+- 状态：Partial / blocked at remote STT authorization
+- 决策：在 Voice settings 的 Hermes 区域提供 `Re-import trusted CA`。导入服务复用
+  `PrivateCaCertificatePicker` 的 PEM、私钥和大小校验，读取现有 secure Gateway
+  profile，保留 Gateway audience，构造并校验新 profile 后再保存；未配对或 profile
+  无效时拒绝保存并显示安全错误。生产 remote STT transport 改为在新请求创建时读取
+  当前 profile 的 trusted roots，覆盖 CA 更新后的旧启动快照。
+- 自动化证据：Dart format 通过，Flutter analyze 无问题；CA 导入成功/无效拒绝/未配对
+  拒绝、factory 动态 CA 转发、transport 动态 CA、Voice settings 入口定向测试共 13
+  项通过；全客户端测试 232 项通过，2 项预置 live smoke 跳过。
+- 安装与配置证据：Flutter `3.44.6` Debug APK SHA-256 为
+  `2565abe515b5b1bae3f921bf5f52a3f206090159596274b2f948138c292f1309`；通过
+  `100.96.66.108:5555` Tailscale ADB 安装成功，`lastUpdateTime=2026-08-14 09:03:29`。
+  UI 显示新入口，选择新 CA 后显示 `Trusted CA imported. Test STT readiness again.`；
+  readiness UI 显示 `Ready`，服务端有 4 行 health `GET` 200。
+- 真实录音证据：唯一一次录音进入 Recording，停止后 UI 显示
+  `Remote speech recognition failed. No Agent request was sent.`；服务端只收到
+  `POST /v1/transcribe` 401，认证失败发生在音频 payload 解析前，没有
+  `stt_audio_stats`，因此 bytes/rms、中文转写、Editable draft、Confirm 均未取得。
+  按任务书未重录，也没有伪造任何音频或文本结果。
+- 当前门：需核对并由 owner 重新提供与当前 STT 服务一致的 provider token 后，才可
+  重新进入录音验收；本轮不猜 token、不读取或输出 token，不改变服务认证策略。临时
+  注入到设备 Download 的 CA 文件已删除，secure profile 中的新 CA 保留。Hermes 零
+  改动，未 push，未自动审批。
