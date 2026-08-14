@@ -146,12 +146,7 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
       _audioDone = Completer<void>();
       _audioSubscription = capture.audioChunks.listen(
         (chunk) {
-          _pushes = _pushes.then((_) => stt.push(chunk));
-          unawaited(
-            _pushes.catchError((Object error) {
-              _streamFailed(generation, error);
-            }),
-          );
+          _enqueueAudioPush(generation, stt, chunk);
         },
         onError: (Object error) {
           if (!(_audioDone?.isCompleted ?? true)) {
@@ -194,8 +189,7 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
     state = state.copyWith(phase: VoiceInputPhase.transcribing, audioLevel: 0);
     try {
       await capture.stop();
-      await _audioDone?.future;
-      await _pushes;
+      await _flushAudioPushes();
       if (generation != _generation) return;
       final transcript = await stt.finish();
       if (generation != _generation) return;
@@ -287,6 +281,22 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
     if (update.sequence <= _lastTranscriptSequence) return;
     _lastTranscriptSequence = update.sequence;
     state = state.copyWith(provisionalTranscript: update.text);
+  }
+
+  void _enqueueAudioPush(int generation, SttSessionPort stt, Uint8List chunk) {
+    final push = _pushes.then((_) => stt.push(chunk));
+    _pushes = push;
+    unawaited(
+      push.catchError((Object error) {
+        _streamFailed(generation, error);
+      }),
+    );
+  }
+
+  Future<void> _flushAudioPushes() async {
+    await _audioDone?.future;
+    final pushes = _pushes;
+    await pushes;
   }
 
   void _streamFailed(int generation, Object error) {

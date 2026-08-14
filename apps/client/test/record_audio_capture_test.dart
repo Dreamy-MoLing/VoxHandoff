@@ -75,6 +75,27 @@ void main() {
       ),
     );
   });
+
+  test(
+    'Android capture can stop while the native frame stream is quiet',
+    () async {
+      final bridge = _QuietAndroidBridge();
+      final capture = RecordAudioCapture(androidBridge: bridge);
+      addTearDown(capture.close);
+
+      final session = await capture.start(const AudioCaptureConfig());
+      final audioSubscription = session.audioChunks.listen((_) {});
+      final levelSubscription = session.levels.listen((_) {});
+
+      await session.stop();
+      await audioSubscription.cancel();
+      await levelSubscription.cancel();
+
+      expect(bridge.starts, 1);
+      expect(bridge.stops, 1);
+      expect(bridge.cancels, 0);
+    },
+  );
 }
 
 class _NoopAndroidBridge implements AndroidAudioRecordBridge {
@@ -93,4 +114,34 @@ class _NoopAndroidBridge implements AndroidAudioRecordBridge {
 
   @override
   Future<void> stop() async {}
+}
+
+class _QuietAndroidBridge implements AndroidAudioRecordBridge {
+  final _framesController = StreamController<AndroidAudioFrame>.broadcast();
+  int starts = 0;
+  int stops = 0;
+  int cancels = 0;
+
+  @override
+  Stream<AndroidAudioFrame> get frames => _framesController.stream;
+
+  @override
+  Future<void> cancel() async {
+    cancels += 1;
+  }
+
+  @override
+  Future<void> close() async {
+    await _framesController.close();
+  }
+
+  @override
+  Future<void> start(AudioCaptureConfig config) async {
+    starts += 1;
+  }
+
+  @override
+  Future<void> stop() async {
+    stops += 1;
+  }
 }

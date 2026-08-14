@@ -28,7 +28,10 @@ class AndroidAudioCapture(
         private const val CHANNEL_COUNT = 1
         private const val BYTES_PER_SAMPLE = 2
         private const val READ_SIZE = 3200
+        private const val READ_IDLE_SLEEP_MS = 10L
+        private const val READ_HEARTBEAT_INTERVAL_MS = 1000L
         private const val MAX_DIAGNOSTIC_LOGS = 20
+        private const val MAX_HEARTBEAT_LOGS = 20
         private const val START_SINK_TIMEOUT_MS = 2000L
     }
 
@@ -48,6 +51,7 @@ class AndroidAudioCapture(
     private var pendingStartResult: MethodChannel.Result? = null
     private var pendingStartTimeout: Runnable? = null
     private var readDiagnosticCount = 0
+    private var heartbeatDiagnosticCount = 0
     private var pushDiagnosticCount = 0
 
     init {
@@ -130,6 +134,7 @@ class AndroidAudioCapture(
         discarding = false
         pendingStartResult = result
         readDiagnosticCount = 0
+        heartbeatDiagnosticCount = 0
         pushDiagnosticCount = 0
         Log.i(
             TAG,
@@ -154,8 +159,8 @@ class AndroidAudioCapture(
 
     private fun createAudioRecord(bufferSize: Int): AudioRecord? {
         val sources = intArrayOf(
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
             MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
         )
         for (source in sources) {
             try {
@@ -170,10 +175,13 @@ class AndroidAudioCapture(
                     )
                     .setBufferSizeInBytes(bufferSize)
                     .build()
-                if (record.state == AudioRecord.STATE_INITIALIZED) return record
+                if (record.state == AudioRecord.STATE_INITIALIZED) {
+                    Log.i(TAG, "createAudioRecord initialized source=$source")
+                    return record
+                }
                 record.release()
             } catch (_: RuntimeException) {
-                // Try the explicit MIC source if VOICE_RECOGNITION is unavailable.
+                // Try VOICE_RECOGNITION if the explicit MIC source is unavailable.
             }
         }
         return null
@@ -216,14 +224,33 @@ class AndroidAudioCapture(
 
     private fun readLoop(record: AudioRecord) {
         val buffer = ByteArray(READ_SIZE)
+        var successfulReads = 0
+        var zeroReads = 0
+        var lastSuccessfulReadAt = System.nanoTime()
+        var lastHeartbeatAt = lastSuccessfulReadAt
         while (running) {
             val count = try {
-                record.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
+                record.read(buffer, 0, buffer.size, AudioRecord.READ_NON_BLOCKING)
             } catch (_: RuntimeException) {
                 Log.i(TAG, "readLoop read=exception sinkNull=${eventSink == null} discarding=$discarding")
+                if (!running) break
                 running = false
                 postStreamError()
                 break
+            }
+            val now = System.nanoTime()
+            if (now - lastHeartbeatAt >= READ_HEARTBEAT_INTERVAL_MS * 1_000_000L) {
+                lastHeartbeatAt = now
+                if (heartbeatDiagnosticCount < MAX_HEARTBEAT_LOGS) {
+                    heartbeatDiagnosticCount += 1
+                    val idleMs = (now - lastSuccessfulReadAt) / 1_000_000L
+                    Log.i(
+                        TAG,
+                        "readLoop heartbeat reads=$successfulReads zeroReads=$zeroReads " +
+                            "idleMs=$idleMs sinkNull=${eventSink == null} " +
+                            "discarding=$discarding running=$running",
+                    )
+                }
             }
             if (readDiagnosticCount < MAX_DIAGNOSTIC_LOGS) {
                 readDiagnosticCount += 1
@@ -233,7 +260,21 @@ class AndroidAudioCapture(
                         "discarding=$discarding",
                 )
             }
-            if (count > 0) {
+            if (count == 0) {
+                zeroReads += 1
+                try {
+                    Thread.sleep(READ_IDLE_SLEEP_MS)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    if (running) {
+                        running = false
+                        postStreamError()
+                    }
+                    break
+                }
+            } else if (count > 0) {
+                successfulReads += 1
+                lastSuccessfulReadAt = now
                 val pcm = buffer.copyOf(count)
                 val level = rmsLevel(pcm)
                 mainHandler.post {
@@ -267,12 +308,17 @@ class AndroidAudioCapture(
                         )
                     }
                 }
-            } else if (count < 0) {
+            } else if (running) {
                 running = false
                 postStreamError()
                 break
             }
         }
+        Log.i(
+            TAG,
+            "readLoop exit reads=$successfulReads zeroReads=$zeroReads running=$running " +
+                "discarding=$discarding",
+        )
     }
 
     private fun postStreamError() {

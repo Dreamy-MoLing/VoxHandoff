@@ -90,6 +90,40 @@ void main() {
     await container.read(voiceSessionProvider.notifier).cancelRecording();
   });
 
+  test('stop waits for pending audio push before finishing STT', () async {
+    final capture = _FakeCapturePort();
+    capture.session.closeAudioOnStop = true;
+    final stt = _FakeSttPort();
+    stt.session.pushCompleter = Completer<void>();
+    final container = ProviderContainer(
+      overrides: [
+        audioCapturePortProvider.overrideWithValue(capture),
+        sttPortProvider.overrideWithValue(stt),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(voiceSessionProvider.notifier).startRecording();
+    capture.session.audioController.add(Uint8List.fromList([1, 0, 2, 0]));
+    await _eventually(() => stt.session.pushStarted == 1);
+
+    final stopping = container
+        .read(voiceSessionProvider.notifier)
+        .stopRecording();
+    await Future<void>.delayed(Duration.zero);
+    expect(stt.session.finished, 0);
+
+    stt.session.pushCompleter!.complete();
+    await stopping;
+
+    expect(stt.session.pushed, hasLength(1));
+    expect(stt.session.finished, 1);
+    expect(
+      container.read(voiceSessionProvider).phase,
+      VoiceInputPhase.awaitingConfirmation,
+    );
+  });
+
   test(
     'recording cancel discards local media without touching the draft',
     () async {
@@ -292,6 +326,7 @@ class _FakeCaptureSession implements AudioCaptureSession {
   final levelController = StreamController<double>();
   int stopped = 0;
   int cancelled = 0;
+  bool closeAudioOnStop = false;
 
   @override
   Stream<Uint8List> get audioChunks => audioController.stream;
@@ -307,6 +342,7 @@ class _FakeCaptureSession implements AudioCaptureSession {
   @override
   Future<void> stop() async {
     stopped += 1;
+    if (closeAudioOnStop) await audioController.close();
   }
 }
 
@@ -336,8 +372,10 @@ class _FakeSttSession implements SttSessionPort {
   final List<Uint8List> pushed = [];
   int finished = 0;
   int cancelled = 0;
+  int pushStarted = 0;
   Object? finishFailure;
   Completer<FinalTranscript>? finishCompleter;
+  Completer<void>? pushCompleter;
 
   @override
   Stream<TranscriptUpdate> get updates => updatesController.stream;
@@ -363,6 +401,8 @@ class _FakeSttSession implements SttSessionPort {
 
   @override
   Future<void> push(Uint8List audio) async {
+    pushStarted += 1;
+    await pushCompleter?.future;
     pushed.add(audio);
   }
 }
