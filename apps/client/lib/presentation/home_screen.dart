@@ -29,6 +29,8 @@ import 'direct_chat_view.dart';
 import 'direct_llm_settings_sheet.dart';
 import 'design/agent_talk_theme.dart';
 import 'message_composer.dart';
+import 'mobile_home_screen.dart';
+import 'mobile_visual_preferences.dart';
 import 'pairing_dialog.dart';
 import 'voice_settings_sheet.dart';
 import 'signal_core_view.dart';
@@ -36,7 +38,9 @@ import 'signal_core_view.dart';
 part 'home_screen_widgets.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({this.visualPreferences, super.key});
+
+  final MobileVisualPreferences? visualPreferences;
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -44,11 +48,17 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   late final TextEditingController _composer;
+  late final MobileVisualPreferences _ownedVisualPreferences;
+  var _mobilePreferencesRestoreStarted = false;
+
+  MobileVisualPreferences get _visualPreferences =>
+      widget.visualPreferences ?? _ownedVisualPreferences;
 
   @override
   void initState() {
     super.initState();
     _composer = TextEditingController();
+    _ownedVisualPreferences = MobileVisualPreferences();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(devicePairingProvider.notifier).restore();
       unawaited(
@@ -76,6 +86,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void dispose() {
     _composer.dispose();
+    if (widget.visualPreferences == null) _ownedVisualPreferences.dispose();
     super.dispose();
   }
 
@@ -239,6 +250,47 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     final compactAppBar = MediaQuery.sizeOf(context).width < 480;
     final isDirect = source == ChatSource.directLlm;
+    if (MediaQuery.sizeOf(context).width < 600) {
+      if (!_mobilePreferencesRestoreStarted) {
+        _mobilePreferencesRestoreStarted = true;
+        unawaited(_visualPreferences.restore());
+      }
+      return AnimatedBuilder(
+        animation: _visualPreferences,
+        builder: (context, _) {
+          final theme = _visualPreferences.theme == MobileVisualTheme.light
+              ? buildAgentTalkMobileLightTheme()
+              : buildAgentTalkMobileDarkTheme();
+          final systemScale = MediaQuery.textScalerOf(context).scale(1);
+          final preferenceScale = _visualPreferences.fontSize / 21;
+          return Theme(
+            data: theme,
+            child: MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(systemScale * preferenceScale),
+              ),
+              child: MobileHomeScreen(
+                preferences: _visualPreferences,
+                composer: _composer,
+                onOpenPairing: _openPairing,
+                onConnect: workspaceController.connect,
+                onDisconnect: workspaceController.disconnect,
+                onConfirm: _confirmDraft,
+                onReopen: controller.reopenDraft,
+                onSend: _send,
+                onNextDraft: _startNextDraft,
+                onStartVoice: _startVoice,
+                onStopVoice: _stopVoice,
+                onCancelVoice: _cancelVoice,
+                onDiscardVoice: _discardVoice,
+                onOpenVoiceSettings: (sheetContext) =>
+                    showVoiceSettingsSheet(sheetContext),
+              ),
+            ),
+          );
+        },
+      );
+    }
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(

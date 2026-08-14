@@ -21,6 +21,7 @@ class SignalCoreView extends StatefulWidget {
     required this.dimension,
     this.profile,
     this.shaderLoader,
+    this.mobileVisual = false,
     super.key,
   });
 
@@ -28,6 +29,7 @@ class SignalCoreView extends StatefulWidget {
   final double dimension;
   final SignalRenderProfile? profile;
   final SignalShaderLoader? shaderLoader;
+  final bool mobileVisual;
 
   @override
   State<SignalCoreView> createState() => _SignalCoreViewState();
@@ -57,6 +59,7 @@ class _SignalCoreViewState extends State<SignalCoreView>
     SignalCoreState.speaking ||
     SignalCoreState.approval ||
     SignalCoreState.uncertain => true,
+    SignalCoreState.idle when widget.mobileVisual => true,
     _ => false,
   };
 
@@ -157,13 +160,19 @@ class _SignalCoreViewState extends State<SignalCoreView>
                     snapshot: widget.snapshot,
                     phase: staticMode ? 0 : _animation.value,
                     signal: tokens.signal,
+                    signalStrong: tokens.signalStrong,
+                    signalDeep: tokens.signalDeep,
+                    signalWarm: tokens.signalWarm,
                     attention: tokens.attention,
                     danger: tokens.danger,
                     structureLine: tokens.structureLine,
+                    structureLineStrong: tokens.structureLineStrong,
                     ink: tokens.ink,
+                    shadow: tokens.shadow,
                     stateColor: stateColor,
                     program: _shaderUnavailable ? null : _program,
                     reducedMotion: staticMode,
+                    mobileVisual: widget.mobileVisual,
                     faultPulse: math.sin(math.pi * _faultPulse.value),
                     detail: _profile == SignalRenderProfile.highRefresh120
                         ? 1
@@ -204,13 +213,19 @@ class SignalCorePainter extends CustomPainter {
     required this.snapshot,
     required this.phase,
     required this.signal,
+    required this.signalStrong,
+    required this.signalDeep,
+    required this.signalWarm,
     required this.attention,
     required this.danger,
     required this.structureLine,
+    required this.structureLineStrong,
     required this.ink,
+    required this.shadow,
     required this.stateColor,
     required this.program,
     required this.reducedMotion,
+    required this.mobileVisual,
     required this.faultPulse,
     required this.detail,
   });
@@ -218,13 +233,19 @@ class SignalCorePainter extends CustomPainter {
   final SignalCoreSnapshot snapshot;
   final double phase;
   final Color signal;
+  final Color signalStrong;
+  final Color signalDeep;
+  final Color signalWarm;
   final Color attention;
   final Color danger;
   final Color structureLine;
+  final Color structureLineStrong;
   final Color ink;
+  final Color shadow;
   final Color stateColor;
   final ui.FragmentProgram? program;
   final bool reducedMotion;
+  final bool mobileVisual;
   final double faultPulse;
   final double detail;
 
@@ -425,6 +446,123 @@ class SignalCorePainter extends CustomPainter {
       radius * (0.055 + activity * 0.025),
       Paint()..color = stateColor.withValues(alpha: 0.9),
     );
+
+    if (mobileVisual) {
+      _paintMobileOrb(canvas, center, radius, activity);
+    }
+  }
+
+  void _paintMobileOrb(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double activity,
+  ) {
+    final orbRadius = radius * (0.38 + activity * 0.035);
+    final breathing = reducedMotion
+        ? 0.0
+        : math.sin(phase * math.pi * 2) * radius * 0.018;
+    final haloRadius = radius * (0.62 + activity * 0.04) + breathing;
+
+    canvas.drawCircle(
+      center,
+      haloRadius,
+      Paint()
+        ..color = stateColor.withValues(alpha: 0.12)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18),
+    );
+    canvas.save();
+    final clip = Path()
+      ..addOval(Rect.fromCircle(center: center, radius: radius * 0.92));
+    canvas.clipPath(clip);
+    final beamPhase = reducedMotion ? 0.0 : phase * math.pi * 2;
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(beamPhase * 0.18);
+    for (var index = 0; index < 3; index += 1) {
+      canvas.save();
+      canvas.rotate(index * math.pi * 2 / 3);
+      canvas.drawRect(
+        Rect.fromCenter(
+          center: Offset.zero,
+          width: radius * (0.12 + activity * 0.04),
+          height: radius * 1.8,
+        ),
+        Paint()..color = signalDeep.withValues(alpha: 0.16),
+      );
+      canvas.restore();
+    }
+    canvas.restore();
+    canvas.restore();
+
+    canvas.drawCircle(
+      center + Offset(0, radius * 0.035),
+      orbRadius + radius * 0.035,
+      Paint()
+        ..color = shadow.withValues(alpha: 0.42)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+    );
+    canvas.drawCircle(
+      center,
+      orbRadius,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          center - Offset(radius * 0.12, radius * 0.16),
+          orbRadius * 1.55,
+          [
+            signalWarm.withValues(alpha: 0.88),
+            signalStrong.withValues(alpha: 0.86),
+            stateColor.withValues(alpha: 0.92),
+            signalDeep.withValues(alpha: 0.98),
+          ],
+          const [0, 0.28, 0.68, 1],
+        ),
+    );
+    canvas.drawCircle(
+      center - Offset(radius * 0.13, radius * 0.17),
+      orbRadius * 0.17,
+      Paint()..color = Colors.white.withValues(alpha: 0.72),
+    );
+    if (snapshot.state == SignalCoreState.recording ||
+        snapshot.state == SignalCoreState.speaking) {
+      _paintMobileWaveform(canvas, center, orbRadius, activity);
+    }
+    final glintAngle = reducedMotion ? -0.72 : -0.72 + phase * math.pi * 2;
+    final glintCenter =
+        center +
+        Offset(math.cos(glintAngle), math.sin(glintAngle)) * orbRadius * 0.84;
+    canvas.drawCircle(
+      glintCenter,
+      radius * 0.026,
+      Paint()..color = Colors.white.withValues(alpha: 0.92),
+    );
+  }
+
+  void _paintMobileWaveform(
+    Canvas canvas,
+    Offset center,
+    double orbRadius,
+    double activity,
+  ) {
+    const shape = [0.42, 0.68, 0.92, 0.58, 0.34, 0.72, 0.5, 0.84, 0.38];
+    final barWidth = orbRadius * 0.075;
+    final gap = orbRadius * 0.045;
+    final totalWidth = shape.length * barWidth + (shape.length - 1) * gap;
+    final startX = center.dx - totalWidth / 2;
+    final waveformColor = snapshot.state == SignalCoreState.speaking
+        ? signalWarm
+        : Colors.white;
+    for (var index = 0; index < shape.length; index += 1) {
+      final height = orbRadius * (0.12 + shape[index] * activity * 0.9);
+      final x = startX + index * (barWidth + gap);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(x, center.dy - height / 2, barWidth, height),
+          Radius.circular(barWidth),
+        ),
+        Paint()..color = waveformColor.withValues(alpha: 0.9),
+      );
+    }
   }
 
   Path _corePath(Offset center, double width) {
@@ -532,13 +670,19 @@ class SignalCorePainter extends CustomPainter {
       oldDelegate.snapshot.sourceIdentity != snapshot.sourceIdentity ||
       oldDelegate.phase != phase ||
       oldDelegate.signal != signal ||
+      oldDelegate.signalStrong != signalStrong ||
+      oldDelegate.signalDeep != signalDeep ||
+      oldDelegate.signalWarm != signalWarm ||
       oldDelegate.attention != attention ||
       oldDelegate.danger != danger ||
       oldDelegate.structureLine != structureLine ||
+      oldDelegate.structureLineStrong != structureLineStrong ||
       oldDelegate.ink != ink ||
+      oldDelegate.shadow != shadow ||
       oldDelegate.stateColor != stateColor ||
       oldDelegate.program != program ||
       oldDelegate.reducedMotion != reducedMotion ||
+      oldDelegate.mobileVisual != mobileVisual ||
       oldDelegate.faultPulse != faultPulse ||
       oldDelegate.detail != detail;
 }

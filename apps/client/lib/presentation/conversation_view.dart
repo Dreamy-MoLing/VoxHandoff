@@ -20,6 +20,7 @@ class ConversationView extends StatelessWidget {
     required this.onApproval,
     required this.onClarification,
     required this.onInterrupt,
+    this.showSignalCore = true,
     super.key,
   });
 
@@ -30,6 +31,7 @@ class ConversationView extends StatelessWidget {
   onApproval;
   final void Function(ClientEventRecord, String) onClarification;
   final void Function(ClientEventRecord) onInterrupt;
+  final bool showSignalCore;
 
   @override
   Widget build(BuildContext context) {
@@ -81,14 +83,18 @@ class ConversationView extends StatelessWidget {
           key: const ValueKey('mobile-conversation'),
           slivers: [
             SliverToBoxAdapter(child: header),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 18),
-                child: Center(
-                  child: _LiveSignalCore(workspace: workspace, dimension: 172),
+            if (showSignalCore)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  child: Center(
+                    child: _LiveSignalCore(
+                      workspace: workspace,
+                      dimension: 172,
+                    ),
+                  ),
                 ),
               ),
-            ),
             if (workspace.timeline.isEmpty)
               const SliverFillRemaining(
                 hasScrollBody: false,
