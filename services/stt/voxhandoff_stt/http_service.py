@@ -76,21 +76,30 @@ class HttpSttProvider:
         }
         if params["language"] is not None:
             protocol_params["language"] = params["language"]
-        payload = b"".join(
-            [
-                _request_frame("start", "start", protocol_params),
+        frames = [_request_frame("start", "start", protocol_params)]
+        # The stdio protocol bounds a single audio chunk (MAX_CHUNK_BYTES in
+        # protocol.py). Split the request body into successive push frames so
+        # recordings longer than ~8 seconds still reach the backend. Never log
+        # PCM bytes; only chunk sizes are diagnostic metadata.
+        chunk_size = 262_144
+        sequence = 0
+        for offset in range(0, len(audio), chunk_size):
+            sequence += 1
+            frames.append(
                 _request_frame(
                     "push",
                     "push",
                     {
                         "session_id": session_id,
-                        "sequence": 1,
-                        "audio_base64": base64.b64encode(audio).decode("ascii"),
+                        "sequence": sequence,
+                        "audio_base64": base64.b64encode(
+                            audio[offset : offset + chunk_size]
+                        ).decode("ascii"),
                     },
-                ),
-                _request_frame(request_id, "end", {"session_id": session_id}),
-            ]
-        )
+                )
+            )
+        frames.append(_request_frame(request_id, "end", {"session_id": session_id}))
+        payload = b"".join(frames)
         output = io.StringIO()
         errors = io.StringIO()
         service = SttService(
