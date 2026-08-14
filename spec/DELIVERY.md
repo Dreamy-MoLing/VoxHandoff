@@ -1,15 +1,161 @@
 # VoxHandoff 开发与交付规范
 
-> **归档状态：Archived / Limited Maintenance（2026-08-11）**
+> **当前状态：Active / Android-first MVP（2026-08-13）**
 >
-> 本文件保留最终历史交付记录。VoxHandoff 不再进入新的产品批次，也不
-> 再以本文件中的“下一轮开发”或“后续开发批次”作为执行计划。2026-08-11
-> 仅恢复有复现证据的验收/安全故障维护；根目录 [`README.md`](../README.md)
-> 是当前入口。Hermes Agent v0.20.0 已将流式会话语音、barge-in、设备端
-> 唤醒词、可配置 STT 和多 profile 语音路由等核心体验纳入官方产品；本仓库
-> 保留实现与证据，不重新开启平行产品维护。
+> 2026-08-13 重新开启产品开发，但执行范围收敛为 Android 手机端单一纵向
+> 链路。本文件的历史阶段和旧验收结果继续保留；新的执行计划以本节为准。
+> iOS、桌面新功能、后台监听、唤醒词、全双工语音、本地手机 sidecar 和新
+> Agent 后端在 Android MVP 通过前不进入开发。
 
-## 0. 2026-08-11 验收修复（有限维护）
+## 0.1 Android-first 执行顺序
+
+1. 工具链：清理重复 MCP/index，确认 Flutter、Android SDK、实体设备和签名
+   环境；工具故障不能被误写成产品故障。
+2. Android shell：前台启动、配对、凭据安全存储、撤销、断线和恢复。
+3. 文本闭环：Gateway/Hermes 事件恢复、确认目标、lease、取消和 uncertain；
+   Direct LLM 保持纯聊天路径。
+4. 语音输入：前台按钮录音、远程 STT、可编辑终稿和明确确认；手机不运行
+   本地 STT sidecar。
+5. TTS/降级：在文本闭环稳定后接入一个明确的 TTS provider，并验证文字
+   结果独立于播放失败。
+6. 实体 Android 验收：安装、配对、重启、断网、重连、权限、连续交互、日志
+   脱敏和发布构建。
+
+每个阶段都必须有可复现检查和独立结果；失败、阻塞和未验证不能写成完成。
+
+### 0.1.1 2026-08-13 当前迭代证据
+
+- 规格基线已从永久归档切换为 `1.65 Active / Android-first MVP`；产品、架构、
+  交付和客户端说明均固定 Android 单平台优先范围。
+- Android 主 manifest 补齐 release 变体所需的 `INTERNET` 权限，并保留
+  `RECORD_AUDIO`；`./gradlew --no-daemon :app:processReleaseMainManifest` 成功。
+- Android `:app:assembleRelease` 成功，产出 release APK；当前
+  `apps/client/android/app/build.gradle.kts` 仍使用 debug signing config，
+  所以这只是 release variant 构建证据，不是签名发布证据。
+- Android `:app:lintRelease` 通过，未发现 lint 错误；Gradle 输出的 Kotlin/AGP
+  built-in Kotlin 弃用提醒和 SDK XML 版本提醒属于后续工具链维护项，不改变
+  当前 Android MVP 的功能或安全验收结论。
+- 固定 Flutter 3.44.6 quality gate 通过：Dart protocol analyze、Drift
+  generated-file freshness、format、Flutter analyze 和客户端测试全部通过；
+  本轮最终结果为 223 项通过、2 项显式 live provider smoke 跳过；新增 Android
+  remote STT disclosure/token 隔离、生产 VoiceFactory 注入和设置入口回归。
+- Android remote STT 已接入生产工厂：精确 HTTPS origin、TLS/retention/revision
+  disclosure 和 consent timestamp 进入本地 settings，token 单独进入 secure
+  storage；录音停止后由既有 VoiceSession 以内存 PCM 调用 bounded provider adapter，
+  STT 失败仍保留可编辑文字草稿。离线配置、UI 和工厂测试通过，真实 provider 未验收。
+- `npm run check` 和 `npm test` 通过；包含 repository consistency、protocol
+  contract/generated、TypeScript、Gateway/Node、STT 与 benchmark 门。
+- `AGENT_TALK_LOOPBACK_INTEGRATION=1 npm run test:transport` 在允许 loopback
+  的本地环境通过：Gateway 两项真实 HTTP/2/TLS 门，以及 Node 生产流持续超过
+  60,000 ms 的门均通过。
+- 当前仍未关闭：Android 应用重启、物理断网、权限/麦克风/远程 STT/TTS、Hermes
+  0.20 真实 Gateway 纵向链路、release signing、MCP 重复注册和 agent-reach
+  环境修复。客户端主动 stream 断开/重连与隔离 mock 文本闭环已在后续本轮证据中
+  关闭。实体设备现已在线：`adb -s 100.96.66.108:5555` 识别到 `V2359A` /
+  Android 16，release APK 已安装并成功启动，首屏未配对状态符合预期。
+- 本轮为手机验收创建了仅供 Agent_Talk 使用的隔离 HTTPS Gateway、mock Node 和
+  临时 PostgreSQL；Hermes 未启动、未发送请求、未修改配置或数据。测试 CA 已
+  按给定 Tailscale IP/DNS SAN 重建，客户端仍坚持显式 CA 信任和严格 TLS 校验。
+- 历史配对尝试中，Android 多行 PEM 字段在 ADB 分段输入长证书时丢失输入焦点，
+  提交结果为 `gateway_setup_failed`；该结果不能证明 Gateway 或 TLS 实现失败。
+- D-011 的 CA 文件导入路径已完成验证：`ACTION_GET_CONTENT` 启动标准
+  `com.android.documentsui/.picker.PickActivity`，选择登记的测试 CA 后回到
+  `MainActivity`，配对页显示完整 PEM；Android 侧限制 128 KiB，Dart 侧拒绝非
+  UTF-8、非 PEM certificate block、各类私钥和超限输入。导入后仍使用显式
+  `ChannelCredentials.secure` CA，不设置 `onBadCertificate`。
+- D-012 的配对默认依赖缺陷已修复：生产 `newUserCode` 不再调用低于密码学
+  helper 下限的 `newChallenge(8)`，Gateway 全套 14 组测试通过，并新增默认依赖
+  回归测试。该修复不改变 user-code 格式、TLS 校验、scope 或 owner approval。
+- 由于 Fedora public firewalld 拒绝手机到新的高位 Tailscale 监听端口，本轮临时
+  使用 Tailscale raw TCP 443 → loopback Gateway 18653；主机经 443 的 TLS 自检为
+  `Verification: OK`，该转发不终止 TLS，测试证书仍覆盖 Tailscale IP/DNS SAN。
+- 真实 Android 已通过文件导入 CA、显式 TLS、Tailscale 443 入口提交
+  `BeginPairing`；UI 进入 `AWAITINGOWNERAPPROVAL`，临时 PostgreSQL 有一条
+  `pending_owner` 记录，设备名为 `This device`，requested scopes 为
+  `{observe,send}`。owner approval 仍是人工安全门，未自动批准；因此完整配对、
+  文本会话、断线恢复、麦克风和真实远程 STT 仍未验收，不能把 mock Node 证据写成
+  Hermes 实机证据。
+- 旧 harness 退出后其 owner 私钥不可恢复；重建临时 PostgreSQL 后，旧
+  `X5SZ-TSWR` pairing 不存在，未执行伪造审批。新增 D-013 的本地 abandon 入口后，
+  本轮在同一前台 harness 会话内重新 bootstrap owner、重新导入
+  `agent-talk-live-ca.crt`，并以 `https://100.103.253.87` 提交一次新的
+  `BeginPairing`。数据库证据为一条 `pending_owner` 记录：pairing id
+  `pairing_f7947781-5fd9-49c0-8521-863f7d578e9d`、设备名 `This device`、scope
+  `{observe,send}`；harness 连续输出 `MOCK_NODE_HEARTBEAT=ok`。手机 UI 显示
+  新的一次性 user-code 并停在 `AWAITINGOWNERAPPROVAL`，新 code 已报告给 owner，
+  本轮不执行 approve。owner 批准前，Complete/Confirm、文本会话、断线恢复、
+  麦克风和真实远程 STT 均未验收；mock Node 只能作为隔离控制面证据，不能替代
+  Hermes 实机证据。
+- 本轮发现前台 harness 会随 Codex 会话结束而丢失 owner 私钥；旧 `BLF7-G3SC`
+  未被迁移或伪造批准。已重建临时 `agent_talk` schema，并改用 `setsid` 脱离会话
+  托管 harness：PID `216869` 的 PPID 为 `1024`，SID/PGID 独立，日志和审批 FIFO
+  分别为 `/tmp/agent-talk-live-20260813.log` 与
+  `/tmp/agent-talk-live-20260813.fifo`。手机重新导入 CA 后提交的新请求为
+  `P2GJ-GGS2`，数据库状态 `pending_owner`、pairing id
+  `pairing_b00d093a-1272-4636-acc2-8bb4bae961b4`、scopes `{observe,send}`；
+  owner 批准前不执行 approve。
+- GitHub 只读调研已记录于 D-015：推荐沿用 Tailscale Android 作为私网底座，
+  Android Wireless Debugging/ADB TCP/IP 只用于设备验收，scrcpy 只用于诊断；
+  WireGuard Android 仅作为未来自建 VPN 备选，gRPC-Java 作为 Android HTTP/2
+  TLS/ALPN 参考。没有找到需要引入 Agent_Talk 的单一“ADB+私网”轮子；当前
+  `Tailscale route + exact TLS + app credential` 组合更符合安全边界。
+- **2026-08-13 owner approval / pairing evidence（本轮）**：owner 明确批准
+  `P2GJ-GGS2`，仅授予 `observe,send`；通过同一 setsid harness 的 FIFO 执行
+  approve，未自动批准后续请求。手机 Complete/Confirm 完成后，UI 显示
+  `MANUAL LINK PAIRED`、Gateway `https://100.103.253.87`、设备 scope
+  `observe / send`；PostgreSQL 只读记录显示 pairing `confirmed`、device 和
+  credential `active`。harness PID `216869` 仍由 init 托管并持续 heartbeat。
+- **2026-08-13 protocol / credential repair evidence（本轮）**：真实 Gateway
+  选择 protocol minor `1`，客户端原先只接受 `0`；已改为接受已声明的 `0..1`，
+  `grpc_gateway_live_transport_test.dart` 定向测试通过。实机 access token 过期后
+  暴露出客户端未使用已有 `RefreshDeviceCredential` 的缺陷；现已用设备密钥签署
+  refresh payload、校验新 credential facts、按 generation 更新 secure storage，
+  定向 pairing/store/live 测试 22 项通过。profile APK build number `2002` 显示
+  `Connected`，最终 build number `2003` 安装后重连同样显示
+  `Authenticated Gateway stream is active`；未放宽 TLS、bearer 或 scope 校验。
+- **2026-08-13 text path evidence（本轮）**：Android 创建的会话标题为
+  `Live text e e post refresh`，目标明确是 `Agent_Talk isolated mock Agent`。
+  手机获取 control lease 后，对无害测试短句执行 Edit → Confirm → Handoff；UI
+  显示 `Control held by this device`、`Request completed` 和完整 mock 回复。
+  PostgreSQL request 为 `completed`，事件序列 1–4 为 accepted、working、
+  message.completed、request.completed；harness 仅有一个 `MOCK_NODE_DISPATCH`。
+  这是手机 ↔ 隔离 Gateway ↔ mock Node 的实机证据，不能写成 Hermes 证据。
+- **2026-08-13 client reconnect evidence（本轮）**：主动 Disconnect 后手机显示
+  `Not connected`，`Uncertain submissions were not resent`；重新 Connect 后
+  Gateway stream、历史 mock 回复和 `Request completed` 恢复。发现的已 accepted
+  request 状态污染已修复，补充 controller 定向测试 4 项通过；最终 APK
+  build number `2003` 实机 UI 不再显示 `uncertain`。该结果覆盖客户端 stream
+  断开/重连和事件恢复，不覆盖物理断网、进程重启或 Hermes run 恢复。
+- **2026-08-13 remote STT gate（本轮）**：最终 Android 语音设置页仍为
+  `STT provider / Disabled`，`Test STT readiness` 不可用；页面提供
+  `Consented HTTPS provider (Android)` 选项，但本轮没有真实 provider origin、
+  独立 token、retention disclosure 或明确用户 consent。因此没有上传音频，真实
+  remote STT、Android microphone permission、中文识别与断网恢复仍为 blocked，
+  不使用 fake 或离线测试冒充实机通过。
+
+**2026-08-13 remote STT provider preparation（本轮）**：核对发现项目自带的
+`services/stt/voxhandoff-stt` 是 stdio JSONL sidecar，手机客户端的生产远程
+适配器则要求 `/v1/health` 与 `/v1/transcribe` HTTPS 契约；两者之间原本没有可
+直接启动的网络服务。本轮新增最小 HTTPS adapter，复用现有 faster-whisper
+backend/sidecar 语义，默认 loopback、独立 Bearer token、有界请求、TLS 1.2+、
+无明文/重定向/模型下载；Android network config 仅在 debug-overrides 信任 user
+CA，release/base 仍只信 system roots。服务使用本地
+`/home/roco/.cache/faster-whisper-base` warmup 成功，services/stt 共 14 项离线
+测试通过；测试证书链及 Tailscale SAN 已验证，Tailscale TCP 443 临时转发至
+  `127.0.0.1:18654`，health 实测返回 `ready`。这只是 provider 准备和宿主健康证据。
+无 token 的 POST 返回 `401`，带独立 token 的 malformed body 返回 `400`，鉴权 smoke
+没有发送音频。
+实体 Android 新 profile 包尚未安装，当前停在系统“来自未知来源 / 继续安装”确认
+页；因此手机 readiness、真实录音、用户 consent、中文质量和断网恢复仍未关闭，
+没有上传音频，也没有把 synthetic/fake 结果写成实机通过。
+
+随后按要求使用 `adb install --no-streaming -r` 重试，发现设备已有更高
+`versionCode=2003`；在保留数据的 `-d` 选项下重新安装返回 `Success`，但系统没有
+再次显示“来自未知来源/继续安装”弹窗，当前前台仍为 Launcher，`RECORD_AUDIO` 仍为
+未授权。因此本阶段只关闭“APK 已安装”这一事实，未关闭“用户确认交互”、provider
+配置、readiness、录音、consent、中文识别或断网恢复门；按边界暂停后续操作。
+
+## 0.2 2026-08-11 验收修复（历史维护）
 
 验收报告记录的 VH-ACC-001 已有可复现根因：生产 Node 的 `ConnectNode`
 双向流继承了 transport 的 `defaultTimeoutMs: 30_000`。ConnectRPC 的 deadline
@@ -909,3 +1055,104 @@ UI 不展示虚构完成百分比。诊断页面显示最后真实事件、同�
 - 必要的 migration、protocol compatibility、回滚和诊断信息可用；
 - 自动化、真实服务、人工 GUI/实体设备和发布证据按层次记录，并绑定 exact commit；
 - 改动形成聚焦、说明清楚且工作树干净的本地提交；远程写入仍按授权执行。
+
+**2026-08-13 Android remote STT configuration evidence（本轮）**：已启动实体
+`V2359A` 上的 profile APK，在 Voice settings 选择 `Consented HTTPS provider
+(Android)`，填写真实 Tailscale origin `https://100.103.253.87`、provider ID
+`voxhandoff-stt`、TLS/retention/revision disclosure，并从独立临时 token 文件
+输入 64 位测试 token。UI 实测显示所有字段值和 token 掩码；consent 复选框仍为
+`checked=false`，未保存、未上传音频、未执行 readiness，因此本阶段只证明真实
+配置表单已到人工同意门。当前实现的 readiness 需要先保存带 `consentedAt` 的配置，
+不能在未同意状态下用 Disabled 或 fake 结果代替。下一阶段等待用户/布洛妮娅勾选
+当前 disclosure 并保存后继续。
+
+**2026-08-13 Android remote STT readiness evidence（本轮后续）**：重新打开 Voice
+settings 后，真实设备 UI 回显 origin/provider/disclosure，consent 为
+`checked=true`，且 Save/Test 按钮 enabled，证明设置 round-trip 已完成；UI 未展示
+原始 `consentedAt` 时间戳，未从 secure storage 导出秘密或时间戳。点击真实
+`Test STT readiness` 两次均得到 `The local STT service could not be reached.`。
+STT 服务日志在对应时间没有新增 Android `/v1/health` HTTP 记录；设备对
+`100.103.253.87` 的 ICMP 可达，宿主机使用测试 CA 的独立 HTTPS health check 仍为
+`status=ready`。因此本阶段真实结论是 Android Dart HTTPS/TLS 信任路径未闭合，
+不是 provider readiness 已通过；未触发 `RECORD_AUDIO`（设备权限仍为
+`granted=false`），未录音、未上传、未生成中文转写或确认终稿，也未执行断网恢复。
+继续前需修复/明确 Dart 客户端的显式 CA 信任输入，保持证书链、SAN、TLS 校验和
+无明文/无 `onBadCertificate` 约束。
+
+**2026-08-13 Android fresh-process readiness follow-up**：owner 确认 D-024 profile
+安装后，实体设备新进程重新打开设置，provider/origin/disclosure 回显，consent 为
+`checked=true`，token 不回填明文；点击 readiness 仍显示
+`The local STT service could not be reached.`，STT 服务无对应新 `/v1/health` 请求。
+设备 Tailscale ICMP 可达，宿主机 Dart `SecurityContext` 使用同一测试 CA 的 health
+请求为 HTTP `200`。应用加密存储中 profile/token 记录存在，但未读取或输出任何
+解密内容。
+
+针对 Android engine 的组合信任行为，新增变体在显式 CA 存在时使用
+`SecurityContext(withTrustedRoots: false)` 仅信任导入 CA，并显式设置 TLS 1.2 最低
+版本；无自定义 CA 时仍使用平台系统根。定向测试 7 项、Flutter analyze 均通过。
+新 APK 已完成构建和无线传输，但设备再次停在 Android
+`PackageInterceptActivity`，人工确认未代点；因此该变体尚未取得新的 Android
+readiness 证据。麦克风、中文录音/转写/终稿确认和断网恢复继续保持未执行。
+
+**2026-08-13 Android installation retry evidence**：再次执行窄信任集 profile APK 的
+`adb -s 100.96.66.108:5555 install --no-streaming -r -d`，APK SHA-256 为
+`a124008c8ec2fd288f4add546013e2126ce46430c15776f6f87d2acdfa6d2463`，文件传输约
+`38.3 MB/s`，命令最终返回 `Success`，包 `lastUpdateTime` 已更新。此次等待期间
+没有观察到 `PackageInterceptActivity`，前台为系统 Launcher，所以没有 owner 点击
+安装确认的实机交互证据。按安全边界未启动应用、未执行 readiness、未触发麦克风或
+上传音频；继续等待 owner 明确确认后再进入下一阶段。
+
+**2026-08-13 Android remote STT explicit CA repair evidence**：针对 D-023，Dart
+`JsonHttpRemoteSttTransport` 现在在收到已导入的配对 CA 时创建
+`SecurityContext(withTrustedRoots: true)`，调用 `setTrustedCertificatesBytes`
+后再创建标准 `HttpClient`；生产 voice factory 复用
+`SecureGatewayConnectionProfileStore` 中的 trusted roots。没有加入
+`onBadCertificate`、明文 HTTP 或 hostname 校验旁路。有效测试 CA 注入、malformed
+CA 拒绝、remote STT 和 production voice flow 共 7 项定向测试通过，Flutter
+analyze 无问题。
+
+随后构建 profile APK 成功，SHA-256 为
+`efdad4e400d09bc32778222065b27e2d3bcfb8b9f3cc56a49f04d641e2cac9f8`。指定设备的
+`adb -s 100.96.66.108:5555 install --no-streaming -r -d` 已完成文件传输，但设备
+前台实际停在 Android `PackageInterceptActivity` 安装确认页，安装结果尚未返回。
+因此本阶段尚未重新启动应用或执行 readiness；等待用户确认安装后继续，不能把构建
+或传输结果写成 Android readiness 通过。
+
+**2026-08-13 Android remote STT live acceptance evidence（窄信任集变体）**：owner
+确认 APK 已安装后，实体 `V2359A` 新进程启动成功。Voice settings 回显
+`Consented HTTPS provider (Android)`、`voxhandoff-stt`、`https://100.103.253.87`、
+`zh` 及 TLS/retention/revision 声明；token 仍为空掩码，consent 为 `checked=true`。
+
+隔离 STT 已改用与手机 Gateway profile 相同的 Tailscale SAN CA；手机 readiness
+真实请求到达 provider，UI 曾显示 `Ready`，服务日志有 `/v1/health` `200`。这项证据
+确认 Dart 显式 CA、`withTrustedRoots:false`、TLS 1.2 和 hostname/SAN 校验链路已通，
+没有使用 `onBadCertificate` 或明文。
+
+录音控件真实进入 `Recording · speech remains editable before send`，没有出现麦克风
+权限弹窗；ADB 包状态显示 `RECORD_AUDIO: granted=true`。停止后真实手机请求抵达
+`/v1/transcribe`，服务返回 `422`，安全诊断记录 `stt_no_audio`。UI 最终显示
+`Remote speech recognition failed. No Agent request was sent.`，Editable draft 为空，
+Confirm disabled。该阶段没有有效中文转写、可编辑终稿、确认动作或中文识别质量证据，
+也没有用 fake 音频/文本补齐。
+
+网络恢复子检查中，唯一的 Tailscale TCP Serve 路由被 `tailscale serve reset` 移除，
+状态为 `No serve config`，之后恢复为 `443 -> 127.0.0.1:18654`；恢复后服务端连续
+收到 readiness `GET` 并返回 `200`。断路期间手机端 readiness 的超时文案因请求尚在
+30 秒窗口内未单独采集，故只记 provider-route 恢复部分通过，完整离线恢复仍待有效
+录音成功后复验。
+
+当前阶段结论：Android TLS/readiness 通过；真实麦克风音频门阻塞 STT 转写/终稿确认。
+Hermes 零改动，未 push，未自动审批，设备只使用
+`100.96.66.108:5555` Tailscale ADB。
+
+**2026-08-13 Android remote STT final audio retry**：重新启动已安装 APK，确认隔离
+STT 与 Tailscale `443 -> 127.0.0.1:18654` 存活；点击录音后 UI 进入
+`Recording · speech remains editable before send`，等待约 8 秒覆盖外放窗口并停止。
+手机真实请求抵达 `/v1/transcribe`，服务返回 `422`，安全错误码为
+`stt_no_audio`。UI 显示 `Remote speech recognition failed. No Agent request was sent.`，
+Editable draft 为空、Confirm disabled。
+
+最终轮仍未取得有效中文转写、可编辑终稿、确认或完整断网恢复证据。当前阻塞已收敛到
+手机麦克风实际输入电平/音频路由，不能继续归因于 TLS、CA、SAN、token 或 readiness；
+下一步应先独立验证 Android 录音输入电平，再重跑验收。Hermes 零改动，未 push，未
+自动审批，设备只经 `100.96.66.108:5555` Tailscale ADB。

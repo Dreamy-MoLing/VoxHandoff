@@ -1,17 +1,17 @@
 # VoxHandoff
 
-> **项目已归档；有限验收维护：2026-08-11**
+> **当前开发方向：Android-first 手机 MVP：2026-08-13**
 
 VoxHandoff 曾是面向 Hermes 用户的本地优先、GUI 优先个人语音助手。项目
 组合了 Flutter 客户端、Gateway/PostgreSQL 耐久控制面、Hermes Node
 Connector、可配置 STT/TTS 端口，以及独立的 OpenAI-compatible 纯聊天路径。
 
-项目后续开发现已停止。Hermes Agent [v0.20.0](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.8.3) 于 2026-08-03 发布，已经把本项目原本要补齐的核心体验纳入官方产品：流式会话语音、barge-in 打断、设备端唤醒词、可配置 STT、多 profile 语音路由和支持语音的 Gateway surface，同时提供 A2A v1.0 集成。继续维护同一层 GUI 语音能力会与上游重复。
+项目当前重新进入开发，但范围只收敛到 Android 手机端 MVP。Hermes Agent [v0.20.0](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.8.3) 已提供部分核心 GUI 语音能力，因此本项目继续保持 Hermes-only Agent 后端边界，重点补齐手机端配对、远程 Gateway、确认发送、状态恢复和个人助手体验，不重新实现 Hermes 的 Agent 或实时语音框架。
 
-本仓库作为公开工程记录保留。它不再是当前 Hermes 的替代实现，也不再
-承诺新的功能、兼容性适配或发行版本。2026-08-11 的维护范围仅修复已实测
-的 Node→Gateway 长连接验收故障，不重新开启产品路线或把未实测的服务、GUI
-和实体设备门写成通过。
+本仓库仍保留完整历史工程记录。当前批次不同时推进 iOS、桌面新功能、后台
+监听、唤醒词、全双工语音、本地手机 sidecar 或新 Agent 后端；这些范围只有
+在 Android MVP 的实体设备验收通过后才重新评估。未实测的 Hermes、STT/TTS、
+GUI、实体设备和发布门仍不能写成通过。
 
 ## 已完成的工作
 
@@ -46,7 +46,7 @@ Connector、可配置 STT/TTS 端口，以及独立的 OpenAI-compatible 纯聊�
 - [`services/gateway`](services/gateway)：认证控制面和 PostgreSQL ledger。
 - [`services/node`](services/node)：出站 Hermes Connector。
 - [`services/stt`](services/stt)：可选的版本化本地 STT sidecar。
-- [`spec/`](spec)：归档的产品、架构和交付基线。
+- [`spec/`](spec)：当前 Android-first 产品、架构和交付基线，以及历史阶段证据。
 
 ## 分支收敛
 
@@ -56,7 +56,7 @@ Connector、可配置 STT/TTS 端口，以及独立的 OpenAI-compatible 纯聊�
 
 ## 本地验证
 
-仓库已停止开发，验证可能需要固定工具链和可选本地服务。原有质量入口为：
+验证可能需要固定工具链和可选本地服务。原有质量入口为：
 
 ```bash
 npm install

@@ -2,6 +2,14 @@
 
 ## 1. 架构原则
 
+### 1.0 当前执行变体：Android-first
+
+本轮只实现 Android Flutter 客户端的前台能力。Android 通过认证的远程
+Gateway 访问 Hermes 工作链路，或直接访问用户配置的 Direct LLM；手机不
+启动 Node、Hermes、Gateway、本地 PostgreSQL 或 STT sidecar。桌面 sidecar、
+iOS、后台监听、唤醒词和全双工实时媒体保持既有架构定义，但不属于当前
+实现批次。
+
 - 本地优先：录音、STT/TTS 配置、LLM API key 和离线历史尽量留在设备；
 - 助手统一：人格、记忆、语音和视觉由稳定 `assistantId` 关联，聊天/工作 backend 是能力端口，不是两个 UI 产品；
 - 身份分离：Assistant、Provider Profile、configuration revision、conversation、request、message 和 TTS segment 使用各自 opaque identity；
@@ -12,6 +20,12 @@
 - 协议先于框架：领域模型不依赖 Flutter、PowerSync 或 Hermes SDK 类型；
 - 社区优先：官方方案优先，其次选择成熟组件，自研只做适配和产品特有语义；
 - 可降级：视觉、STT、TTS、同步任一失败不应破坏文字聊天主链路。
+
+当前 Android 语音输入使用既有 `ConsentedRemoteSttPort` 的 HTTPS 变体：精确
+origin、TLS policy、retention disclosure、provider revision 和 consent timestamp
+属于配置；provider token 单独存入 OS-backed secure storage；PCM 只在前台录音停止
+后以内存批量上传。没有明确同意、token 或安全 origin 时 fail closed，STT 失败不得
+覆盖可编辑文字草稿。
 
 ## 2. 技术栈
 
@@ -504,6 +518,7 @@ transport 只暴露 request-scoped `test` 或 `streamCompletion`、明确 termin
 - Rive：只在已有受审 `.riv` 资产确实减少自有 Widget 复杂度时用于按钮、连接图标等非核心微动效；没有这种资产时不为满足技术清单引入 runtime，M4 当前使用 Flutter 内建 transition；
 - Platform plugins：麦克风会话、安全存储、全局快捷键、通知和窗口行为。
 - 配对 presentation 只观察 Riverpod application state 并发出显式用户动作；production workflow factory 独占安全存储、TLS channel、生成 RPC client 和 coordinator 的组合与关闭，widget test 以离线 factory 替换。公开 UI state 不含 challenge、签名、nonce 或 token；
+- Android 配对页的私有 CA 可通过原生 `ACTION_GET_CONTENT` 导入；文件读取限制为 128 KiB，Dart 端只接受 UTF-8 PEM certificate block，随后仍交给显式 TLS `SecurityContext` 解析。文件导入只替代脆弱的多行文本传输，不改变信任根、证书校验或 Gateway audience 校验；手工 PEM 作为备用入口保留。
 - conversation presentation 只观察 production workspace 的领域快照；桌面导航与手机单列选择共享同一 selection identity。完整回复使用可选择文字，tool/terminal 保留安全阶段事实，approval 与 clarification 优先于装饰；无当前 lease 时所有可执行按钮禁用，只显示 observe 状态与显式 take-control/takeover；
 - presentation 在领域层把同一 request 的耐久事件一次聚合为用户轮次、Hermes 回复、可折叠工具轨迹、未决交互和终态；`message.delta` 更新同一回复，不生成独立卡片。desktop 使用惰性列表，mobile 使用 sliver 虚拟化；顺序 live event 只增量更新当前 timeline，不能每帧重新排序完整历史；
 - 信号生命核心是只读 presentation，由规范 Agent 事件、本地 voice/speech 阶段、真实 `audioLevel` 和播放 segment identity 合成为有限视觉状态；它不持有 request、approval、lease 或命令权限，不直接解释 adapter 原始事件；

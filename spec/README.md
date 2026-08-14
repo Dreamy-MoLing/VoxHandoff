@@ -1,22 +1,35 @@
 # VoxHandoff 正式开发基线
 
-> 基线版本：1.64<br>
-> 生效日期：2026-08-11<br>
-> 状态：Archived / Limited Maintenance
+> 基线版本：1.65<br>
+> 生效日期：2026-08-13<br>
+> 状态：Active / Android-first MVP
 
-> 归档说明：VoxHandoff 已停止后续产品开发。本目录保留原产品、架构和
-> 验收基线作为工程记录；其中“下一轮开发”“后续开发批次”等文字均是
-> 历史快照，不再代表当前执行计划。归档后的有限维护只处理有复现证据的
-> 验收或安全故障，不重新开启功能路线。当前入口与归档结论见根目录
-> [`README.md`](../README.md)。Hermes Agent v0.20.0 已在上游提供本项目
-> 原本要补齐的核心 GUI 语音能力，详见其
-> [官方发布说明](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.8.3)。
+> 2026-08-13 起重新开启有限产品路线，但只推进 Android 手机端 MVP。
+> 归档内容仍作为历史证据保留；当前执行范围、顺序和验收以本版本新增的
+> Android-first 章节为准。iOS、桌面新功能、后台监听、唤醒词、全双工语音、
+> 本地手机 Agent/STT sidecar 和新 Agent 后端均不在当前批次。
 
-在项目开发期间，本目录是 VoxHandoff 唯一有效的产品与工程基线。归档后它作为冻结的历史基线，供理解实现、评审记录和验收证据使用：
+### 1.65 当前执行基线
+
+本批次目标是完成一条真实 Android 前台纵向链路：设备配对与安全存储、远程
+Gateway/Hermes 文本会话、用户自接 Direct LLM 纯聊天、按钮式录音、可编辑
+STT 终稿、明确确认、流式回复和可选 TTS。手机只连接远程 Gateway 或用户
+配置的 LLM API，不启动 Node、Hermes、本地 Gateway 或本地 STT sidecar。
+
+开发必须按阶段收口：工具链可用性与规格基线 → Android shell/配对 → 文本
+链路 → 前台语音输入 → TTS/降级 → 实体 Android 验收。每一阶段关闭前不得
+并行开启下一阶段，也不得同时推进 iOS 或桌面功能。
+
+当前基线只表示开发路线重新开启，不表示真实 Android、Hermes 0.20、远程
+STT/TTS 或发布门已经通过；这些仍须按独立证据轴重新验证。
+
+本目录是 VoxHandoff 唯一有效的产品与工程基线。历史归档章节保留冻结的
+实现、评审记录和验收证据；当前 Android-first 执行章节决定正在推进的范围：
 
 1. [`PRODUCT.md`](PRODUCT.md)：回答“为谁做、用户得到什么、哪些行为必须成立”，是用户需求和可观察验收的权威来源；
 2. [`ARCHITECTURE.md`](ARCHITECTURE.md)：回答“状态与数据由谁拥有、跨边界如何保持安全一致”，是目标模型、生命周期、协议和信任边界的权威来源；
 3. [`DELIVERY.md`](DELIVERY.md)：回答“仓库现在实际做到哪里、证据是什么、下一批具体做什么”，是阶段状态、PR/CI、发布阻断和执行顺序的权威来源。
+4. [`DECISIONS.md`](DECISIONS.md)：保存当前路线的决策理由、参考项目取舍和未决门槛，防止跨会话丢失；它不能替代前三份权威规格。
 
 归档前的开发工作按上述顺序读取，并从 `DELIVERY.md` 的“当前快照 → 已确认差异 → 后续开发批次”进入工作。`PRODUCT.md` 与 `ARCHITECTURE.md` 描述当时必须达到的行为；不能仅凭其中的目标态推断代码已经实现。实现状态由 `DELIVERY.md` 中分层证据确认。
 
@@ -43,6 +56,7 @@
 
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 1.65 | 2026-08-13 | 重新开启 Android-first 手机 MVP；固定单一前台纵向链路、阶段顺序和当前 Android 证据边界；同步协议 1.1 客户端测试基线 |
 | 1.64 | 2026-08-11 | Node/Gateway 协议升至 1.1：以 ledger 耐久 `NodeEventReceipt`、有界进程内重放 journal 与 output epoch 收紧断流重连语义；协议 1.0 保留为无回执的滚动升级降级路径 |
 | 1.63 | 2026-08-11 | 进入有限验收维护：修复 Node→Gateway 常驻双向流错误继承 30 秒 deadline、补真实 loopback 长流与断流重连回归；产品、真实 Hermes、GUI 和实体设备门仍按原证据轴独立记录 |
 | 1.62 | 2026-08-06 | 归档 VoxHandoff：冻结产品/架构/交付基线，记录 Hermes Agent v0.20.0 上游能力重叠与停止后续开发的结论 |
