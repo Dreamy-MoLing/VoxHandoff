@@ -655,3 +655,32 @@ DELIVERY 对应章节。
 - 未决：两次真机收口都得到服务端 `stt_audio_stats bytes=0 rms=0.00` 与 422，说明
   失败发生在 native EventSink 之后；尚未证明 Dart EventChannel 消费、音频缓冲或
   STT 请求组装的具体根因。中文转写、Editable draft、Confirm 继续保持未通过。
+
+## D-035：服务端单帧上限导致长录音空音频，分块修复后真机转写闭环打通
+
+- 日期：2026-08-14
+- 状态：Fixed and verified on device
+- 根因：`services/stt/voxhandoff_stt/http_service.py` 的 `HttpSttProvider.transcribe`
+  把整个录音编码进**单个** push 帧；而 stdio 协议 `protocol.py` 的
+  `MAX_CHUNK_BYTES = 262144` 限制单块音频。超过约 8 秒（>256KB）的录音 push 帧
+  被 `decode_chunk` 拒绝，`session.audio` 保持为空，最终 `_end()` 得到
+  `bytes=0 rms=0.00` 并返回 `stt_no_audio`。此前所有手机录音（26 秒约 832KB、
+  40 秒约 1.28MB）都因此失败，而 1 秒 curl 测试（32KB）能到 `stt_empty_transcript`，
+  造成"客户端链路问题"的误判。
+- 修复：`http_service.py` 按 262144 字节切分音频，为每块生成 sequence 递增的 push
+  帧，最后接 end 帧。验证：curl 发送 32000B / 288000B / 620800B 合成 PCM，前两者
+  `stt_empty_transcript`（音频到达、正弦波无语音），620800B 返回 HTTP 200 与转写文本。
+- 客户端配套修复：`AndroidAudioRecordChannel.frames` 之前缓存单一
+  `receiveBroadcastStream()`；首次录音 stop/cancel 后原生 EventChannel 完成该流，
+  第二次录音复用已完成流导致所有 PCM 帧被静默丢弃。改为每次会话创建新流
+  （`record_audio_capture.dart`），并沿 capture/controller/transport 增加仅记录
+  帧数/字节数的诊断日志。
+- 真机证据：实体 `V2359A` 新进程录音约 19 秒，Dart 诊断
+  `VoxHandoffDartTransport audioBytes=620800 base64Chars=827736`；服务端新增
+  `POST /v1/transcribe 200`；UI 显示中文草稿
+  `你好不论你俩正在测试云时辟功了今天听起不错`、`Transcript inserted · review and
+  confirm before send`、`Discard transcript` 与可用的 `Confirm`。录音→远程 STT→
+  可编辑终稿→确认链路首次闭环（faster-whisper 对 5.9 秒 TTS 测试音频的转写存在
+  少量同音错字，属模型识别质量，非链路故障）。
+- 边界：Hermes 零改动；未 push；手机只经 `100.96.66.108:5555` Tailscale ADB；
+  token/私钥/证书/音频内容未进入日志与提交。
