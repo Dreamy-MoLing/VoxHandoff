@@ -8,6 +8,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
@@ -20,12 +21,15 @@ class AndroidAudioCapture(
     messenger: BinaryMessenger,
 ) : MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
     companion object {
+        private const val TAG = "VoxHandoffAudio"
         private const val CONTROL_CHANNEL = "agent_talk/android_audio_capture"
         private const val EVENT_CHANNEL = "agent_talk/android_audio_capture_events"
         private const val SAMPLE_RATE = 16000
         private const val CHANNEL_COUNT = 1
         private const val BYTES_PER_SAMPLE = 2
         private const val READ_SIZE = 3200
+        private const val MAX_DIAGNOSTIC_LOGS = 20
+        private const val START_SINK_TIMEOUT_MS = 2000L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -41,6 +45,10 @@ class AndroidAudioCapture(
     private var prepared = false
     private var audioRecord: AudioRecord? = null
     private var captureThread: Thread? = null
+    private var pendingStartResult: MethodChannel.Result? = null
+    private var pendingStartTimeout: Runnable? = null
+    private var readDiagnosticCount = 0
+    private var pushDiagnosticCount = 0
 
     init {
         controlChannel.setMethodCallHandler(this)
@@ -61,16 +69,27 @@ class AndroidAudioCapture(
     }
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+        Log.i(
+            TAG,
+            "onListen sinkNullBefore=${eventSink == null} prepared=$prepared " +
+                "discarding=$discarding",
+        )
         eventSink = events
-        if (prepared) beginCapture()
+        if (prepared && beginCapture()) completePendingStartSuccess()
     }
 
     override fun onCancel(arguments: Any?) {
+        Log.i(
+            TAG,
+            "onCancel prepared=$prepared captureThread=${captureThread != null} " +
+                "discarding=$discarding",
+        )
         eventSink = null
         if (prepared || captureThread != null) finish(null, discard = true)
     }
 
     private fun start(call: MethodCall, result: MethodChannel.Result) {
+        Log.i(TAG, "start requested sinkNull=${eventSink == null} prepared=$prepared")
         if (prepared || captureThread != null) {
             result.error("session_conflict", "Another recording is active.", null)
             return
@@ -109,8 +128,28 @@ class AndroidAudioCapture(
         audioRecord = record
         prepared = true
         discarding = false
-        beginCapture()
-        result.success(null)
+        pendingStartResult = result
+        readDiagnosticCount = 0
+        pushDiagnosticCount = 0
+        Log.i(
+            TAG,
+            "prepare complete sinkNull=${eventSink == null} discarding=$discarding",
+        )
+        if (beginCapture()) {
+            completePendingStartSuccess()
+        } else if (eventSink == null) {
+            val timeout = Runnable {
+                if (pendingStartResult == null) return@Runnable
+                Log.i(TAG, "start sink wait timeout sinkNull=true discarding=$discarding")
+                completePendingStartError(
+                    "recording_stream_unavailable",
+                    "Audio event stream did not become ready.",
+                )
+                releaseCapture()
+            }
+            pendingStartTimeout = timeout
+            mainHandler.postDelayed(timeout, START_SINK_TIMEOUT_MS)
+        }
     }
 
     private fun createAudioRecord(bufferSize: Int): AudioRecord? {
@@ -140,24 +179,39 @@ class AndroidAudioCapture(
         return null
     }
 
-    private fun beginCapture() {
-        val record = audioRecord ?: return
-        if (!prepared || eventSink == null || captureThread != null) return
+    private fun beginCapture(): Boolean {
+        val record = audioRecord
+        if (record == null || !prepared || eventSink == null || captureThread != null) {
+            Log.i(
+                TAG,
+                "beginCapture skipped record=${record != null} prepared=$prepared " +
+                    "sinkNull=${eventSink == null} captureThread=${captureThread != null}",
+            )
+            return false
+        }
+        Log.i(TAG, "beginCapture attempt sinkNull=false discarding=$discarding")
         try {
             record.startRecording()
             if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                 throw IllegalStateException("AudioRecord did not enter recording state.")
             }
         } catch (_: RuntimeException) {
+            Log.i(TAG, "beginCapture failed discarding=$discarding")
             releaseCapture()
             eventSink?.error("recording_start_failed", "Audio input could not start.", null)
-            return
+            completePendingStartError(
+                "recording_start_failed",
+                "Audio input could not start.",
+            )
+            return false
         }
 
         running = true
         val thread = Thread({ readLoop(record) }, "voxhandoff-audio-record")
         captureThread = thread
         thread.start()
+        Log.i(TAG, "beginCapture started captureThread=true discarding=$discarding")
+        return true
     }
 
     private fun readLoop(record: AudioRecord) {
@@ -166,17 +220,51 @@ class AndroidAudioCapture(
             val count = try {
                 record.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
             } catch (_: RuntimeException) {
+                Log.i(TAG, "readLoop read=exception sinkNull=${eventSink == null} discarding=$discarding")
                 running = false
                 postStreamError()
                 break
+            }
+            if (readDiagnosticCount < MAX_DIAGNOSTIC_LOGS) {
+                readDiagnosticCount += 1
+                Log.i(
+                    TAG,
+                    "readLoop readCount=$count sinkNull=${eventSink == null} " +
+                        "discarding=$discarding",
+                )
             }
             if (count > 0) {
                 val pcm = buffer.copyOf(count)
                 val level = rmsLevel(pcm)
                 mainHandler.post {
                     val sink = eventSink
-                    if (sink != null && !discarding) {
-                        sink.success(mapOf("pcm" to pcm, "level" to level))
+                    val sinkNull = sink == null
+                    val discarded = discarding
+                    if (sink != null && !discarded) {
+                        try {
+                            sink.success(mapOf("pcm" to pcm, "level" to level))
+                            if (pushDiagnosticCount < MAX_DIAGNOSTIC_LOGS) {
+                                pushDiagnosticCount += 1
+                                Log.i(
+                                    TAG,
+                                    "push success bytes=$count sinkNull=false discarding=false",
+                                )
+                            }
+                        } catch (_: RuntimeException) {
+                            if (pushDiagnosticCount < MAX_DIAGNOSTIC_LOGS) {
+                                pushDiagnosticCount += 1
+                                Log.i(
+                                    TAG,
+                                    "push failed bytes=$count sinkNull=false discarding=false",
+                                )
+                            }
+                        }
+                    } else if (pushDiagnosticCount < MAX_DIAGNOSTIC_LOGS) {
+                        pushDiagnosticCount += 1
+                        Log.i(
+                            TAG,
+                            "push skipped bytes=$count sinkNull=$sinkNull discarding=$discarded",
+                        )
                     }
                 }
             } else if (count < 0) {
@@ -189,6 +277,7 @@ class AndroidAudioCapture(
 
     private fun postStreamError() {
         mainHandler.post {
+            Log.i(TAG, "postStreamError sinkNull=${eventSink == null} discarding=$discarding")
             if (!discarding) {
                 eventSink?.error("audio_read_failed", "Audio input could not be read.", null)
             }
@@ -211,8 +300,19 @@ class AndroidAudioCapture(
     }
 
     private fun finish(result: MethodChannel.Result?, discard: Boolean) {
+        Log.i(
+            TAG,
+            "finish discard=$discard prepared=$prepared captureThread=${captureThread != null} " +
+                "sinkNull=${eventSink == null}",
+        )
         discarding = discard
         running = false
+        if (pendingStartResult != null) {
+            completePendingStartError(
+                "recording_start_cancelled",
+                "Audio capture start was cancelled.",
+            )
+        }
         val record = audioRecord
         val thread = captureThread
         if (record == null || thread == null) {
@@ -241,6 +341,11 @@ class AndroidAudioCapture(
             }
             mainHandler.post {
                 releaseCapture()
+                Log.i(
+                    TAG,
+                    "finish complete discard=$discard stopFailed=$stopFailed " +
+                        "joinFailed=$joinFailed",
+                )
                 if (result == null) return@post
                 if (stopFailed || joinFailed) {
                     result.error("recording_stop_failed", "Audio input could not stop.", null)
@@ -257,6 +362,24 @@ class AndroidAudioCapture(
         captureThread = null
         audioRecord?.release()
         audioRecord = null
+    }
+
+    private fun completePendingStartSuccess() {
+        val result = pendingStartResult ?: return
+        pendingStartResult = null
+        pendingStartTimeout?.let(mainHandler::removeCallbacks)
+        pendingStartTimeout = null
+        Log.i(TAG, "start success sinkNull=false captureThread=${captureThread != null}")
+        result.success(null)
+    }
+
+    private fun completePendingStartError(code: String, message: String) {
+        val result = pendingStartResult ?: return
+        pendingStartResult = null
+        pendingStartTimeout?.let(mainHandler::removeCallbacks)
+        pendingStartTimeout = null
+        Log.i(TAG, "start error code=$code sinkNull=${eventSink == null} discarding=$discarding")
+        result.error(code, message, null)
     }
 
     fun dispose() {

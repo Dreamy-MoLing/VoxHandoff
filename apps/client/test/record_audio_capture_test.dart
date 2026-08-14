@@ -15,15 +15,22 @@ void main() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     final calls = <MethodCall>[];
     MockStreamHandlerEventSink? eventSink;
+    var eventListening = false;
 
     messenger.setMockMethodCallHandler(control, (call) async {
       calls.add(call);
+      if (call.method == 'start') {
+        expect(eventListening, isTrue);
+      }
       return null;
     });
     messenger.setMockStreamHandler(
       events,
       MockStreamHandler.inline(
-        onListen: (_, sink) => eventSink = sink,
+        onListen: (_, sink) {
+          eventListening = true;
+          eventSink = sink;
+        },
         onCancel: (_) {},
       ),
     );
