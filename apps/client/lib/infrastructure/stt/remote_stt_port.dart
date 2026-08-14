@@ -140,6 +140,13 @@ class JsonHttpRemoteSttTransport implements RemoteSttTransport {
       final token = await tokenProvider(disclosure.providerId);
       if (token.isEmpty) throw const FormatException('Missing provider token.');
       final stopwatch = Stopwatch()..start();
+      // Diagnostic only: report request body size, never audio content.
+      // ignore: avoid_print
+      print(
+        'VoxHandoffDartTransport audioBytes=${value.audio.length} '
+        'base64Chars=${base64Encode(value.audio).length} '
+        'session=${value.sessionId}',
+      );
       final client = await _clientForRequest();
       final request = await client
           .postUrl(disclosure.origin.resolve('/v1/transcribe'))

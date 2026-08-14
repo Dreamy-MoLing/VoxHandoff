@@ -56,10 +56,16 @@ class AndroidAudioRecordChannel implements AndroidAudioRecordBridge {
 
   final MethodChannel _controlChannel;
   final EventChannel _eventChannel;
-  Stream<AndroidAudioFrame>? _frames;
 
+  /// Returns a fresh broadcast stream for each recording session.
+  ///
+  /// The native EventChannel calls onCancel when the previous subscription
+  /// ends (stop/cancel), which completes the stream. Caching it across
+  /// sessions would hand back an already-done stream on the second recording,
+  /// silently dropping every PCM frame. A new subscription per session keeps
+  /// the native onListen/onCancel lifecycle in sync.
   @override
-  Stream<AndroidAudioFrame> get frames => _frames ??= _eventChannel
+  Stream<AndroidAudioFrame> get frames => _eventChannel
       .receiveBroadcastStream()
       .map(AndroidAudioFrame.fromPlatform);
 
@@ -263,9 +269,23 @@ class _AndroidAudioCaptureSession implements AudioCaptureSession {
   bool _closed = false;
 
   Future<void> start() async {
+    var dartFrameCount = 0;
+    var dartByteCount = 0;
     _frameSubscription = bridge.frames.listen(
       (frame) {
         if (_closed || _discarding) return;
+        dartFrameCount += 1;
+        dartByteCount += frame.pcm.length;
+        // Diagnostic only: counts and sizes, never audio content.
+        if (dartFrameCount <= 5 ||
+            dartFrameCount % 100 == 0 ||
+            (dartFrameCount > 0 && dartByteCount < 3200)) {
+          // ignore: avoid_print
+          print(
+            'VoxHandoffDart frames=$dartFrameCount bytes=$dartByteCount '
+            'pcmLen=${frame.pcm.length} level=${frame.level.toStringAsFixed(3)}',
+          );
+        }
         _audioController.add(frame.pcm);
         _levelController.add(frame.level);
       },

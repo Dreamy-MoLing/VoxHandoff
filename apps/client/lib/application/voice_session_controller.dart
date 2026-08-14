@@ -61,6 +61,9 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
   Completer<void>? _audioDone;
   int _generation = 0;
   int _lastTranscriptSequence = 0;
+  // Diagnostic counters (never audio content).
+  int _audioChunkCount = 0;
+  int _audioChunkBytes = 0;
 
   @override
   VoiceSessionState build() {
@@ -146,6 +149,18 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
       _audioDone = Completer<void>();
       _audioSubscription = capture.audioChunks.listen(
         (chunk) {
+          // Diagnostic only: counts and sizes, never audio content.
+          _audioChunkCount += 1;
+          _audioChunkBytes += chunk.length;
+          if (_audioChunkCount <= 3 ||
+              _audioChunkCount % 200 == 0 ||
+              (_audioChunkCount > 0 && _audioChunkBytes < 6400)) {
+            // ignore: avoid_print
+            print(
+              'VoxHandoffDartCtrl chunks=$_audioChunkCount '
+              'bytes=$_audioChunkBytes chunkLen=${chunk.length}',
+            );
+          }
           _enqueueAudioPush(generation, stt, chunk);
         },
         onError: (Object error) {
