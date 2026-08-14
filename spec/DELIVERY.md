@@ -953,6 +953,8 @@ postgres-ledger、node hermes-node-connector、client drift ledger 等，
 - **外部依赖**：无；桌面端是否跟进新基线待舰长另行沟通。
 - **完成条件**：移动端呈现与冻结基线一致且由真实状态驱动；桌面端视觉与全部功能门无回退；提交为中文 conventional commits 且不 push。
 
+**2026-08-15 批次 8 实现证据**：Codex 按任务书完成三个中文 conventional 提交——`5150c78`（feat: 增加移动端星空主题与视觉设置：mobile dark/light token、文字大小与主题持久化，背景入口保持视觉示例）、`0a9f48c`（feat: 复刻移动端星空交互壳层：窄屏待机/文字/录音/连接四态，接真实控制器状态与 SignalCore 移动绘制层，桌面路径保持原布局）、`8bab0d8`（test: 更新移动端视觉验收基线：主题设置/真实电平/交互断言，手机 golden 更新）。独立复验：pinned Flutter 3.44.6 `npm run flutter:check` 全绿（243 tests，2 个 live smoke 显式跳过）；桌面 4 个 golden 哈希与 Phase 0 基线逐字节一致（零变化）；`git diff 6690b6b..HEAD` 仅含 presentation/test 与 phone goldens，未触碰 ui-prototype/domain/application/pubspec/workflow；生产代码无 `setTimeout`。未 push、未触发 CI。
+
 ### 5.9 仍需产品确认、但不阻断批次 1–2 的事项
 
 以下事项采用保守默认值继续开发；只有用户明确改变默认值时才需要先改规格：
