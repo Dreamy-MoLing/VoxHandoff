@@ -180,7 +180,7 @@ const defaultDependencies: PairingServiceDependencies = {
   newOpaqueSecret,
   newUserCode: () => {
     const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-    const random = newChallenge(8);
+    const random = newChallenge(16);
     const characters = [...random].map((value) => alphabet[value % alphabet.length]);
     return `${characters.slice(0, 4).join("")}-${characters.slice(4, 8).join("")}`;
   },

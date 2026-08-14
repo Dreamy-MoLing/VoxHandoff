@@ -377,6 +377,27 @@ async function confirmDevice(testContext: TestContext) {
   return { begun, completed, confirmationProof, confirmed };
 }
 
+test("default pairing dependencies generate a valid user code", async () => {
+  const keys = generateKeyPairSync("ed25519");
+  const devicePublicKey = new Uint8Array(keys.publicKey.export({ format: "der", type: "spki" }));
+  const coordinator = new PairingCoordinator(new MemoryPairingLedger(), {
+    gatewayAudience: "https://gateway.example",
+    gatewayFingerprint: `sha256:${"c".repeat(64)}`,
+    verificationUri: "https://gateway.example/pair",
+    dependencies: { now: () => new Date("2030-01-01T00:00:00.000Z") },
+  });
+
+  const begun = await coordinator.begin({
+    deviceDisplayName: "Default dependency device",
+    devicePublicKey,
+    requestedScopes: ["observe"],
+    expectedGatewayAudience: "https://gateway.example",
+    rateLimitKey: "198.51.100.20",
+  });
+
+  assert.match(begun.userCode, /^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/u);
+});
+
 test("requires owner verification and two device signatures before issuing tokens", async () => {
   const testContext = context();
   const begun = await begin(testContext);
