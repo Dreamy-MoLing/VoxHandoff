@@ -1,9 +1,8 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  # CI 暂时仅手动触发：产品尚未完备，push 到 main 不应自动跑流水线。
+  # 待产品成熟后再恢复 push/pull_request 自动触发。
   workflow_dispatch:
 
 permissions:

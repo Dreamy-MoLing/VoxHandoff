@@ -38,6 +38,7 @@ The root `docs/` directory contains absorbed pre-development research. It is ign
 - Keep adapter tests offline with fixtures/fakes. Live tests must be explicit and must not mutate user data without a clear prompt.
 - Use opaque IDs. Do not derive security decisions from display labels.
 - 每次功能实现/修复完成后立即创建本地提交（conventional commits），按功能域拆分、不积压跨域改动；收工前 `git status` 必须干净（仅剩被 ignore 项）。
+- 提交说明统一使用**中文**（subject + body），格式沿用 conventional commits（`fix: `、`feat: `、`docs: ` 等前缀）。阶段性成功可 push 到云端备份，但**不要触发 CI**：产品完备前 CI 仅保留 `workflow_dispatch` 手动触发。
 
 ## Commands
 
