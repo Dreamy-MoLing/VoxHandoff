@@ -603,3 +603,19 @@ DELIVERY 对应章节。
   重新进入录音验收；本轮不猜 token、不读取或输出 token，不改变服务认证策略。临时
   注入到设备 Download 的 CA 文件已删除，secure profile 中的新 CA 保留。Hermes 零
   改动，未 push，未自动审批。
+
+## D-031：2026-08-14 第三轮 token 对齐后仍在 STT 鉴权门失败
+
+- 操作：从服务端受保护 env 文件读取 provider token，在手机 Voice settings 清空密码
+  字段后逐字符重新输入并保存；未清除应用数据，token 值未写入日志、文档或报告。
+- readiness：UI 显示 `Ready`；服务端 `stt.log` 新增
+  `stt_http "GET /v1/health HTTP/1.1" 200 -`（line 10）。
+- 唯一真实录音：日志立即记录“已触发录音，等待外放”，约 8 秒后停止并转写。UI 显示
+  `Remote speech recognition failed. No Agent request was sent.`；服务端新增
+  `stt_http "POST /v1/transcribe HTTP/1.1" 401 -`（line 11）。认证发生在音频解析
+  前，没有 `stt_audio_stats`，bytes/rms 不可得；没有中文转写、Editable draft 或
+  Confirm 证据。
+- 结论：服务端仍未接受本次 provider credential，token 对齐验收未通过；按任务书不
+  重录、不伪造成功。后续需由 owner 核对 credential 传递链路后另开任务。本轮 Hermes
+  零改动、未 push、设备只经 Tailscale ADB，阶段日志为
+  `/tmp/voxhandoff-acceptance-20260814.log`。

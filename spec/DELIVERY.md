@@ -1217,3 +1217,16 @@ Recording，停止后显示 `Remote speech recognition failed. No Agent request 
 `stt_audio_stats`、bytes/rms、中文转写、Editable draft 或 Confirm 证据。未重录；任务
 当前阻塞在 STT token 与服务端期望值不一致或为空的认证门，不能把它写成音频成功。
 阶段日志：`/tmp/voxhandoff-acceptance-20260814.log`。Hermes 零改动，未 push。
+
+**D-031：2026-08-14 第三轮 token 对齐与唯一录音结果**：从服务端受保护 env 文件读取
+provider token；手机 Voice settings 中清空密码字段后逐字符重新输入并保存，未清除
+应用数据，token 值未进入日志、文档或报告。UI `Test STT readiness` 显示 `Ready`，
+服务端 `stt.log` 新增 `stt_http "GET /v1/health HTTP/1.1" 200 -`（line 10）。
+
+按任务书只触发一次真实录音，立即写入阶段日志并等待外放约 8 秒；停止转写后 UI 显示
+`Remote speech recognition failed. No Agent request was sent.`。服务端新增
+`stt_http "POST /v1/transcribe HTTP/1.1" 401 -`（line 11），认证在音频解析前失败，
+没有 `stt_audio_stats`，所以 bytes/rms 不可得；没有中文转写、Editable draft 或
+Confirm 证据。按硬边界未重录、未伪造证据。结论：本轮 STT token 验收仍未通过，需由
+owner 后续核对 provider credential 传递链路后再开新一轮；本轮不再操作。阶段日志：
+`/tmp/voxhandoff-acceptance-20260814.log`。Hermes 零改动，未 push。
