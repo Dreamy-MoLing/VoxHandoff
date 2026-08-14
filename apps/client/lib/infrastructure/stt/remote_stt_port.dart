@@ -22,13 +22,15 @@ class RemoteSttDisclosure {
   final bool streaming;
   final String revision;
 
-  bool get isSecureOrigin =>
+  static bool isSecureOriginUri(Uri origin) =>
       origin.scheme == 'https' &&
       origin.host.isNotEmpty &&
       origin.userInfo.isEmpty &&
       (origin.path.isEmpty || origin.path == '/') &&
       !origin.hasQuery &&
       !origin.hasFragment;
+
+  bool get isSecureOrigin => isSecureOriginUri(origin);
 
   @override
   bool operator ==(Object other) =>
@@ -76,6 +78,10 @@ class RemoteSttRequest {
 
 abstract interface class RemoteSttTransport {
   Future<void> warmUp(RemoteSttDisclosure disclosure);
+
+  /// Fetch the server-declared upload contract so the settings form can
+  /// auto-fill TLS/retention/revision instead of asking users to type them.
+  Future<RemoteSttDisclosure> fetchDisclosure(Uri origin, String providerId);
 
   Future<FinalTranscript> transcribe(
     RemoteSttDisclosure disclosure,
@@ -127,6 +133,51 @@ class JsonHttpRemoteSttTransport implements RemoteSttTransport {
     if (response.statusCode != HttpStatus.ok) {
       throw _remoteFailure('remote_stt_unavailable');
     }
+  }
+
+  @override
+  Future<RemoteSttDisclosure> fetchDisclosure(
+    Uri origin,
+    String providerId,
+  ) async {
+    if (_closed) throw StateError('The remote STT transport is closed.');
+    final token = await tokenProvider(providerId);
+    if (token.isEmpty) throw const FormatException('Missing provider token.');
+    final client = await _clientForRequest();
+    final request = await client
+        .getUrl(origin.resolve('/v1/disclosure'))
+        .timeout(timeout);
+    request.followRedirects = false;
+    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+    final response = await request.close().timeout(timeout);
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in response.timeout(timeout)) {
+      if (bytes.length + chunk.length > 65536) {
+        throw const FormatException('Remote STT disclosure exceeded limit.');
+      }
+      bytes.add(chunk);
+    }
+    if (response.statusCode != HttpStatus.ok) {
+      throw _remoteFailure('remote_stt_disclosure_failed');
+    }
+    final decoded = jsonDecode(utf8.decode(bytes.takeBytes()));
+    if (decoded is! Map<String, Object?> ||
+        decoded['protocol'] is! Map<String, Object?> ||
+        decoded['tls_policy'] is! String ||
+        decoded['retention_policy'] is! String ||
+        decoded['revision'] is! String) {
+      throw const FormatException('Remote STT disclosure was invalid.');
+    }
+    return RemoteSttDisclosure(
+      providerId: decoded['provider_id'] is String
+          ? decoded['provider_id']! as String
+          : providerId,
+      origin: origin,
+      tlsPolicy: decoded['tls_policy']! as String,
+      retentionPolicy: decoded['retention_policy']! as String,
+      streaming: decoded['streaming'] == true,
+      revision: decoded['revision']! as String,
+    );
   }
 
   @override

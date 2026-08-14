@@ -42,6 +42,23 @@ class _Headers(dict[str, str]):
 
 
 class HttpSttServiceTest(unittest.TestCase):
+    def test_disclosure_returns_declared_upload_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            provider = HttpSttProvider(FakeBackend(), temp_root=Path(root))
+            provider.warmup()
+            declaration = provider.disclosure()
+            protocol = declaration["protocol"]
+            provider_id = declaration["provider_id"]
+            tls_policy = declaration["tls_policy"]
+            retention_policy = declaration["retention_policy"]
+            streaming = declaration["streaming"]
+        self.assertEqual(protocol, {"major": 1, "minor": 0})
+        self.assertEqual(provider_id, "voxhandoff-stt")
+        self.assertIn("TLS", str(tls_policy))
+        self.assertIn("deleted", str(retention_policy))
+        self.assertIs(streaming, False)
+        self.assertIsInstance(declaration["revision"], str)
+
     def test_validation_requires_protocol_audio_contract(self) -> None:
         with self.assertRaisesRegex(HttpSttError, "protocol version"):
             validate_transcribe_payload({})

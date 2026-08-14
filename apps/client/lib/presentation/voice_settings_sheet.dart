@@ -11,6 +11,7 @@ import '../infrastructure/security/flutter_secure_value_store.dart';
 import '../infrastructure/security/gateway_trusted_root_certificate_importer.dart';
 import '../infrastructure/security/private_ca_certificate_picker.dart';
 import '../infrastructure/security/secure_pairing_stores.dart';
+import '../infrastructure/stt/remote_stt_port.dart';
 import 'direct_llm_settings_sheet.dart';
 
 final gatewayTrustedRootCertificateImporterProvider =
@@ -22,6 +23,15 @@ final gatewayTrustedRootCertificateImporterProvider =
         certificatePicker: const PlatformPrivateCaCertificatePicker(),
       ),
     );
+
+typedef RemoteSttTransportFactory =
+    RemoteSttTransport Function(RemoteSttTokenProvider tokenProvider);
+
+final remoteSttTransportFactoryProvider = Provider<RemoteSttTransportFactory>(
+  (_) =>
+      (tokenProvider) =>
+          JsonHttpRemoteSttTransport(tokenProvider: tokenProvider),
+);
 
 Future<void> showVoiceSettingsSheet(BuildContext context) =>
     showModalBottomSheet<void>(
@@ -60,6 +70,8 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
   var _selectedSttKind = SttProviderKind.disabled;
   var _sttKindDirty = false;
   var _remoteSttConsent = false;
+  var _remoteSttDisclosurePending = false;
+  String? _remoteSttDisclosureError;
   var _selectedTtsKind = TtsProviderKind.disabled;
   var _lastEnabledTtsKind = TtsProviderKind.piperHttp;
   var _ttsKindDirty = false;
@@ -314,6 +326,7 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
               if (remoteSttEnabled) ...[
                 TextField(
                   controller: _remoteSttProviderId,
+                  onChanged: (_) => _invalidateRemoteSttConsent(),
                   decoration: const InputDecoration(
                     labelText: 'Remote provider ID',
                     helperText:
@@ -322,6 +335,7 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                 ),
                 TextField(
                   controller: _remoteSttOrigin,
+                  onChanged: (_) => _invalidateRemoteSttConsent(),
                   keyboardType: TextInputType.url,
                   decoration: const InputDecoration(
                     labelText: 'Remote HTTPS origin',
@@ -329,20 +343,47 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                         'Exact https://host root; redirects, paths, queries, and fragments are rejected.',
                   ),
                 ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const Key('remote-stt-fetch-disclosure-button'),
+                  onPressed: _remoteSttDisclosurePending
+                      ? null
+                      : _fetchRemoteSttDisclosure,
+                  icon: const Icon(Icons.download_outlined),
+                  label: Text(
+                    _remoteSttDisclosurePending
+                        ? 'Fetching disclosure…'
+                        : 'Fetch disclosure',
+                  ),
+                ),
+                if (_remoteSttDisclosureError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      _remoteSttDisclosureError!,
+                      key: const Key('remote-stt-disclosure-error'),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
                 TextField(
                   controller: _remoteSttTlsPolicy,
+                  onChanged: (_) => _invalidateRemoteSttConsent(),
                   decoration: const InputDecoration(
                     labelText: 'TLS policy disclosure',
                   ),
                 ),
                 TextField(
                   controller: _remoteSttRetentionPolicy,
+                  onChanged: (_) => _invalidateRemoteSttConsent(),
                   decoration: const InputDecoration(
                     labelText: 'Retention policy disclosure',
                   ),
                 ),
                 TextField(
                   controller: _remoteSttRevision,
+                  onChanged: (_) => _invalidateRemoteSttConsent(),
                   decoration: const InputDecoration(
                     labelText: 'Provider contract revision',
                   ),
@@ -678,6 +719,93 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
             : '',
       ),
     );
+  }
+
+  Future<void> _fetchRemoteSttDisclosure() async {
+    final origin = Uri.tryParse(_remoteSttOrigin.text.trim());
+    final providerId = _remoteSttProviderId.text.trim();
+    if (origin == null || !RemoteSttDisclosure.isSecureOriginUri(origin)) {
+      setState(
+        () => _remoteSttDisclosureError =
+            'Enter an exact HTTPS origin before fetching disclosure.',
+      );
+      return;
+    }
+    if (providerId.isEmpty) {
+      setState(
+        () => _remoteSttDisclosureError =
+            'Enter the remote provider ID before fetching disclosure.',
+      );
+      return;
+    }
+
+    setState(() {
+      _remoteSttDisclosurePending = true;
+      _remoteSttDisclosureError = null;
+    });
+
+    final inputToken = _remoteSttToken.text.trim();
+    final secrets = ref
+        .read(voiceProviderSettingsStoreProvider)
+        .remoteSttSecrets;
+    RemoteSttTransport? transport;
+    try {
+      transport = ref.read(remoteSttTransportFactoryProvider)((
+        requestedProviderId,
+      ) async {
+        if (requestedProviderId == providerId && inputToken.isNotEmpty) {
+          return inputToken;
+        }
+        return await secrets.read(requestedProviderId) ?? '';
+      });
+      final disclosure = await transport.fetchDisclosure(origin, providerId);
+      if (!mounted) return;
+      final disclosureChanged =
+          _remoteSttProviderId.text.trim() != disclosure.providerId ||
+          _remoteSttOrigin.text.trim() != disclosure.origin.toString() ||
+          _remoteSttTlsPolicy.text.trim() != disclosure.tlsPolicy ||
+          _remoteSttRetentionPolicy.text.trim() != disclosure.retentionPolicy ||
+          _remoteSttRevision.text.trim() != disclosure.revision ||
+          disclosure.streaming;
+      _remoteSttProviderId.text = disclosure.providerId;
+      _remoteSttOrigin.text = disclosure.origin.toString();
+      _remoteSttTlsPolicy.text = disclosure.tlsPolicy;
+      _remoteSttRetentionPolicy.text = disclosure.retentionPolicy;
+      _remoteSttRevision.text = disclosure.revision;
+      setState(() {
+        if (disclosureChanged) _remoteSttConsent = false;
+        _remoteSttDisclosureError = null;
+      });
+    } on VoicePortException catch (error) {
+      if (mounted) {
+        setState(() => _remoteSttDisclosureError = error.failure.safeMessage);
+      }
+    } on FormatException {
+      if (mounted) {
+        setState(
+          () => _remoteSttDisclosureError =
+              'The remote STT disclosure is invalid or too large.',
+        );
+      }
+    } on Object {
+      if (mounted) {
+        setState(
+          () => _remoteSttDisclosureError =
+              'The remote STT disclosure could not be fetched. Check the origin and token.',
+        );
+      }
+    } finally {
+      await transport?.close();
+      if (mounted) {
+        setState(() => _remoteSttDisclosurePending = false);
+      }
+    }
+  }
+
+  void _invalidateRemoteSttConsent() {
+    if (_remoteSttConsent) {
+      setState(() => _remoteSttConsent = false);
+    }
   }
 
   Future<void> _loadMicrophones() async {

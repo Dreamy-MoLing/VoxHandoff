@@ -64,6 +64,29 @@ class HttpSttProvider:
             "model": "faster-whisper-base",
         }
 
+    def disclosure(self) -> dict[str, object]:
+        """Server-declared upload contract.
+
+        The client fills only origin + token and then reads this declaration
+        instead of asking users to type TLS/retention/revision by hand. The
+        declaration is a product contract, not a secret: it is what the
+        consent checkbox binds the user to.
+        """
+        if not self._ready:
+            raise HttpSttError(
+                "stt_not_ready",
+                "The STT provider is not ready.",
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+        return {
+            "protocol": {"major": 1, "minor": 0},
+            "provider_id": "voxhandoff-stt",
+            "tls_policy": "TLS 1.2+ with a pinned gateway CA; origin is verified by exact host match.",
+            "retention_policy": "Audio is transcribed in memory and deleted immediately; no copies are retained.",
+            "streaming": False,
+            "revision": "2026-08-14",
+        }
+
     def transcribe(self, value: dict[str, Any]) -> dict[str, Any]:
         params = validate_transcribe_payload(value)
         request_id = f"http-{uuid.uuid4().hex}"
@@ -156,15 +179,31 @@ class _SttHttpHandler(BaseHTTPRequestHandler):
     sys_version = ""
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path != "/v1/health":
-            self._respond(HTTPStatus.NOT_FOUND, {"error": {"code": "not_found"}})
+        if self.path == "/v1/health":
+            try:
+                payload = self.server.provider.health()
+            except HttpSttError as error:
+                self._respond(error.status, {"error": {"code": error.code, "message": error.message}})
+                return
+            self._respond(HTTPStatus.OK, payload)
             return
-        try:
-            payload = self.server.provider.health()
-        except HttpSttError as error:
-            self._respond(error.status, {"error": {"code": error.code, "message": error.message}})
+        if self.path == "/v1/disclosure":
+            expected = f"Bearer {self.server.token}"
+            received = self.headers.get("Authorization", "")
+            if not hmac.compare_digest(received, expected):
+                self.send_response(HTTPStatus.UNAUTHORIZED)
+                self.send_header("WWW-Authenticate", "Bearer")
+                self._finish_headers()
+                self.wfile.write(b'{"error":{"code":"unauthorized"}}')
+                return
+            try:
+                payload = self.server.provider.disclosure()
+            except HttpSttError as error:
+                self._respond(error.status, {"error": {"code": error.code, "message": error.message}})
+                return
+            self._respond(HTTPStatus.OK, payload)
             return
-        self._respond(HTTPStatus.OK, payload)
+        self._respond(HTTPStatus.NOT_FOUND, {"error": {"code": "not_found"}})
 
     def do_POST(self) -> None:  # noqa: N802
         if self.path != "/v1/transcribe":

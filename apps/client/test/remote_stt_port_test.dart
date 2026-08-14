@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -52,6 +54,116 @@ void main() {
       trustedRootCertificates: certificate,
     );
     await transport.close();
+  });
+
+  test('remote HTTPS transport fetches the declared disclosure', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final requestDone = Completer<void>();
+    final subscription = server.listen((request) async {
+      expect(request.uri.path, '/v1/disclosure');
+      expect(
+        request.headers.value(HttpHeaders.authorizationHeader),
+        'Bearer fixture-token',
+      );
+      request.response
+        ..headers.contentType = ContentType.json
+        ..write(
+          jsonEncode({
+            'protocol': {'major': 1, 'minor': 0},
+            'provider_id': 'declared-provider',
+            'tls_policy': 'fixture TLS policy',
+            'retention_policy': 'fixture retention policy',
+            'streaming': false,
+            'revision': 'declared-v2',
+          }),
+        );
+      await request.response.close();
+      requestDone.complete();
+    });
+    final transport = JsonHttpRemoteSttTransport(
+      tokenProvider: (_) async => 'fixture-token',
+    );
+    try {
+      final result = await transport.fetchDisclosure(
+        Uri.parse('http://127.0.0.1:${server.port}'),
+        'requested-provider',
+      );
+      expect(result.providerId, 'declared-provider');
+      expect(result.tlsPolicy, 'fixture TLS policy');
+      expect(result.retentionPolicy, 'fixture retention policy');
+      expect(result.streaming, isFalse);
+      expect(result.revision, 'declared-v2');
+      await requestDone.future;
+    } finally {
+      await transport.close();
+      await subscription.cancel();
+      await server.close(force: true);
+    }
+  });
+
+  for (final statusCode in [
+    HttpStatus.unauthorized,
+    HttpStatus.serviceUnavailable,
+  ]) {
+    test(
+      'remote HTTPS transport maps HTTP $statusCode disclosure failure',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        final subscription = server.listen((request) async {
+          request.response
+            ..statusCode = statusCode
+            ..headers.contentType = ContentType.json
+            ..write('{"error":{"code":"fixture"}}');
+          await request.response.close();
+        });
+        final transport = JsonHttpRemoteSttTransport(
+          tokenProvider: (_) async => 'fixture-token',
+        );
+        try {
+          await expectLater(
+            transport.fetchDisclosure(
+              Uri.parse('http://127.0.0.1:${server.port}'),
+              'requested-provider',
+            ),
+            throwsA(
+              isA<VoicePortException>().having(
+                (error) => error.failure.code,
+                'code',
+                'remote_stt_disclosure_failed',
+              ),
+            ),
+          );
+        } finally {
+          await transport.close();
+          await subscription.cancel();
+          await server.close(force: true);
+        }
+      },
+    );
+  }
+
+  test('remote HTTPS transport rejects an oversized disclosure body', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final subscription = server.listen((request) async {
+      request.response.write('x' * 65537);
+      await request.response.close();
+    });
+    final transport = JsonHttpRemoteSttTransport(
+      tokenProvider: (_) async => 'fixture-token',
+    );
+    try {
+      await expectLater(
+        transport.fetchDisclosure(
+          Uri.parse('http://127.0.0.1:${server.port}'),
+          'requested-provider',
+        ),
+        throwsA(isA<FormatException>()),
+      );
+    } finally {
+      await transport.close();
+      await subscription.cancel();
+      await server.close(force: true);
+    }
   });
 
   test('remote HTTPS transport rejects malformed imported CA', () {
@@ -188,6 +300,10 @@ class _FakeRemoteTransport implements RemoteSttTransport {
 
   @override
   Future<void> warmUp(RemoteSttDisclosure disclosure) async {}
+
+  @override
+  Future<RemoteSttDisclosure> fetchDisclosure(Uri origin, String providerId) =>
+      throw UnimplementedError();
 
   @override
   Future<void> close() async {}

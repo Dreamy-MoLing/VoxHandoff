@@ -196,6 +196,19 @@ class _FakeRemoteTransport implements RemoteSttTransport {
   }
 
   @override
+  Future<RemoteSttDisclosure> fetchDisclosure(
+    Uri origin,
+    String providerId,
+  ) async => RemoteSttDisclosure(
+    providerId: providerId,
+    origin: origin,
+    tlsPolicy: 'fixture-tls',
+    retentionPolicy: 'fixture-retention',
+    streaming: false,
+    revision: 'fixture-v1',
+  );
+
+  @override
   Future<FinalTranscript> transcribe(
     RemoteSttDisclosure disclosure,
     RemoteSttRequest request,
