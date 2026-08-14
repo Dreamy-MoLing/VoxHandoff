@@ -15,9 +15,11 @@ class MainActivity : FlutterActivity() {
     }
 
     private var pendingCertificateResult: MethodChannel.Result? = null
+    private var audioCapture: AndroidAudioCapture? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        audioCapture = AndroidAudioCapture(this, flutterEngine.dartExecutor.binaryMessenger)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -99,6 +101,8 @@ class MainActivity : FlutterActivity() {
     private class CertificateTooLargeException : Exception()
 
     override fun onDestroy() {
+        audioCapture?.dispose()
+        audioCapture = null
         pendingCertificateResult?.error(
             "activity_destroyed",
             "Certificate file import was cancelled.",

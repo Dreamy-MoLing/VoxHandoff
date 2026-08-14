@@ -1,33 +1,119 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/services.dart';
 import 'package:record/record.dart';
 
 import '../../domain/voice.dart';
 
-/// Five-platform PCM capture backed by the `record` plugin.
+/// The native Android PCM bridge used instead of the `record` Android path.
+abstract interface class AndroidAudioRecordBridge {
+  Stream<AndroidAudioFrame> get frames;
+
+  Future<void> start(AudioCaptureConfig config);
+  Future<void> stop();
+  Future<void> cancel();
+  Future<void> close();
+}
+
+class AndroidAudioFrame {
+  const AndroidAudioFrame({required this.pcm, required this.level});
+
+  factory AndroidAudioFrame.fromPlatform(Object? event) {
+    if (event is! Map) {
+      throw const FormatException('Android audio event is not a map.');
+    }
+    final rawPcm = event['pcm'];
+    final pcm = switch (rawPcm) {
+      Uint8List value => value,
+      List value => Uint8List.fromList(
+        value.cast<num>().map((v) => v.toInt()).toList(),
+      ),
+      _ => throw const FormatException('Android audio event has no PCM bytes.'),
+    };
+    final rawLevel = event['level'];
+    if (rawLevel is! num || !rawLevel.isFinite) {
+      throw const FormatException('Android audio event has no valid level.');
+    }
+    return AndroidAudioFrame(pcm: pcm, level: rawLevel.toDouble().clamp(0, 1));
+  }
+
+  final Uint8List pcm;
+  final double level;
+}
+
+class AndroidAudioRecordChannel implements AndroidAudioRecordBridge {
+  AndroidAudioRecordChannel({
+    MethodChannel? controlChannel,
+    EventChannel? eventChannel,
+  }) : _controlChannel =
+           controlChannel ?? const MethodChannel(controlChannelName),
+       _eventChannel = eventChannel ?? const EventChannel(eventChannelName);
+
+  static const controlChannelName = 'agent_talk/android_audio_capture';
+  static const eventChannelName = 'agent_talk/android_audio_capture_events';
+
+  final MethodChannel _controlChannel;
+  final EventChannel _eventChannel;
+  Stream<AndroidAudioFrame>? _frames;
+
+  @override
+  Stream<AndroidAudioFrame> get frames => _frames ??= _eventChannel
+      .receiveBroadcastStream()
+      .map(AndroidAudioFrame.fromPlatform);
+
+  @override
+  Future<void> start(AudioCaptureConfig config) async {
+    await _controlChannel.invokeMethod<void>('start', {
+      'sampleRate': config.sampleRate,
+      'channels': config.channels,
+      if (config.microphoneId != null) 'microphoneId': config.microphoneId,
+    });
+  }
+
+  @override
+  Future<void> stop() => _invoke('stop');
+
+  @override
+  Future<void> cancel() => _invoke('cancel');
+
+  @override
+  Future<void> close() => _invoke('dispose');
+
+  Future<void> _invoke(String method) async {
+    await _controlChannel.invokeMethod<void>(method);
+  }
+}
+
+/// Five-platform PCM capture.
 ///
-/// Android uses an app-private temporary PCM file because the acceptance phone
-/// opened AudioRecord but delivered no bytes through the plugin EventChannel.
-/// The file is read into memory and deleted as part of stop/cancel cleanup.
-/// Other platforms continue to use the in-memory stream path.
+/// Android uses the app's native AudioRecord through a platform channel. The
+/// other platforms continue to use the existing in-memory `record` stream.
 class RecordAudioCapture
     implements AudioCapturePort, AudioInputDeviceEnumerator {
-  RecordAudioCapture({AudioRecorder? recorder})
-    : _recorder = recorder ?? AudioRecorder();
+  RecordAudioCapture({
+    AudioRecorder? recorder,
+    AndroidAudioRecordBridge? androidBridge,
+  }) : _providedRecorder = recorder,
+       _androidBridge =
+           androidBridge ??
+           (Platform.isAndroid ? AndroidAudioRecordChannel() : null);
 
-  final AudioRecorder _recorder;
+  final AudioRecorder? _providedRecorder;
+  final AndroidAudioRecordBridge? _androidBridge;
+  AudioRecorder? _recorder;
   AudioCaptureSession? _active;
   bool _closed = false;
+
+  AudioRecorder get _desktopRecorder =>
+      _recorder ??= _providedRecorder ?? AudioRecorder();
 
   @override
   Future<List<AudioInputDevice>> listInputDevices() async {
     if (_closed) return const [];
     try {
-      final devices = await _recorder.listInputDevices();
+      final devices = await _desktopRecorder.listInputDevices();
       return devices
           .where((device) => device.id.trim().isNotEmpty)
           .map((device) => AudioInputDevice(id: device.id, label: device.label))
@@ -59,9 +145,38 @@ class RecordAudioCapture
         ),
       );
     }
-    String? temporaryPath;
+
+    final androidBridge = _androidBridge;
+    if (androidBridge != null) {
+      if (config.sampleRate != 16000 || config.channels != 1) {
+        throw const VoicePortException(
+          VoiceStageFailure(
+            stage: VoiceFailureStage.recording,
+            code: 'recording_pcm_unsupported',
+            safeMessage: 'Android recording requires 16 kHz mono PCM audio.',
+            retryable: false,
+          ),
+        );
+      }
+      final session = _AndroidAudioCaptureSession(
+        bridge: androidBridge,
+        config: config,
+        onClosed: () => _active = null,
+      );
+      _active = session;
+      try {
+        await session.start();
+        return session;
+      } on Object {
+        _active = null;
+        await session.cancel();
+        rethrow;
+      }
+    }
+
     try {
-      if (!await _recorder.hasPermission()) {
+      final recorder = _desktopRecorder;
+      if (!await recorder.hasPermission()) {
         throw const VoicePortException(
           VoiceStageFailure(
             stage: VoiceFailureStage.recording,
@@ -72,7 +187,7 @@ class RecordAudioCapture
           ),
         );
       }
-      if (!await _recorder.isEncoderSupported(AudioEncoder.pcm16bits)) {
+      if (!await recorder.isEncoderSupported(AudioEncoder.pcm16bits)) {
         throw const VoicePortException(
           VoiceStageFailure(
             stage: VoiceFailureStage.recording,
@@ -86,14 +201,6 @@ class RecordAudioCapture
         encoder: AudioEncoder.pcm16bits,
         sampleRate: config.sampleRate,
         numChannels: config.channels,
-        // DEFAULT is device-dependent on Android and was observed as an
-        // inactive AUDIO_DEVICE_NONE input on the acceptance phone. Use
-        // Android's speech-recognition input path explicitly so the
-        // AudioRecord PCM stream is backed by the active microphone source.
-        androidConfig: const AndroidRecordConfig(
-          audioSource: AndroidAudioSource.voiceRecognition,
-        ),
-        // Keep stream-mode platforms at a bounded 100 ms PCM frame.
         streamBufferSize: config.sampleRate * config.channels * 2 ~/ 10,
         device: config.microphoneId == null
             ? null
@@ -102,31 +209,17 @@ class RecordAudioCapture
         echoCancel: false,
         noiseSuppress: false,
       );
-      late final AudioCaptureSession session;
-      if (Platform.isAndroid) {
-        final path = await _temporaryPcmPath();
-        temporaryPath = path;
-        await _recorder.start(recordConfig, path: path);
-        session = _FileRecordAudioCaptureSession(
-          recorder: _recorder,
-          path: path,
-          onClosed: () => _active = null,
-        );
-      } else {
-        final stream = await _recorder.startStream(recordConfig);
-        session = _RecordAudioCaptureSession(
-          recorder: _recorder,
-          audioChunks: stream,
-          onClosed: () => _active = null,
-        );
-      }
+      final stream = await recorder.startStream(recordConfig);
+      final session = _RecordAudioCaptureSession(
+        recorder: recorder,
+        audioChunks: stream,
+        onClosed: () => _active = null,
+      );
       _active = session;
       return session;
     } on VoicePortException {
-      if (temporaryPath != null) await _deleteTemporaryFile(temporaryPath);
       rethrow;
     } on Object {
-      if (temporaryPath != null) await _deleteTemporaryFile(temporaryPath);
       throw const VoicePortException(
         VoiceStageFailure(
           stage: VoiceFailureStage.recording,
@@ -138,34 +231,119 @@ class RecordAudioCapture
     }
   }
 
-  Future<String> _temporaryPcmPath() async {
-    final directory = await getTemporaryDirectory();
-    final suffix = math.Random.secure().nextInt(1 << 32).toRadixString(16);
-    return '${directory.path}${Platform.pathSeparator}voxhandoff-recording-$suffix.pcm';
-  }
-
-  Future<void> _deleteTemporaryFile(String path) async {
-    try {
-      await File(path).delete();
-    } on Object {
-      // Cleanup is best effort after a failed start; no audio or path is
-      // included in user-facing errors.
-    }
-  }
-
   @override
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
-    await _active?.cancel();
-    await _recorder.dispose();
+    try {
+      await _active?.cancel();
+    } finally {
+      await _androidBridge?.close();
+      await (_recorder ?? _providedRecorder)?.dispose();
+    }
+  }
+}
+
+class _AndroidAudioCaptureSession implements AudioCaptureSession {
+  _AndroidAudioCaptureSession({
+    required this.bridge,
+    required this.config,
+    required this.onClosed,
+  });
+
+  final AndroidAudioRecordBridge bridge;
+  final AudioCaptureConfig config;
+  final void Function() onClosed;
+  final StreamController<Uint8List> _audioController =
+      StreamController<Uint8List>();
+  final StreamController<double> _levelController = StreamController<double>();
+  late final StreamSubscription<AndroidAudioFrame> _frameSubscription;
+  bool _closing = false;
+  bool _discarding = false;
+  bool _closed = false;
+
+  Future<void> start() async {
+    _frameSubscription = bridge.frames.listen(
+      (frame) {
+        if (_closed || _discarding) return;
+        _audioController.add(frame.pcm);
+        _levelController.add(frame.level);
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (_closed || _discarding) return;
+        final failure = _androidRecordingFailure(
+          error,
+          fallbackCode: 'recording_stream_failed',
+        );
+        _audioController.addError(failure, stackTrace);
+        _levelController.addError(failure, stackTrace);
+      },
+      onDone: () {
+        if (_closed || _closing) return;
+        final failure = const VoicePortException(
+          VoiceStageFailure(
+            stage: VoiceFailureStage.recording,
+            code: 'recording_stream_closed',
+            safeMessage: 'The microphone stream closed unexpectedly.',
+            retryable: true,
+          ),
+        );
+        _audioController.addError(failure);
+        _levelController.addError(failure);
+      },
+    );
+    try {
+      await bridge.start(config);
+    } on Object catch (error) {
+      await _frameSubscription.cancel();
+      _audioController.close();
+      _levelController.close();
+      onClosed();
+      throw _androidRecordingFailure(error);
+    }
+  }
+
+  @override
+  Stream<Uint8List> get audioChunks => _audioController.stream;
+
+  @override
+  Stream<double> get levels => _levelController.stream;
+
+  @override
+  Future<void> stop() => _finish(discard: false);
+
+  @override
+  Future<void> cancel() => _finish(discard: true);
+
+  Future<void> _finish({required bool discard}) async {
+    if (_closed) return;
+    _closing = true;
+    _discarding = discard;
+    Object? failure;
+    try {
+      if (discard) {
+        await bridge.cancel();
+      } else {
+        await bridge.stop();
+      }
+    } on Object catch (error) {
+      failure = _androidRecordingFailure(
+        error,
+        fallbackCode: 'recording_stop_failed',
+      );
+    } finally {
+      _closed = true;
+      await _frameSubscription.cancel();
+      await _audioController.close();
+      await _levelController.close();
+      onClosed();
+    }
+    if (failure != null) throw failure;
   }
 }
 
 abstract class _RecordAudioCaptureSessionBase implements AudioCaptureSession {
-  _RecordAudioCaptureSessionBase({
-    required this.recorder,
-  });
+  _RecordAudioCaptureSessionBase({required this.recorder});
 
   final AudioRecorder recorder;
 
@@ -218,64 +396,40 @@ class _RecordAudioCaptureSession extends _RecordAudioCaptureSessionBase {
   }
 }
 
-class _FileRecordAudioCaptureSession extends _RecordAudioCaptureSessionBase {
-  _FileRecordAudioCaptureSession({
-    required super.recorder,
-    required this.path,
-    required this._onClosed,
-  });
-
-  final String path;
-  final void Function() _onClosed;
-  final StreamController<Uint8List> _audioController =
-      StreamController<Uint8List>();
-  bool _closed = false;
-
-  @override
-  Stream<Uint8List> get audioChunks => _audioController.stream;
-
-  @override
-  Future<void> stop() => _finish(discard: false);
-
-  @override
-  Future<void> cancel() => _finish(discard: true);
-
-  Future<void> _finish({required bool discard}) async {
-    if (_closed) return;
-    _closed = true;
-    try {
-      if (discard) {
-        await recorder.cancel();
-      } else {
-        await recorder.stop();
-        final file = File(path);
-        if (await file.exists()) {
-          final bytes = await file.readAsBytes();
-          if (bytes.isNotEmpty) {
-            _audioController.add(Uint8List.fromList(bytes));
-          }
-        }
-      }
-    } on Object {
-      throw const VoicePortException(
-        VoiceStageFailure(
-          stage: VoiceFailureStage.recording,
-          code: 'recording_stop_failed',
-          safeMessage: 'The microphone stream could not close cleanly.',
-          retryable: true,
-        ),
-      );
-    } finally {
-      await _audioController.close();
-      try {
-        await File(path).delete();
-      } on Object {
-        // The application-private temporary file is best-effort cleaned up;
-        // the product retention policy handles a failed cleanup separately.
-      }
-      _onClosed();
-    }
-  }
+VoicePortException _androidRecordingFailure(
+  Object error, {
+  String fallbackCode = 'recording_device_unavailable',
+}) {
+  if (error is VoicePortException) return error;
+  final platformCode = error is PlatformException ? error.code : '';
+  final code = switch (platformCode) {
+    'permission_denied' => 'microphone_permission_denied',
+    'format_unsupported' => 'recording_pcm_unsupported',
+    'session_conflict' => 'recording_session_conflict',
+    'recording_start_failed' => 'recording_device_unavailable',
+    'audio_read_failed' => 'recording_stream_failed',
+    'recording_stop_failed' => 'recording_stop_failed',
+    _ => fallbackCode,
+  };
+  final safeMessage = switch (code) {
+    'microphone_permission_denied' =>
+      'Microphone access was denied. Enable it in system settings to record.',
+    'recording_pcm_unsupported' =>
+      'This device cannot provide the required PCM audio.',
+    'recording_session_conflict' => 'Another recording is already active.',
+    'recording_stream_failed' =>
+      'The microphone stream failed while recording.',
+    'recording_stop_failed' => 'The microphone stream could not close cleanly.',
+    _ => 'The microphone could not start on this device.',
+  };
+  return VoicePortException(
+    VoiceStageFailure(
+      stage: VoiceFailureStage.recording,
+      code: code,
+      safeMessage: safeMessage,
+      retryable: code != 'recording_pcm_unsupported',
+    ),
+  );
 }
 
 double _normalizedAmplitude(double dbfs) {
