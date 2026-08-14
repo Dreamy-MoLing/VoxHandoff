@@ -17,6 +17,7 @@ import 'infrastructure/audio/media_kit_audio_playback.dart';
 import 'infrastructure/audio/record_audio_capture.dart';
 import 'infrastructure/desktop/production_desktop_integration.dart';
 import 'infrastructure/security/flutter_secure_value_store.dart';
+import 'infrastructure/security/secure_pairing_stores.dart';
 import 'infrastructure/security/voice_provider_settings_store.dart';
 import 'infrastructure/storage/drift_local_direct_chat_store.dart';
 import 'infrastructure/storage/drift_local_transcript_store.dart';
@@ -50,16 +51,29 @@ Future<void> main() async {
   final transcriptStore = await DriftLocalTranscriptStore.forApplication();
   final directChatStore = await DriftLocalDirectChatStore.forApplication();
   final playback = MediaKitAudioPlayback();
+  final secureValueStore = FlutterSecureValueStore();
+  List<int>? remoteTrustedRootCertificates;
+  try {
+    remoteTrustedRootCertificates = (await SecureGatewayConnectionProfileStore(
+      secureValueStore,
+    ).load())?.trustedRootCertificates;
+  } on Object {
+    // A malformed Gateway profile must not prevent the app from opening. The
+    // remote provider will fail closed unless it uses system trust.
+  }
   final isDesktop = Platform.isLinux || Platform.isMacOS || Platform.isWindows;
   runApp(
     ProviderScope(
       overrides: [
         audioCapturePortProvider.overrideWithValue(RecordAudioCapture()),
         voicePortFactoryProvider.overrideWithValue(
-          const ProductionVoicePortFactory(),
+          ProductionVoicePortFactory(
+            secureValueStore: secureValueStore,
+            remoteTrustedRootCertificates: remoteTrustedRootCertificates,
+          ),
         ),
         voiceProviderSettingsStoreProvider.overrideWithValue(
-          VoiceProviderSettingsStore(FlutterSecureValueStore()),
+          VoiceProviderSettingsStore(secureValueStore),
         ),
         localTranscriptStoreProvider.overrideWithValue(transcriptStore),
         directChatHistoryStoreProvider.overrideWithValue(directChatStore),

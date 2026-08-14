@@ -67,8 +67,9 @@ HandshakeAccepted accepted({
   Iterable<String> scopes = const ['observe', 'send'],
   bool eventStream = true,
   bool attachments = false,
+  int minor = 0,
 }) => HandshakeAccepted(
-  selectedProtocol: ProtocolVersion(major: 1, minor: 0),
+  selectedProtocol: ProtocolVersion(major: 1, minor: minor),
   connectionId: 'connection-1',
   schemaBuild: 'gateway-build-1',
   schemaSha256: List.filled(64, 'a').join(),
@@ -126,6 +127,19 @@ void main() {
       expect(connection.handshake.connectionId, 'connection-1');
     },
   );
+
+  test('accepts the current negotiated protocol minor', () async {
+    final rpc = FakeGatewayControlStreamingRpc();
+    addTearDown(rpc.close);
+    final connection = await openWithHandshake(
+      GrpcGatewayLiveTransport(rpc, now: () => DateTime.utc(2030, 1, 1)),
+      rpc,
+      handshake: accepted(minor: 1),
+    );
+    addTearDown(connection.close);
+
+    expect(connection.handshake.selectedProtocol.minor, 1);
+  });
 
   test(
     'sends commands, exact acknowledgements, and monotonic heartbeat facts',

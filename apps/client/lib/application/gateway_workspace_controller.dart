@@ -488,22 +488,32 @@ class GatewayWorkspaceController extends Notifier<GatewayWorkspaceState> {
   }
 
   Future<void> _streamFailed(Object _) async {
-    final requestId = ref.read(clientSessionProvider).requestId;
+    final client = ref.read(clientSessionProvider);
+    final requestId = client.requestId;
+    final submissionIsUncertain =
+        requestId != null && client.draftPhase == DraftPhase.submitting;
     await _session?.markOutstandingUnknown();
     await _closeSession();
-    if (requestId != null &&
-        ref.read(clientSessionProvider).draftPhase == DraftPhase.submitting) {
+    if (submissionIsUncertain) {
       ref
           .read(clientSessionProvider.notifier)
           .markAcceptanceUncertain(requestId);
     }
-    state = state.copyWith(
-      connectionPhase: GatewayConnectionPhase.offline,
-      safeErrorCode: 'gateway_stream_lost',
-      safeErrorMessage:
-          'The Gateway stream ended. Uncertain submissions were not resent.',
-      uncertainRequestId: requestId,
-    );
+    state = submissionIsUncertain
+        ? state.copyWith(
+            connectionPhase: GatewayConnectionPhase.offline,
+            safeErrorCode: 'gateway_stream_lost',
+            safeErrorMessage:
+                'The Gateway stream ended. Uncertain submissions were not resent.',
+            uncertainRequestId: requestId,
+          )
+        : state.copyWith(
+            connectionPhase: GatewayConnectionPhase.offline,
+            safeErrorCode: 'gateway_stream_lost',
+            safeErrorMessage:
+                'The Gateway stream ended. Uncertain submissions were not resent.',
+            clearUncertain: true,
+          );
     ref
         .read(clientSessionProvider.notifier)
         .setConnectionPhase(GatewayConnectionPhase.offline);

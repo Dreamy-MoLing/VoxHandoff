@@ -286,6 +286,68 @@ void main() {
   );
 
   test(
+    'does not mark an already accepted request uncertain when the stream closes',
+    () async {
+      final factory = FakeWorkspaceFactory();
+      final container = ProviderContainer(
+        overrides: [
+          gatewayWorkspaceSessionFactoryProvider.overrideWithValue(factory),
+        ],
+      );
+      addTearDown(container.dispose);
+      final workspace = container.read(gatewayWorkspaceProvider.notifier);
+
+      await workspace.connect();
+      await factory.session.directoryCallback!(directory());
+      await factory.session.leaseCallback!(
+        ClientControlLeaseSnapshot(
+          leaseId: 'lease-accepted',
+          conversationId: 'conversation-1',
+          deviceId: 'device-1',
+          revision: BigInt.one,
+          expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+        ),
+      );
+      final draft = container.read(clientSessionProvider.notifier);
+      draft.editDraft('accepted text');
+      draft.confirmDraft(_hermesDraft(container, 'accepted text'));
+      await workspace.sendConfirmedText(
+        container.read(clientSessionProvider).confirmedDraft!,
+      );
+      await factory.session.statusCallback!(
+        ClientRequestStatusSnapshot(
+          requestId: 'request-local-1',
+          originDeviceId: 'device-1',
+          conversationId: 'conversation-1',
+          state: ClientRequestState.accepted,
+          nodeId: 'node-1',
+          agentId: 'agent-1',
+          capabilityRevision: 'capability-1',
+          acceptedSequence: BigInt.one,
+          failure: null,
+        ),
+      );
+      expect(
+        container.read(clientSessionProvider).draftPhase,
+        DraftPhase.accepted,
+      );
+
+      factory.session.runCompleter.completeError(StateError('disconnect'));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        container.read(clientSessionProvider).draftPhase,
+        DraftPhase.accepted,
+      );
+      expect(
+        container.read(gatewayWorkspaceProvider).uncertainRequestId,
+        isNull,
+      );
+    },
+  );
+
+  test(
     'publishes only explicit live events as desktop attention candidates',
     () async {
       final factory = FakeWorkspaceFactory();

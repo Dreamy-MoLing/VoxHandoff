@@ -203,6 +203,7 @@ class GrpcGatewayLiveTransport {
         credential.accessExpiresAt.toUtc().isAtSameMomentAs(now) ||
         credential.refreshExpiresAt.toUtc().isBefore(now) ||
         credential.refreshExpiresAt.toUtc().isAtSameMomentAs(now) ||
+        credential.generation <= 0 ||
         credential.scopes.isEmpty ||
         credential.scopes.toSet().length != credential.scopes.length) {
       throw const GatewayLiveTransportException(
@@ -219,7 +220,8 @@ class GrpcGatewayLiveTransport {
     final selected = handshake.selectedProtocol;
     if (!handshake.hasSelectedProtocol() ||
         selected.major != 1 ||
-        selected.minor != 0 ||
+        selected.minor < 0 ||
+        selected.minor > 1 ||
         handshake.componentRole != ComponentRole.COMPONENT_ROLE_GATEWAY ||
         !_opaque(handshake.connectionId) ||
         !_metadata(handshake.schemaBuild) ||

@@ -19,6 +19,7 @@ import 'gateway_frame_mapper.dart';
 import 'gateway_grpc_channel_factory.dart';
 import 'grpc_gateway_command_port.dart';
 import 'grpc_gateway_live_transport.dart';
+import 'grpc_pairing_gateway.dart';
 
 class SecureGrpcGatewayWorkspaceFactory
     implements GatewayWorkspaceSessionFactory {
@@ -46,18 +47,56 @@ class SecureGrpcGatewayWorkspaceFactory
       gatewayAudience: profile.gatewayAudience,
       trustedRootCertificates: profile.trustedRootCertificates,
     );
+    final credentialStore = SecureDeviceCredentialStore(_store);
+    final keyVault = DeviceKeyVault(store: _store);
+    var activeCredential = credential;
     DriftClientEventLedger? ledger;
     try {
+      if (!activeCredential.accessExpiresAt.toUtc().isAfter(
+        DateTime.now().toUtc(),
+      )) {
+        final nonce = List<int>.generate(
+          32,
+          (_) => Random.secure().nextInt(256),
+        );
+        final refreshTokenDigest = await Sha256().hash(
+          utf8.encode(activeCredential.refreshToken),
+        );
+        final payload = credentialRefreshPayload(
+          credentialId: activeCredential.credentialId,
+          deviceId: activeCredential.deviceId,
+          gatewayAudience: activeCredential.gatewayAudience,
+          refreshTokenSha256: _hex(refreshTokenDigest.bytes),
+          generation: activeCredential.generation,
+          nonce: nonce,
+        );
+        final signature = await keyVault.sign(
+          activeCredential.keyReference,
+          payload,
+        );
+        activeCredential =
+            await GrpcPairingGateway(
+              GeneratedPairingUnaryRpc(PairingServiceClient(channel)),
+            ).refresh(
+              activeCredential,
+              DeviceSignatureProof(
+                credentialId: activeCredential.credentialId,
+                nonce: nonce,
+                signature: signature,
+              ),
+            );
+        await credentialStore.save(activeCredential);
+      }
       final connection = await GrpcGatewayLiveTransport(
         GeneratedGatewayControlStreamingRpc(
           GatewayControlServiceClient(channel),
         ),
-      ).open(credential);
+      ).open(activeCredential);
       ledger = await DriftClientEventLedger.forApplication();
       return _SecureGrpcGatewayWorkspaceSession(
-        credential,
+        activeCredential,
         profile.gatewayAudience,
-        DeviceKeyVault(store: _store),
+        keyVault,
         connection,
         ledger,
         channel.shutdown,
