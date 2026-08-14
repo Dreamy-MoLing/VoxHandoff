@@ -41,8 +41,8 @@ void main() {
 
     await tester.pumpWidget(const ProviderScope(child: AgentTalkApp()));
 
-    expect(find.text('VOX / HANDOFF'), findsOneWidget);
-    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('Pair Gateway to start'), findsOneWidget);
+    expect(find.byTooltip('Open visual settings'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

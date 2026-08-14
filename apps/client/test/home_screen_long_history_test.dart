@@ -64,6 +64,8 @@ void main() {
       await tester.pump();
 
       expect(find.byType(HomeScreen), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('signal-core-view')));
+      await tester.pump();
       expect(find.byKey(const ValueKey('mobile-conversation')), findsOneWidget);
       expect(find.byKey(const ValueKey('turn-request-1999')), findsNothing);
       expect(find.byType(Card).evaluate().length, lessThan(40));

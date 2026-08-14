@@ -161,6 +161,44 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     expect(tester.binding.hasScheduledFrame, isFalse);
   });
+
+  testWidgets('mobile visual branch keeps real audio level and semantics', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAgentTalkDarkTheme(),
+        home: Scaffold(
+          body: SignalCoreView(
+            snapshot: const SignalCoreSnapshot(
+              state: SignalCoreState.recording,
+              label: 'Recording voice',
+              sourceIdentity: 'voice-2',
+              audioLevel: 0.72,
+              playbackLevel: 0,
+            ),
+            dimension: 220,
+            mobileVisual: true,
+            shaderLoader: _failedShader,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final corePaint = find.descendant(
+      of: find.byKey(const ValueKey('signal-core-view')),
+      matching: find.byType(CustomPaint),
+    );
+    final painter =
+        tester.widget<CustomPaint>(corePaint).painter! as SignalCorePainter;
+    expect(painter.mobileVisual, isTrue);
+    expect(painter.snapshot.audioLevel, 0.72);
+    expect(find.bySemanticsLabel('Recording voice'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
 }
 
 Future<ui.FragmentProgram> _failedShader() =>

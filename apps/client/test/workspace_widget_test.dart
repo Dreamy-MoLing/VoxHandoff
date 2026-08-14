@@ -222,6 +222,7 @@ void main() {
     tester,
   ) async {
     await pumpWorkspace(tester, size: const Size(390, 844));
+    expect(find.text('M2 delivery'), findsWidgets);
     await expectLater(
       find.byType(Scaffold),
       matchesGoldenFile('goldens/connected_workspace_phone.png'),

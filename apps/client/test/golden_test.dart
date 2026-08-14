@@ -36,6 +36,8 @@ void main() {
   ) async {
     await pumpAtSize(tester, const Size(390, 844));
 
+    expect(find.text('Pair Gateway to start'), findsOneWidget);
+
     await expectLater(
       find.byType(Scaffold),
       matchesGoldenFile('goldens/unpaired_phone.png'),
