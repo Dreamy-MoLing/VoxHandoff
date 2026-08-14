@@ -155,6 +155,31 @@ CA，release/base 仍只信 system roots。服务使用本地
 未授权。因此本阶段只关闭“APK 已安装”这一事实，未关闭“用户确认交互”、provider
 配置、readiness、录音、consent、中文识别或断网恢复门；按边界暂停后续操作。
 
+### 0.1.2 2026-08-14 Android PCM 断链修复（第四轮）
+
+- 本轮在 `AndroidAudioCapture.kt` 的原生 readLoop 增加固定 tag
+  `VoxHandoffAudio` 诊断：记录 `onListen`、`onCancel`、`start`、`prepare`、
+  `beginCapture`、前 20 次 `readCount`，以及前 20 次 push 的成功/跳过状态；只记录
+  count/bytes、sink null 和 discarding，不记录 PCM、token、证书或音频内容。
+- 核对结果：Kotlin 与 Dart 的 control/event channel 分别都是
+  `agent_talk/android_audio_capture` / `agent_talk/android_audio_capture_events`；
+  Dart 先订阅 `frames` 再调用 native `start`，`_discarding` 只在 cancel/关闭路径置真。
+  Kotlin 现在在 `eventSink` 未就绪时暂存 start result，待 `onListen` 后再启动
+  readLoop 并返回成功；2 秒仍无 sink 则返回固定错误，避免静默丢 PCM。
+- 本地证据：Dart format 通过；`flutter analyze` 无问题；录音定向测试 2 项通过；
+  `:app:compileDebugKotlin` 通过；固定 Flutter 3.44.6 的 `flutter:check` 为 232 项
+  通过、2 项预置 live smoke 跳过。默认 PATH 缺少 `flutter`，使用 pinned SDK PATH
+  重跑成功。
+- Debug APK 已由 Flutter 3.44.6 构建，SHA-256 为
+  `81a4c60b0ef4f6fefe1a65e6cf1dba5aee4a12d602567e91980979869b88e858`。
+  通过 Tailscale ADB 推送后设备前台出现
+  `com.android.packageinstaller/.PackageInterceptActivity`，安装确认未代点，
+  `lastUpdateTime` 仍为 `2026-08-14 09:03:29`，所以本 APK 未写成已安装。
+- 因安装确认门阻塞，本轮没有启动新 APK、没有重新验证 readiness、没有触发录音，
+  没有原生 read/sink、服务端 bytes/rms、转写文本或 UI 成功证据。上一轮服务端
+  `422 stt_no_audio` 仍是历史失败事实，不能替代本轮新包证据。
+- 本轮追加日志：`/tmp/voxhandoff-acceptance-20260814.log`。Hermes 零改动，未 push。
+
 ## 0.2 2026-08-11 验收修复（历史维护）
 
 验收报告记录的 VH-ACC-001 已有可复现根因：生产 Node 的 `ConnectNode`

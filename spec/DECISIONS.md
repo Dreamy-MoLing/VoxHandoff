@@ -619,3 +619,24 @@ DELIVERY 对应章节。
   重录、不伪造成功。后续需由 owner 核对 credential 传递链路后另开任务。本轮 Hermes
   零改动、未 push、设备只经 Tailscale ADB，阶段日志为
   `/tmp/voxhandoff-acceptance-20260814.log`。
+
+## D-032：原生 PCM 事件流必须等待 EventChannel sink 就绪
+
+- 日期：2026-08-14
+- 状态：Implemented locally / device installation blocked
+- 决策：Android `start` 准备好 `AudioRecord` 后，若 EventChannel `eventSink` 尚未
+  由 `onListen` 建立，不提前返回成功；保留 pending result，`onListen` 到达后再启动
+  readLoop 并返回成功，2 秒仍未就绪则固定失败。原生以 `VoxHandoffAudio` 记录
+  `readCount`、sink null、discarding 和 push 结果，最多记录前 20 次，禁止记录音频
+  内容、token、证书。
+- 证据：Kotlin/Dart 两个 channel 名一致；Dart 订阅顺序由 Flutter mock stream
+  handler 断言覆盖；`_discarding` 源码核对只在 cancel/关闭路径置真。Dart format、
+  analyze、录音定向测试 2 项、Kotlin 编译和 pinned Flutter 全量客户端门
+  `232 passed / 2 skipped` 通过。
+- 实机边界：Debug APK SHA-256 为
+  `81a4c60b0ef4f6fefe1a65e6cf1dba5aee4a12d602567e91980979869b88e858`。Tailscale ADB
+  推送后停在 `PackageInterceptActivity`，未代点系统确认；包更新时间未变，故本轮
+  没有安装新包、没有取得本轮原生日志/服务端 bytes-rms/转写文本/UI 证据。
+- 下一步：由 owner 手动完成系统安装确认后，只执行任务书规定的一次录音并抓取
+  `VoxHandoffAudio` 与服务端脱敏诊断；若仍为 `bytes=0`，按 readCount/sinkNull
+  结果继续定位。Hermes 零改动，未 push。
