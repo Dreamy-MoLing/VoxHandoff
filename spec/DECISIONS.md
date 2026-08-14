@@ -552,3 +552,27 @@ DELIVERY 对应章节。
   验收，不应继续重复相同录音动作。
 - 边界：Hermes 零改动、未 push、未自动审批，设备只经
   `100.96.66.108:5555` Tailscale ADB；Gateway harness 与 STT 服务保持隔离存活。
+
+## D-029：2026-08-14 真机验收停在新 CA 导入门
+
+- 日期：2026-08-14
+- 状态：Partial / blocked before Android readiness
+- 证据：新隔离 STT HTTPS 服务已启动在 `127.0.0.1:18654`，宿主机 health 为 HTTP
+  `200`、`status=ready`，Tailscale Serve 为 `443 -> 127.0.0.1:18654`；证书 SAN
+  含 Tailscale DNS、`100.103.253.87`、`100.96.66.108`，无明文 HTTP。
+- 客户端：用 Flutter `3.44.6` 构建 Debug APK，版本 `0.1.0+1`，SHA-256 为
+  `779e1c89ccbd806bf6b55a99a5fa8b7ebcff9bc399508d6ea0bf88fa7dee360e`；指定
+  Tailscale ADB 安装返回 `Success`，包为 `dev.agenttalk.agent_talk_client`，
+  `lastUpdateTime=2026-08-14 08:48:23`，未出现或代点 `PackageInterceptActivity`。
+- 配置：Voice settings 真实回显 `voxhandoff-stt`、
+  `https://100.103.253.87`、`zh`、consent `checked=true`；新 token 已写入密码字段
+  并保存，值未进入证据。`RECORD_AUDIO` 为 `granted=true`。
+- 阻塞：点击 `Test STT readiness` 的 UI 安全文案为
+  `The local STT service could not be reached.`，服务端没有新增 Android health
+  请求，说明手机仍未信任新 CA。旧 Gateway profile 仍 paired，当前应用只有
+  `Connect Gateway`，Private CA picker 没有可达的重新配对/编辑入口。本轮不清除
+  app data，不读取或注入 secure storage，不使用 TLS 旁路。
+- 结论：未开始真实录音，故没有 `bytes/rms`、转写、可编辑终稿或 Confirm 证据；不把
+  宿主机 HTTP 200 或 token 保存写成移动 readiness 通过。下一步是通过 pairing UI
+  重新导入新 CA 并完成必要的 owner 人工门，然后重启 app 重新验收。Hermes 零改动，
+  未 push。

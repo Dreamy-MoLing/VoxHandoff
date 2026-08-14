@@ -1156,3 +1156,40 @@ Editable draft 为空、Confirm disabled。
 手机麦克风实际输入电平/音频路由，不能继续归因于 TLS、CA、SAN、token 或 readiness；
 下一步应先独立验证 Android 录音输入电平，再重跑验收。Hermes 零改动，未 push，未
 自动审批，设备只经 `100.96.66.108:5555` Tailscale ADB。
+
+**2026-08-14 真机验收证据（新 APK / 新 STT 服务，本轮）**：按任务书重建隔离
+STT HTTPS 服务。证书 SAN 为 `xiaoxin-fedora.tailbd75d3.ts.net`、
+`100.103.253.87`、`100.96.66.108`，有效期为 2026-08-14 至 2026-09-13；宿主机
+`curl -sk --cacert <new-ca> https://127.0.0.1:18654/v1/health` 返回 HTTP `200`、
+`status=ready`、`backend=faster-whisper`、`model=faster-whisper-base`；
+`tailscale serve status` 确认 `443 -> 127.0.0.1:18654`。服务日志为
+`voxhandoff-stt-https listening on 127.0.0.1:18654` 和 health `200`。CA/服务证书
+SHA-256 分别为 `cc586327c1322f35a3b82883df92568e23e378605530ee61d1222eeed4b0d543`
+和 `f74faf4be23215dbc336f8b339a053b81c5608ec12f9a81aed3cb1b6d1f29c40`；token 和
+私钥未写入本文件。阶段日志：`/tmp/voxhandoff-acceptance-20260814.log`。
+
+构建命令 `flutter build apk --debug` 首次因当前 PATH 无 `flutter` 返回退出码 `127`；
+使用已存在的 `/home/roco/develop/flutter-3.44.6/bin/flutter build apk --debug` 重跑
+成功，Flutter `3.44.6`，APK 为
+`apps/client/build/outputs/flutter-apk/app-debug.apk`，版本 `0.1.0+1`、Debug，
+SHA-256 为
+`779e1c89ccbd806bf6b55a99a5fa8b7ebcff9bc399508d6ea0bf88fa7dee360e`。
+`adb -s 100.96.66.108:5555 install --no-streaming -r -d` 返回 `Success`；包
+`dev.agenttalk.agent_talk_client` 的 `lastUpdateTime=2026-08-14 08:48:23`、
+`versionCode=1`、`versionName=0.1.0`、`DEBUGGABLE`。未出现
+`PackageInterceptActivity`，未代点安装确认。
+
+应用启动后，Voice settings UI 回显 HTTPS STT、provider ID `voxhandoff-stt`、
+origin `https://100.103.253.87`、语言 `zh`，consent 为 `checked=true`；新 token
+已通过密码字段保存，未回显或写入日志。点击 `Test STT readiness` 后 UI 真实显示
+`The local STT service could not be reached.`；对应服务日志没有新增 Android
+`/v1/health`，宿主机独立 health 仍为 HTTP `200`。`RECORD_AUDIO` 实际权限为
+`granted=true`。
+
+本轮未开始录音：现有旧 Gateway profile 仍处于 paired 状态，应用只显示
+`Connect Gateway`；Private CA 证书选择器只存在于 Gateway pairing 面板，当前流程
+没有“重新配对/编辑证书”入口。未清除应用数据、未绕过 secure storage、未使用假音频
+或假文本。因此没有可记录的 `bytes/rms`、中文转写、Editable draft 或 Confirm
+证据，任务停在手机重新导入新 CA 后的 readiness 门。下一步需通过现有 pairing UI
+重新导入 CA 并完成其必要的人工 owner 门，再重启 app、重测 readiness，之后才能做
+外放录音和终稿确认。Hermes 零改动、未 push。
