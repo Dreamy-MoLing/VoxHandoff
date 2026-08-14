@@ -1,5 +1,4 @@
 import {
-  DeviceSignatureAlgorithm,
   administratorPairingPayload,
   credentialRefreshPayload,
   deviceRevocationPayload,
@@ -12,12 +11,8 @@ import {
 
 import {
   canonicalGatewayAudience,
-  newChallenge,
-  newOpaqueId,
-  newOpaqueSecret,
   normalizeEd25519PublicKey,
   sha256,
-  validateNonce,
   verifyEd25519Signature,
 } from "./device-crypto.js";
 import type {
@@ -27,265 +22,57 @@ import type {
   PairingLedgerTransaction,
   PairingRecord,
 } from "./pairing-ledger.js";
+import { PairingError } from "./pairing-contracts.js";
+import type {
+  BeginPairingInput,
+  BegunPairing,
+  CachedConfirmation,
+  CompletePairingInput,
+  CompletedPairing,
+  ConfirmPairingInput,
+  ConfirmedPairing,
+  InspectedPairing,
+  PairingErrorCode,
+  PairingServiceDependencies,
+  PairingServiceOptions,
+  RefreshCredentialInput,
+  RefreshedCredential,
+  RevokeDeviceInput,
+  ApprovePairingInput,
+} from "./pairing-contracts.js";
+import {
+  assertAdministratorCredential,
+  assertFingerprint,
+  defaultDependencies,
+  duration,
+  exactSignature,
+  future,
+  normalizeUserCode,
+  requireDisplayName,
+  requireOpaque,
+  requireReasonCode,
+  scopesAreSubset,
+  secondsUntil,
+} from "./pairing-validation.js";
 
-export type PairingErrorCode =
-  | "invalid_request"
-  | "rate_limited"
-  | "pairing_not_found"
-  | "pairing_expired"
-  | "pairing_not_approved"
-  | "pairing_conflict"
-  | "fingerprint_mismatch"
-  | "scope_not_allowed"
-  | "authentication_failed"
-  | "authorization_denied"
-  | "proof_invalid"
-  | "nonce_replayed"
-  | "credential_not_found"
-  | "credential_revoked"
-  | "credential_expired"
-  | "refresh_replayed";
-
-export class PairingError extends Error {
-  constructor(
-    readonly code: PairingErrorCode,
-    message: string,
-    readonly retryable = false,
-  ) {
-    super(message);
-    this.name = "PairingError";
-  }
-}
-
-export interface PairingServiceDependencies {
-  now(): Date;
-  newOpaqueId(prefix: string): string;
-  newChallenge(bytes?: number): Uint8Array;
-  newOpaqueSecret(bytes?: number): string;
-  newUserCode(): string;
-}
-
-export interface PairingServiceOptions {
-  gatewayAudience: string;
-  gatewayFingerprint: string;
-  verificationUri: string;
-  allowInsecureLoopbackForTests?: boolean;
-  pairingLifetimeMs?: number;
-  confirmationLifetimeMs?: number;
-  confirmationResultCacheMs?: number;
-  accessLifetimeMs?: number;
-  credentialLifetimeMs?: number;
-  rateLimitWindowMs?: number;
-  maximumBeginsPerWindow?: number;
-  dependencies?: Partial<PairingServiceDependencies>;
-}
-
-export interface BeginPairingInput {
-  deviceDisplayName: string;
-  devicePublicKey: Uint8Array;
-  requestedScopes: readonly string[];
-  expectedGatewayAudience: string;
-  rateLimitKey: string;
-}
-
-export interface BegunPairing {
-  pairingId: string;
-  userCode: string;
-  verificationUri: string;
-  expiresInSeconds: number;
-  deviceProofPayload: Uint8Array;
-  deviceFingerprint: string;
-  gatewayFingerprint: string;
-  gatewayAudience: string;
-}
-
-export interface InspectedPairing {
-  pairingId: string;
-  deviceDisplayName: string;
-  deviceFingerprint: string;
-  gatewayFingerprint: string;
-  gatewayAudience: string;
-  requestedScopes: readonly DeviceScope[];
-  expiresInSeconds: number;
-}
-
-export interface ApprovePairingInput {
-  pairingId: string;
-  userCode: string;
-  approvedScopes: readonly string[];
-  expectedDeviceFingerprint: string;
-  expectedGatewayFingerprint: string;
-  expectedGatewayAudience: string;
-  administratorDeviceId: string;
-  administratorSignature: DeviceSignature | undefined;
-}
-
-export interface CompletePairingInput {
-  pairingId: string;
-  legacyDeviceProof: string;
-  deviceKeyProof: DeviceSignature | undefined;
-}
-
-export interface CompletedPairing {
-  deviceId: string;
-  credentialId: string;
-  scopes: readonly DeviceScope[];
-  confirmationPayload: Uint8Array;
-  gatewayAudience: string;
-  confirmationExpiresInSeconds: number;
-}
-
-export interface ConfirmPairingInput {
-  pairingId: string;
-  credentialId: string;
-  deviceSignature: DeviceSignature | undefined;
-}
-
-export interface ConfirmedPairing {
-  deviceId: string;
-  credentialId: string;
-  accessToken: string;
-  refreshToken: string;
-  scopes: readonly DeviceScope[];
-  accessExpiresAt: Date;
-  refreshExpiresAt: Date;
-  gatewayAudience: string;
-}
-
-interface CachedConfirmation {
-  result: ConfirmedPairing;
-  expiresAt: Date;
-  expiryTimer: NodeJS.Timeout;
-}
-
-export interface RefreshCredentialInput {
-  credentialId: string;
-  refreshToken: string;
-  deviceSignature: DeviceSignature | undefined;
-}
-
-export interface RefreshedCredential extends ConfirmedPairing {}
-
-export interface RevokeDeviceInput {
-  targetDeviceId: string;
-  reasonCode: string;
-  administratorDeviceId: string;
-  administratorSignature: DeviceSignature | undefined;
-}
-
-const defaultDependencies: PairingServiceDependencies = {
-  now: () => new Date(),
-  newOpaqueId,
-  newChallenge,
-  newOpaqueSecret,
-  newUserCode: () => {
-    const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-    const random = newChallenge(16);
-    const characters = [...random].map((value) => alphabet[value % alphabet.length]);
-    return `${characters.slice(0, 4).join("")}-${characters.slice(4, 8).join("")}`;
-  },
-};
-
-const fingerprintPattern = /^sha256:[0-9a-f]{64}$/u;
-const userCodePattern = /^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/u;
-
-function duration(value: number | undefined, fallback: number, maximum: number, name: string): number {
-  const resolved = value ?? fallback;
-  if (!Number.isInteger(resolved) || resolved <= 0 || resolved > maximum) {
-    throw new Error(`${name} is outside its supported security bound`);
-  }
-  return resolved;
-}
-
-function future(now: Date, milliseconds: number): Date {
-  return new Date(now.getTime() + milliseconds);
-}
-
-function secondsUntil(deadline: Date, now: Date): number {
-  return Math.max(0, Math.ceil((deadline.getTime() - now.getTime()) / 1_000));
-}
-
-function requireDisplayName(value: string): string {
-  const normalized = value.trim();
-  if (
-    normalized.length === 0 ||
-    new TextEncoder().encode(normalized).byteLength > 128 ||
-    /[\u0000-\u001f\u007f]/u.test(normalized)
-  ) {
-    throw new PairingError("invalid_request", "The device display name is invalid.");
-  }
-  return normalized;
-}
-
-function requireOpaque(value: string, name: string): string {
-  if (value.length === 0 || value.length > 256 || /[\u0000-\u001f\u007f]/u.test(value)) {
-    throw new PairingError("invalid_request", `${name} is invalid.`);
-  }
-  return value;
-}
-
-function normalizeUserCode(value: string): string {
-  const normalized = value.trim().toUpperCase();
-  if (!userCodePattern.test(normalized)) {
-    throw new PairingError("pairing_not_found", "The pairing request was not found.");
-  }
-  return normalized;
-}
-
-function exactSignature(
-  signature: DeviceSignature | undefined,
-  expectedCredentialId: string,
-  nonceRequired: boolean,
-): DeviceSignature {
-  if (
-    signature === undefined ||
-    signature.algorithm !== DeviceSignatureAlgorithm.ED25519 ||
-    signature.credentialId !== expectedCredentialId ||
-    signature.signature.byteLength !== 64 ||
-    (nonceRequired ? signature.nonce.byteLength < 16 : signature.nonce.byteLength !== 0)
-  ) {
-    throw new PairingError("proof_invalid", "The device signature is invalid.");
-  }
-  if (nonceRequired) validateNonce(signature.nonce);
-  return signature;
-}
-
-function scopesAreSubset(candidate: readonly DeviceScope[], allowed: readonly DeviceScope[]): boolean {
-  const set = new Set(allowed);
-  return candidate.every((scope) => set.has(scope));
-}
-
-function assertFingerprint(value: string): void {
-  if (!fingerprintPattern.test(value)) {
-    throw new Error("Gateway fingerprint must use sha256:<lowercase-hex>");
-  }
-}
-
-function assertAdministratorCredential(
-  credential: DeviceCredentialRecord | undefined,
-  administratorDeviceId: string,
-  gatewayAudience: string,
-): DeviceCredentialRecord {
-  if (credential === undefined || credential.deviceId !== administratorDeviceId) {
-    throw new PairingError("authentication_failed", "The administrator credential is invalid.");
-  }
-  if (
-    credential.state !== "active" ||
-    !credential.deviceActive ||
-    credential.gatewayAudience !== gatewayAudience ||
-    !credential.scopes.includes("administer")
-  ) {
-    throw new PairingError("authorization_denied", "The device is not authorized to administer pairing.");
-  }
-  return credential;
-}
-
-function requireReasonCode(value: string): string {
-  if (!/^[a-z][a-z0-9_.-]{0,63}$/u.test(value)) {
-    throw new PairingError("invalid_request", "The device revocation reason code is invalid.");
-  }
-  return value;
-}
+export { PairingError } from "./pairing-contracts.js";
+export type {
+  ApprovePairingInput,
+  BegunPairing,
+  BeginPairingInput,
+  CachedConfirmation,
+  CompletePairingInput,
+  CompletedPairing,
+  ConfirmPairingInput,
+  ConfirmedPairing,
+  InspectedPairing,
+  PairingErrorCode,
+  PairingServiceDependencies,
+  PairingServiceOptions,
+  RefreshCredentialInput,
+  RefreshedCredential,
+  RevokeDeviceInput,
+} from "./pairing-contracts.js";
 
 export class PairingCoordinator {
   private readonly gatewayAudience: string;
