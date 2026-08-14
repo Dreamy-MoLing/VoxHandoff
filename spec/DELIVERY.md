@@ -940,7 +940,20 @@ postgres-ledger、node hermes-node-connector、client drift ledger 等，
 - **外部依赖**：Hermes 上游同时提供并广告幂等 run 语义与不可变 approval identity/resolution。若只补齐前者，可完成无 approval 的纵向子集，但不能关闭 H1。
 - **完成条件**：H1 原退出矩阵在真实全链路通过，全部证据绑定 exact Hermes/Connector commit；任何必需 capability 缺失时 Connector 仍拒绝上线。
 
-### 5.8 仍需产品确认、但不阻断批次 1–2 的事项
+### 5.8 批次 8（M6）：移动端视觉基线复刻
+
+- **用户需求**：移动端界面呈现冻结的星空视觉基线——深浅主题、平滑过渡、低文字密度、图形优先；待机/文字/录音/连接四态由真实状态驱动；桌面端视觉本轮不动。
+- **当前问题**：`ui-prototype/` 已冻结为移动端视觉基线（星空色系 signal `#9fe7ff`、canvas `#070a10`、亮暗主题、球体 halo/orb/beam/glint 结构与四态交互），但 Flutter 客户端移动端仍是旧"夜航信号台" token（signal `#63F3E6`、ink `#05080F`）与传统 AppBar 布局，与冻结基线不一致。SignalCoreView 引擎（shader/painter 双实现、profile、reduced-motion、无障碍、真实电平驱动）是生产资产，本轮只对齐视觉形态，不重写。
+- **实施范围**：在 `apps/client` presentation 层实现移动端视觉 Token（dark + light）与布局复刻：待机球体居中、文字态对话为主阅读区、录音态球心波形接真实电平、连接态光点/胶囊接真实 `connectionPhase`；设置页对齐主题/字号/背景入口。移动端与桌面端 token/布局采用按宽度隔离方案，桌面 golden 不得变化。背景导入按原型为视觉示例，不引入新持久化需求。
+- **状态和数据语义**：本轮只改呈现，不新增协议、存储、领域模型或状态机语义；动效必须由真实状态（录音电平、TTS 播放包络、Agent 事件）驱动，不把原型 `setTimeout` 演示逻辑搬进生产。
+- **安全边界**：不触碰 `lib/domain/`、`lib/application/` 语义；不新增依赖；无凭据、正文或录音外发；golden/accessibility/reduced-motion 门保持。
+- **主要影响模块**：`apps/client/lib/presentation/design/agent_talk_theme.dart`、`signal_core_view.dart`、`home_screen*.dart`、设置页相关 widgets 与 `test/goldens/`；`ui-prototype/` 作为冻结基线只读不修改。
+- **自动化验收**：`npm run flutter:check` 全绿；手机 golden 更新为复刻形态；桌面 golden 零变化（hash 对比）；accessibility 与 reduced-motion 测试保持通过。
+- **人工验收**：手机窄屏观察四态（待机/文字/录音/连接）与设置页；桌面端视觉与行为与复刻前一致；录音态波形随真实麦克风电平变化，不依赖计时器模拟。
+- **外部依赖**：无；桌面端是否跟进新基线待舰长另行沟通。
+- **完成条件**：移动端呈现与冻结基线一致且由真实状态驱动；桌面端视觉与全部功能门无回退；提交为中文 conventional commits 且不 push。
+
+### 5.9 仍需产品确认、但不阻断批次 1–2 的事项
 
 以下事项采用保守默认值继续开发；只有用户明确改变默认值时才需要先改规格：
 
