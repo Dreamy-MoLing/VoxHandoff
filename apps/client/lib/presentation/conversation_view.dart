@@ -264,6 +264,7 @@ class MobileConversationBubble extends StatelessWidget {
     required this.text,
     this.user = false,
     this.quiet = false,
+    super.key,
   });
 
   final String text;
