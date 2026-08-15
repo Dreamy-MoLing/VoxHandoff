@@ -46,9 +46,9 @@ void main() {
     await tester.tap(find.text('Open settings'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Visual settings'), findsOneWidget);
+    expect(find.text('视觉设置'), findsOneWidget);
     expect(find.byType(Slider), findsOneWidget);
-    await tester.tap(find.text('Light'));
+    await tester.tap(find.text('亮色'));
     await tester.pump();
 
     expect(preferences.theme, MobileVisualTheme.light);

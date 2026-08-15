@@ -41,8 +41,13 @@ void main() {
 
     await tester.pumpWidget(const ProviderScope(child: AgentTalkApp()));
 
-    expect(find.text('Pair Gateway to start'), findsOneWidget);
-    expect(find.byTooltip('Open visual settings'), findsOneWidget);
+    expect(find.text('Pair Gateway to start'), findsNothing);
+    expect(find.text('未配对'), findsOneWidget);
+    expect(find.byTooltip('打开设置'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('signal-core-view')));
+    await tester.pump();
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('Hermes workspace'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

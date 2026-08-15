@@ -199,6 +199,47 @@ void main() {
     expect(tester.takeException(), isNull);
     semantics.dispose();
   });
+
+  testWidgets('mobile visual branch honors reduced motion without old labels', (
+    tester,
+  ) async {
+    tester.binding.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(
+      tester.binding.platformDispatcher.clearAccessibilityFeaturesTestValue,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAgentTalkMobileDarkTheme(),
+        home: Scaffold(
+          body: SignalCoreView(
+            snapshot: const SignalCoreSnapshot(
+              state: SignalCoreState.idle,
+              label: 'VoxHandoff idle',
+              audioLevel: 0,
+              playbackLevel: 0,
+            ),
+            dimension: 240,
+            mobileVisual: true,
+            shaderLoader: _failedShader,
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    final corePaint = find.descendant(
+      of: find.byKey(const ValueKey('signal-core-view')),
+      matching: find.byType(CustomPaint),
+    );
+    final painter =
+        tester.widget<CustomPaint>(corePaint).painter! as SignalCorePainter;
+    expect(painter.mobileVisual, isTrue);
+    expect(painter.reducedMotion, isTrue);
+    expect(find.text('HERMES READY'), findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<ui.FragmentProgram> _failedShader() =>

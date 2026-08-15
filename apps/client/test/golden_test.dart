@@ -36,7 +36,8 @@ void main() {
   ) async {
     await pumpAtSize(tester, const Size(390, 844));
 
-    expect(find.text('Pair Gateway to start'), findsOneWidget);
+    expect(find.text('Pair Gateway to start'), findsNothing);
+    expect(find.text('未配对'), findsOneWidget);
 
     await expectLater(
       find.byType(Scaffold),
