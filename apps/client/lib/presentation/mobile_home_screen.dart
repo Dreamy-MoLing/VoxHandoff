@@ -146,6 +146,7 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
               child: Column(
                 children: [
                   _MobileTopBar(
+                    visible: showText && !voiceFocused,
                     phase: session.connectionPhase,
                     message: workspace.safeErrorMessage,
                     onConnection: switch (session.connectionPhase) {
@@ -228,36 +229,41 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
 
 class _MobileTopBar extends StatelessWidget {
   const _MobileTopBar({
+    required this.visible,
     required this.phase,
     required this.message,
     required this.onConnection,
     required this.onSettings,
   });
 
+  final bool visible;
   final GatewayConnectionPhase phase;
   final String? message;
   final VoidCallback? onConnection;
   final VoidCallback onSettings;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
-    child: Row(
-      children: [
-        _MobileConnectionIndicator(
-          phase: phase,
-          message: message,
-          onPressed: onConnection,
-        ),
-        const Spacer(),
-        IconButton(
-          tooltip: '打开设置',
-          onPressed: onSettings,
-          icon: const Icon(Icons.settings_outlined),
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    if (!visible) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
+      child: Row(
+        children: [
+          _MobileConnectionIndicator(
+            phase: phase,
+            message: message,
+            onPressed: onConnection,
+          ),
+          const Spacer(),
+          IconButton(
+            tooltip: '打开设置',
+            onPressed: onSettings,
+            icon: const Icon(Icons.settings_outlined),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _MobileConnectionIndicator extends StatelessWidget {
@@ -362,15 +368,13 @@ class _MobileIdleStage extends StatelessWidget {
   final Future<void> Function() onLongPressEnd;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) => Center(
-      child: _MobileCoreGesture(
-        snapshot: snapshot,
-        dimension: math.min(constraints.maxWidth * 0.92, 360),
-        onTap: onTap,
-        onLongPressStart: onLongPressStart,
-        onLongPressEnd: onLongPressEnd,
-      ),
+  Widget build(BuildContext context) => Center(
+    child: _MobileCoreGesture(
+      snapshot: snapshot,
+      dimension: math.min(MediaQuery.sizeOf(context).width * 0.58, 230),
+      onTap: onTap,
+      onLongPressStart: onLongPressStart,
+      onLongPressEnd: onLongPressEnd,
     ),
   );
 }
@@ -397,7 +401,7 @@ class _MobileVoiceStage extends StatelessWidget {
         child: Center(
           child: _MobileCoreGesture(
             snapshot: snapshot,
-            dimension: math.min(MediaQuery.sizeOf(context).width * 0.92, 360),
+            dimension: math.min(MediaQuery.sizeOf(context).width * 0.58, 230),
             onTap: onTap,
             onLongPressStart: onLongPressStart,
             onLongPressEnd: onLongPressEnd,
@@ -834,9 +838,34 @@ class _MobileStarfieldPainter extends CustomPainter {
         Offset(size.width / 2, size.height),
         light
             ? [const Color(0xFFF7FBFF), const Color(0xFFEDF4FA)]
-            : [const Color(0xFF050812), const Color(0xFF070A10)],
+            : const [Color(0xFF050812), Color(0xFF070A10), Color(0xFF03050A)],
+        light ? null : const [0, 0.56, 1],
       );
     canvas.drawRect(rect, background);
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          Offset(size.width * 0.5, size.height * 0.74),
+          size.width * 0.38,
+          [
+            signalStrong.withValues(alpha: light ? 0.08 : 0.15),
+            signalStrong.withValues(alpha: 0),
+          ],
+        ),
+    );
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          Offset(size.width * 0.12, size.height * 0.16),
+          size.width * 0.28,
+          [
+            signalWarm.withValues(alpha: light ? 0.06 : 0.08),
+            signalWarm.withValues(alpha: 0),
+          ],
+        ),
+    );
     final glow = Paint()
       ..shader = ui.Gradient.radial(
         Offset(size.width / 2, size.height * 0.52),
@@ -878,6 +907,16 @@ class _MobileStarfieldPainter extends CustomPainter {
       (0.42, 0.67, 0.8, signal),
       (0.09, 0.82, 0.8, Colors.white),
       (0.74, 0.88, 1.0, signalWarm),
+      (0.31, 0.08, 0.55, Colors.white),
+      (0.54, 0.15, 0.45, signal),
+      (0.96, 0.23, 0.5, Colors.white),
+      (0.16, 0.31, 0.46, signalWarm),
+      (0.77, 0.36, 0.5, Colors.white),
+      (0.35, 0.52, 0.42, signal),
+      (0.58, 0.61, 0.48, Colors.white),
+      (0.88, 0.72, 0.42, signalWarm),
+      (0.27, 0.76, 0.44, Colors.white),
+      (0.52, 0.93, 0.48, signal),
     ];
     for (final (x, y, radius, color) in stars) {
       canvas.drawCircle(
