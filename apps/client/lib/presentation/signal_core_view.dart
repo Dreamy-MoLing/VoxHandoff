@@ -503,6 +503,22 @@ class SignalCorePainter extends CustomPainter {
         ..color = glowColor.withValues(alpha: listening ? 0.26 : 0.2)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 22),
     );
+    if (listening) {
+      canvas.drawCircle(
+        center,
+        orbRadius + radius * 0.08,
+        Paint()
+          ..color = signalWarm.withValues(alpha: 0.24 + activity * 0.22)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 52),
+      );
+      canvas.drawCircle(
+        center,
+        orbRadius + radius * 0.12,
+        Paint()
+          ..color = signalStrong.withValues(alpha: 0.12 + activity * 0.1)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 120),
+      );
+    }
 
     canvas.save();
     canvas.clipPath(
@@ -618,7 +634,6 @@ class SignalCorePainter extends CustomPainter {
     );
     if (listening) {
       _paintPrototypeWaveform(canvas, center, radius, activity);
-      _paintPrototypeMic(canvas, center, radius, signal);
     }
   }
 
@@ -680,44 +695,6 @@ class SignalCorePainter extends CustomPainter {
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, blur),
     );
     canvas.restore();
-  }
-
-  void _paintPrototypeMic(
-    Canvas canvas,
-    Offset center,
-    double radius,
-    Color color,
-  ) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(1.5, radius * 0.012)
-      ..strokeCap = StrokeCap.round;
-    final head = RRect.fromRectAndRadius(
-      Rect.fromCenter(
-        center: center + Offset(0, -radius * 0.055),
-        width: radius * 0.125,
-        height: radius * 0.24,
-      ),
-      Radius.circular(radius * 0.07),
-    );
-    canvas.drawRRect(head, paint);
-    final stem = Rect.fromCenter(
-      center: center + Offset(0, radius * 0.075),
-      width: radius * 0.27,
-      height: radius * 0.23,
-    );
-    canvas.drawArc(stem, 0, math.pi, false, paint);
-    canvas.drawLine(
-      center + Offset(0, radius * 0.19),
-      center + Offset(0, radius * 0.27),
-      paint,
-    );
-    canvas.drawLine(
-      center + Offset(-radius * 0.09, radius * 0.27),
-      center + Offset(radius * 0.09, radius * 0.27),
-      paint,
-    );
   }
 
   void _paintPrototypeWaveform(
