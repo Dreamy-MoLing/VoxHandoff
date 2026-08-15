@@ -244,29 +244,32 @@ class _MobileTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!visible) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
-      child: Row(
-        children: [
-          _MobileConnectionIndicator(
-            phase: phase,
-            message: message,
-            onPressed: onConnection,
-          ),
-          const Spacer(),
-          IconButton(
-            tooltip: '打开设置',
-            onPressed: onSettings,
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        ],
+    return Visibility(
+      visible: visible,
+      maintainState: true,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
+        child: Row(
+          children: [
+            _MobileConnectionIndicator(
+              phase: phase,
+              message: message,
+              onPressed: onConnection,
+            ),
+            const Spacer(),
+            IconButton(
+              tooltip: '打开设置',
+              onPressed: onSettings,
+              icon: const Icon(Icons.settings_outlined),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _MobileConnectionIndicator extends StatelessWidget {
+class _MobileConnectionIndicator extends StatefulWidget {
   const _MobileConnectionIndicator({
     required this.phase,
     required this.message,
@@ -278,13 +281,49 @@ class _MobileConnectionIndicator extends StatelessWidget {
   final VoidCallback? onPressed;
 
   @override
+  State<_MobileConnectionIndicator> createState() =>
+      _MobileConnectionIndicatorState();
+}
+
+class _MobileConnectionIndicatorState
+    extends State<_MobileConnectionIndicator> {
+  Timer? _connectedMessageTimer;
+  var _showConnectedMessage = false;
+
+  @override
+  void didUpdateWidget(covariant _MobileConnectionIndicator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.phase != widget.phase) {
+      _connectedMessageTimer?.cancel();
+      _connectedMessageTimer = null;
+      if (widget.phase == GatewayConnectionPhase.connected &&
+          oldWidget.phase != GatewayConnectionPhase.connected) {
+        _showConnectedMessage = true;
+        _connectedMessageTimer = Timer(const Duration(seconds: 3), () {
+          if (!mounted) return;
+          setState(() => _showConnectedMessage = false);
+          _connectedMessageTimer = null;
+        });
+      } else {
+        _showConnectedMessage = false;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _connectedMessageTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final tokens = context.visualTokens;
-    final connected = phase == GatewayConnectionPhase.connected;
+    final connected = widget.phase == GatewayConnectionPhase.connected;
     final connecting =
-        phase == GatewayConnectionPhase.connecting ||
-        phase == GatewayConnectionPhase.reconnecting;
-    final label = switch (phase) {
+        widget.phase == GatewayConnectionPhase.connecting ||
+        widget.phase == GatewayConnectionPhase.reconnecting;
+    final label = switch (widget.phase) {
       GatewayConnectionPhase.unpaired => '未配对',
       GatewayConnectionPhase.connecting => '连接中',
       GatewayConnectionPhase.connected => '已连接',
@@ -308,21 +347,15 @@ class _MobileConnectionIndicator extends StatelessWidget {
         ],
       ),
     );
-    final shownMessage = message?.trim().isNotEmpty == true
-        ? message!.trim()
+    final shownMessage = widget.message?.trim().isNotEmpty == true
+        ? widget.message!.trim()
         : label;
+    final showMessage = !connected || _showConnectedMessage;
     return Semantics(
-      button: onPressed != null,
+      button: widget.onPressed != null,
       label: '连接状态：$label',
-      child: connected
-          ? IconButton(
-              tooltip: '连接状态：$label',
-              onPressed: onPressed,
-              padding: const EdgeInsets.all(10),
-              visualDensity: VisualDensity.compact,
-              icon: dot,
-            )
-          : Container(
+      child: showMessage
+          ? Container(
               constraints: const BoxConstraints(maxWidth: 230),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
@@ -332,7 +365,7 @@ class _MobileConnectionIndicator extends StatelessWidget {
                 boxShadow: [BoxShadow(color: tokens.shadow, blurRadius: 18)],
               ),
               child: InkWell(
-                onTap: onPressed,
+                onTap: widget.onPressed,
                 borderRadius: BorderRadius.circular(999),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -349,7 +382,16 @@ class _MobileConnectionIndicator extends StatelessWidget {
                   ],
                 ),
               ),
-            ),
+            )
+          : connected
+          ? IconButton(
+              tooltip: '连接状态：$label',
+              onPressed: widget.onPressed,
+              padding: const EdgeInsets.all(10),
+              visualDensity: VisualDensity.compact,
+              icon: dot,
+            )
+          : const SizedBox.shrink(),
     );
   }
 }
