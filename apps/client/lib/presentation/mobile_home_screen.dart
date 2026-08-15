@@ -554,12 +554,19 @@ class _MobileTextMode extends StatelessWidget {
                     .toDouble();
                 return Align(
                   alignment: Alignment.bottomCenter,
-                  child: _MobileCoreGesture(
-                    snapshot: snapshot,
-                    dimension: dimension,
-                    onTap: onTapCore,
-                    onLongPressStart: onLongPressStart,
-                    onLongPressEnd: onLongPressEnd,
+                  child: OverflowBox(
+                    alignment: Alignment.bottomCenter,
+                    minWidth: dimension,
+                    maxWidth: dimension,
+                    minHeight: dimension,
+                    maxHeight: dimension,
+                    child: _MobileCoreGesture(
+                      snapshot: snapshot,
+                      dimension: dimension,
+                      onTap: onTapCore,
+                      onLongPressStart: onLongPressStart,
+                      onLongPressEnd: onLongPressEnd,
+                    ),
                   ),
                 );
               },
