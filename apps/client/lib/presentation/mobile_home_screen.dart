@@ -541,11 +541,15 @@ class _MobileTextMode extends StatelessWidget {
             onClarification: workspaceController.resolveClarification,
             onInterrupt: workspaceController.interrupt,
           );
-    return Column(
+    return Stack(
+      clipBehavior: Clip.none,
       children: [
-        Expanded(child: content),
-        SizedBox(
-          height: 126,
+        Positioned.fill(child: content),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 180,
           child: ClipRect(
             child: LayoutBuilder(
               builder: (context, _) {
@@ -573,23 +577,26 @@ class _MobileTextMode extends StatelessWidget {
             ),
           ),
         ),
-        _MobileDraftComposer(
-          textController: composer,
-          session: session,
-          voice: voice,
-          sendEnabled: source == ChatSource.directLlm
-              ? direct.isConfigured && direct.phase != DirectChatPhase.sending
-              : ownsLease,
-          requiresGatewayConnection: source != ChatSource.directLlm,
-          sendLabel: source == ChatSource.directLlm ? '发送' : '交给 Hermes',
-          onChanged: onChanged,
-          onConfirm: onConfirm,
-          onReopen: onReopen,
-          onSend: onSend,
-          onNextDraft: onNextDraft,
-          onStopVoice: onStopVoice,
-          onCancelVoice: onCancelVoice,
-          onDiscardVoice: onDiscardVoice,
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: _MobileDraftComposer(
+            textController: composer,
+            session: session,
+            voice: voice,
+            sendEnabled: source == ChatSource.directLlm
+                ? direct.isConfigured && direct.phase != DirectChatPhase.sending
+                : ownsLease,
+            requiresGatewayConnection: source != ChatSource.directLlm,
+            sendLabel: source == ChatSource.directLlm ? '发送' : '交给 Hermes',
+            onChanged: onChanged,
+            onConfirm: onConfirm,
+            onReopen: onReopen,
+            onSend: onSend,
+            onNextDraft: onNextDraft,
+            onStopVoice: onStopVoice,
+            onCancelVoice: onCancelVoice,
+            onDiscardVoice: onDiscardVoice,
+          ),
         ),
       ],
     );
@@ -713,38 +720,62 @@ class _MobileDraftComposer extends StatelessWidget {
 
     return SafeArea(
       top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: tokens.panel.withValues(alpha: 0.84),
-            border: Border.all(color: tokens.structureLine),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: tokens.shadow, blurRadius: 24)],
-          ),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: FractionallySizedBox(
+          widthFactor: 0.86,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: textController,
-                  enabled: session.canEditDraft && !confirmed,
-                  minLines: 1,
-                  maxLines: 3,
-                  onChanged: onChanged,
-                  decoration: const InputDecoration(
-                    hintText: '编辑要说的话',
-                    border: InputBorder.none,
-                    isDense: true,
-                  ),
+            padding: const EdgeInsets.only(bottom: 6),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: tokens.panel.withValues(alpha: 0.42),
+                border: Border.all(
+                  color: tokens.structureLine.withValues(alpha: 0.52),
                 ),
-                if (actions.isNotEmpty)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Wrap(spacing: 2, children: actions),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: tokens.shadow.withValues(alpha: 0.4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
                   ),
-              ],
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 2, 4, 2),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: textController,
+                      enabled: session.canEditDraft && !confirmed,
+                      minLines: 1,
+                      maxLines: 2,
+                      onChanged: onChanged,
+                      style: TextStyle(
+                        color: tokens.textPrimary.withValues(alpha: 0.82),
+                        fontSize: 16,
+                        height: 1.3,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: '编辑要说的话',
+                        hintStyle: TextStyle(
+                          color: tokens.textMuted.withValues(alpha: 0.78),
+                          fontSize: 16,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                      ),
+                    ),
+                    if (actions.isNotEmpty)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Wrap(spacing: 2, children: actions),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -773,12 +804,23 @@ class _MobileActionButton extends StatelessWidget {
     child: IconButton(
       tooltip: label,
       onPressed: onPressed,
-      style: filled
-          ? IconButton.styleFrom(
-              backgroundColor: context.visualTokens.signal,
-              foregroundColor: context.visualTokens.ink,
-            )
-          : null,
+      style: IconButton.styleFrom(
+        backgroundColor: filled
+            ? context.visualTokens.signal.withValues(alpha: 0.72)
+            : Colors.transparent,
+        foregroundColor: filled
+            ? context.visualTokens.ink
+            : context.visualTokens.textMuted,
+        disabledForegroundColor: context.visualTokens.textMuted.withValues(
+          alpha: 0.55,
+        ),
+        minimumSize: const Size(30, 30),
+        maximumSize: const Size(30, 30),
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      iconSize: 18,
       icon: Icon(icon),
     ),
   );
