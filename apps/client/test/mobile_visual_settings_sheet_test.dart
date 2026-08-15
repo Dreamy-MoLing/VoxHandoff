@@ -46,9 +46,9 @@ void main() {
     await tester.tap(find.text('Open settings'));
     await tester.pumpAndSettle();
 
-    expect(find.text('视觉设置'), findsOneWidget);
+    expect(find.byTooltip('返回主页面'), findsOneWidget);
     expect(find.byType(Slider), findsOneWidget);
-    await tester.tap(find.text('亮色'));
+    await tester.tap(find.byTooltip('切换为亮色主题'));
     await tester.pump();
 
     expect(preferences.theme, MobileVisualTheme.light);
