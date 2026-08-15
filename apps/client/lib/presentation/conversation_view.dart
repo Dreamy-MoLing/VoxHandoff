@@ -94,7 +94,12 @@ class ConversationView extends StatelessWidget {
               ),
               Expanded(
                 child: workspace.timeline.isEmpty
-                    ? const Center(child: Text('No durable turns yet'))
+                    ? const Center(
+                        child: MobileConversationBubble(
+                          text: '我已准备好，随时可以开始。',
+                          quiet: true,
+                        ),
+                      )
                     : ListView.builder(
                         key: const ValueKey('mobile-conversation'),
                         padding: const EdgeInsets.fromLTRB(14, 18, 14, 18),
@@ -219,10 +224,10 @@ class _MobileTurnBubbles extends StatelessWidget {
     final tokens = context.visualTokens;
     final bubbles = <Widget>[];
     if (turn.userText?.trim().isNotEmpty == true) {
-      bubbles.add(_MobileConversationBubble(text: turn.userText!, user: true));
+      bubbles.add(MobileConversationBubble(text: turn.userText!, user: true));
     }
     bubbles.add(
-      _MobileConversationBubble(
+      MobileConversationBubble(
         text: turn.assistantText.isEmpty
             ? turn.isTerminal
                   ? 'No assistant text was returned.'
@@ -254,8 +259,8 @@ class _MobileTurnBubbles extends StatelessWidget {
   }
 }
 
-class _MobileConversationBubble extends StatelessWidget {
-  const _MobileConversationBubble({
+class MobileConversationBubble extends StatelessWidget {
+  const MobileConversationBubble({
     required this.text,
     this.user = false,
     this.quiet = false,

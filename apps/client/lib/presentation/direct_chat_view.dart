@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../application/direct_chat_controller.dart';
 import '../domain/direct_chat.dart';
+import 'conversation_view.dart';
 import 'design/agent_talk_theme.dart';
 
 class DirectChatView extends StatelessWidget {
@@ -25,12 +26,19 @@ class DirectChatView extends StatelessWidget {
       if (!mobileVisual) _DirectChatHeader(state: state, onCancel: onCancel),
       Expanded(
         child: state.messages.isEmpty
-            ? const Center(
-                child: Text(
-                  'Configure your LLM API, then send confirmed text.\nThis source has no tools or approvals.',
-                  textAlign: TextAlign.center,
-                ),
-              )
+            ? mobileVisual
+                  ? const Center(
+                      child: MobileConversationBubble(
+                        text: '我已准备好，随时可以开始。',
+                        quiet: true,
+                      ),
+                    )
+                  : const Center(
+                      child: Text(
+                        'Configure your LLM API, then send confirmed text.\nThis source has no tools or approvals.',
+                        textAlign: TextAlign.center,
+                      ),
+                    )
             : ListView.builder(
                 padding: const EdgeInsets.all(16),
                 itemCount: state.messages.length,

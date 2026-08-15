@@ -850,12 +850,8 @@ class _MobileEmptyText extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(
     child: Padding(
-      padding: const EdgeInsets.all(28),
-      child: Text(
-        '暂无对话。',
-        textAlign: TextAlign.center,
-        style: TextStyle(color: context.visualTokens.textMuted),
-      ),
+      padding: const EdgeInsets.fromLTRB(14, 18, 14, 18),
+      child: const MobileConversationBubble(text: '我已准备好，随时可以开始。', quiet: true),
     ),
   );
 }
