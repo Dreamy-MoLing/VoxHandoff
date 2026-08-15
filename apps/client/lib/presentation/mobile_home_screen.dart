@@ -483,11 +483,13 @@ class _MobileTextMode extends StatelessWidget {
               listen: false,
             ).read(directChatProvider.notifier).speakMessage,
             speechEnabled: speechEnabled,
+            mobileVisual: true,
           )
         : workspace.selectedConversation == null
         ? const _MobileEmptyText()
         : ConversationView(
             workspace: workspace,
+            mobileVisual: true,
             showSignalCore: false,
             ownsLease: ownsLease,
             onAcquire: () => workspaceController.acquireSelectedControl(
@@ -506,19 +508,16 @@ class _MobileTextMode extends StatelessWidget {
             child: LayoutBuilder(
               builder: (context, _) {
                 final dimension = math
-                    .min(MediaQuery.sizeOf(context).width * 1.12, 460)
+                    .min(MediaQuery.sizeOf(context).width * 0.84, 320)
                     .toDouble();
                 return Align(
                   alignment: Alignment.bottomCenter,
-                  child: Transform.translate(
-                    offset: Offset(0, dimension * 0.24),
-                    child: _MobileCoreGesture(
-                      snapshot: snapshot,
-                      dimension: dimension,
-                      onTap: onTapCore,
-                      onLongPressStart: onLongPressStart,
-                      onLongPressEnd: onLongPressEnd,
-                    ),
+                  child: _MobileCoreGesture(
+                    snapshot: snapshot,
+                    dimension: dimension,
+                    onTap: onTapCore,
+                    onLongPressStart: onLongPressStart,
+                    onLongPressEnd: onLongPressEnd,
                   ),
                 );
               },

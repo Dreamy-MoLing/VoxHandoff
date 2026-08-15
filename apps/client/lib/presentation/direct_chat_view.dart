@@ -10,17 +10,19 @@ class DirectChatView extends StatelessWidget {
     required this.onCancel,
     required this.onSpeak,
     required this.speechEnabled,
+    this.mobileVisual = false,
     super.key,
   });
   final DirectChatState state;
   final Future<void> Function() onCancel;
   final Future<void> Function(DirectChatMessage) onSpeak;
   final bool speechEnabled;
+  final bool mobileVisual;
 
   @override
   Widget build(BuildContext context) => Column(
     children: [
-      _DirectChatHeader(state: state, onCancel: onCancel),
+      if (!mobileVisual) _DirectChatHeader(state: state, onCancel: onCancel),
       Expanded(
         child: state.messages.isEmpty
             ? const Center(
@@ -34,6 +36,7 @@ class DirectChatView extends StatelessWidget {
                 itemCount: state.messages.length,
                 itemBuilder: (context, index) => _MessageBubble(
                   message: state.messages[index],
+                  mobileVisual: mobileVisual,
                   canSpeak:
                       speechEnabled &&
                       state.assistantProfile?.speechPolicy ==
@@ -97,46 +100,81 @@ class _DirectChatHeader extends StatelessWidget {
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
+    required this.mobileVisual,
     required this.canSpeak,
     required this.onSpeak,
   });
   final DirectChatMessage message;
+  final bool mobileVisual;
   final bool canSpeak;
   final Future<void> Function(DirectChatMessage) onSpeak;
   @override
   Widget build(BuildContext context) {
     final user = message.role == DirectChatRole.user;
+    final bubble = mobileVisual
+        ? DecoratedBox(
+            decoration: BoxDecoration(
+              color: user
+                  ? context.visualTokens.signalWarm.withValues(alpha: 0.08)
+                  : context.visualTokens.panel.withValues(alpha: 0.58),
+              border: Border.all(
+                color:
+                    (user
+                            ? context.visualTokens.signalWarm
+                            : context.visualTokens.signal)
+                        .withValues(alpha: 0.22),
+              ),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: SelectableText(
+                message.text.isEmpty &&
+                        message.terminal == DirectMessageTerminal.streaming
+                    ? '…'
+                    : message.text,
+                style: const TextStyle(fontSize: 21, height: 1.55),
+                textAlign: user ? TextAlign.right : TextAlign.left,
+              ),
+            ),
+          )
+        : Card(
+            color: user
+                ? context.visualTokens.signal.withValues(alpha: 0.12)
+                : null,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SelectableText(
+                    message.text.isEmpty &&
+                            message.terminal == DirectMessageTerminal.streaming
+                        ? '…'
+                        : message.text,
+                  ),
+                  if (canSpeak)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        tooltip: 'Speak this completed reply',
+                        onPressed: () => onSpeak(message),
+                        icon: const Icon(Icons.volume_up_outlined),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
     return Align(
       alignment: user ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: Card(
-          color: user
-              ? context.visualTokens.signal.withValues(alpha: 0.12)
-              : null,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SelectableText(
-                  message.text.isEmpty &&
-                          message.terminal == DirectMessageTerminal.streaming
-                      ? '…'
-                      : message.text,
-                ),
-                if (canSpeak)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: IconButton(
-                      tooltip: 'Speak this completed reply',
-                      onPressed: () => onSpeak(message),
-                      icon: const Icon(Icons.volume_up_outlined),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+        constraints: mobileVisual
+            ? const BoxConstraints(maxWidth: 360)
+            : const BoxConstraints(maxWidth: 720),
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: mobileVisual ? 9 : 0),
+          child: bubble,
         ),
       ),
     );

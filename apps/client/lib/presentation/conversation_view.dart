@@ -21,6 +21,7 @@ class ConversationView extends StatelessWidget {
     required this.onClarification,
     required this.onInterrupt,
     this.showSignalCore = true,
+    this.mobileVisual = false,
     super.key,
   });
 
@@ -32,6 +33,7 @@ class ConversationView extends StatelessWidget {
   final void Function(ClientEventRecord, String) onClarification;
   final void Function(ClientEventRecord) onInterrupt;
   final bool showSignalCore;
+  final bool mobileVisual;
 
   @override
   Widget build(BuildContext context) {
@@ -79,6 +81,35 @@ class ConversationView extends StatelessWidget {
             ],
           );
         }
+        if (mobileVisual) {
+          return Column(
+            children: [
+              _MobileConversationHeader(
+                conversationTitle: conversation.title,
+                workspace: workspace,
+                ownsLease: ownsLease,
+                activeRequest: activeRequest,
+                onAcquire: onAcquire,
+                onInterrupt: onInterrupt,
+              ),
+              Expanded(
+                child: workspace.timeline.isEmpty
+                    ? const Center(child: Text('No durable turns yet'))
+                    : ListView.builder(
+                        key: const ValueKey('mobile-conversation'),
+                        padding: const EdgeInsets.fromLTRB(14, 18, 14, 18),
+                        itemCount: workspace.timeline.length,
+                        itemBuilder: (context, index) => _MobileTurnBubbles(
+                          turn: workspace.timeline[index],
+                          ownsLease: ownsLease,
+                          onApproval: onApproval,
+                          onClarification: onClarification,
+                        ),
+                      ),
+              ),
+            ],
+          );
+        }
         return CustomScrollView(
           key: const ValueKey('mobile-conversation'),
           slivers: [
@@ -116,6 +147,157 @@ class ConversationView extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _MobileConversationHeader extends StatelessWidget {
+  const _MobileConversationHeader({
+    required this.conversationTitle,
+    required this.workspace,
+    required this.ownsLease,
+    required this.activeRequest,
+    required this.onAcquire,
+    required this.onInterrupt,
+  });
+
+  final String conversationTitle;
+  final GatewayWorkspaceState workspace;
+  final bool ownsLease;
+  final ClientEventRecord? activeRequest;
+  final VoidCallback onAcquire;
+  final void Function(ClientEventRecord) onInterrupt;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            conversationTitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+        ),
+        if (ownsLease && activeRequest != null)
+          IconButton(
+            tooltip: 'Stop Hermes',
+            onPressed: () => onInterrupt(activeRequest!),
+            icon: const Icon(Icons.stop_circle_outlined),
+          )
+        else if (!ownsLease)
+          IconButton(
+            tooltip: workspace.selectedLease == null
+                ? 'Take control'
+                : 'Take over explicitly',
+            onPressed: onAcquire,
+            icon: const Icon(Icons.control_point_duplicate),
+          ),
+      ],
+    ),
+  );
+}
+
+class _MobileTurnBubbles extends StatelessWidget {
+  const _MobileTurnBubbles({
+    required this.turn,
+    required this.ownsLease,
+    required this.onApproval,
+    required this.onClarification,
+  });
+
+  final ConversationTurn turn;
+  final bool ownsLease;
+  final Future<void> Function(ClientEventRecord, ClientApprovalDecision)
+  onApproval;
+  final void Function(ClientEventRecord, String) onClarification;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.visualTokens;
+    final bubbles = <Widget>[];
+    if (turn.userText?.trim().isNotEmpty == true) {
+      bubbles.add(_MobileConversationBubble(text: turn.userText!, user: true));
+    }
+    bubbles.add(
+      _MobileConversationBubble(
+        text: turn.assistantText.isEmpty
+            ? turn.isTerminal
+                  ? 'No assistant text was returned.'
+                  : 'Hermes is working…'
+            : turn.assistantText,
+        quiet: turn.assistantText.isEmpty,
+      ),
+    );
+    if (turn.tools.isNotEmpty) {
+      bubbles.add(_ToolTracePanel(tools: turn.tools));
+    }
+    if (turn.pendingInteraction case final pending?) {
+      bubbles.add(
+        _InteractionPanel(
+          event: pending,
+          ownsLease: ownsLease,
+          onApproval: onApproval,
+          onClarification: onClarification,
+        ),
+      );
+    }
+    if (_latestConnectionWarning(turn) case final warning?) {
+      bubbles.add(Text(warning, style: TextStyle(color: tokens.attention)));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [...bubbles, const SizedBox(height: 18)],
+    );
+  }
+}
+
+class _MobileConversationBubble extends StatelessWidget {
+  const _MobileConversationBubble({
+    required this.text,
+    this.user = false,
+    this.quiet = false,
+  });
+
+  final String text;
+  final bool user;
+  final bool quiet;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.visualTokens;
+    final color = user ? tokens.signalWarm : tokens.signal;
+    return Align(
+      alignment: user ? Alignment.centerRight : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: user
+                ? tokens.signalWarm.withValues(alpha: 0.08)
+                : tokens.panel.withValues(alpha: 0.58),
+            border: Border.all(color: color.withValues(alpha: 0.22)),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: SelectableText(
+            text,
+            textAlign: user ? TextAlign.right : TextAlign.left,
+            style:
+                TextStyle(
+                  color: tokens.textPrimary,
+                  fontSize: quiet ? 17.22 : 21,
+                  height: 1.55,
+                  letterSpacing: 0.04,
+                ).copyWith(
+                  color: tokens.textPrimary.withValues(alpha: quiet ? 0.4 : 1),
+                ),
+          ),
+        ),
+      ),
     );
   }
 }
