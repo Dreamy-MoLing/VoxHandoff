@@ -267,26 +267,3 @@ class _SettingsRow extends StatelessWidget {
     );
   }
 }
-
-class _SettingsHeadingOrb extends StatelessWidget {
-  const _SettingsHeadingOrb({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 34,
-    height: 34,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      gradient: RadialGradient(
-        center: const Alignment(-0.45, -0.55),
-        colors: [Colors.white, color, context.visualTokens.signalWarm],
-        stops: const [0.04, 0.3, 1],
-      ),
-      boxShadow: [
-        BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 16),
-      ],
-    ),
-  );
-}
