@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,10 +21,11 @@ import 'conversation_view.dart';
 import 'design/agent_talk_theme.dart';
 import 'direct_chat_view.dart';
 import 'mobile_visual_preferences.dart';
+import 'mobile_visual_settings_sheet.dart';
 import 'signal_core_view.dart';
 
-class NativeMobileHomeScreen extends ConsumerStatefulWidget {
-  const NativeMobileHomeScreen({
+class MobileHomeScreen extends ConsumerStatefulWidget {
+  const MobileHomeScreen({
     required this.preferences,
     required this.composer,
     required this.onOpenPairing,
@@ -59,22 +59,19 @@ class NativeMobileHomeScreen extends ConsumerStatefulWidget {
   final Future<void> Function(BuildContext) onOpenVoiceSettings;
 
   @override
-  ConsumerState<NativeMobileHomeScreen> createState() =>
-      _NativeMobileHomeScreenState();
+  ConsumerState<MobileHomeScreen> createState() => _MobileHomeScreenState();
 }
 
-class _NativeMobileHomeScreenState
-    extends ConsumerState<NativeMobileHomeScreen> {
-  var _contentVisible = false;
-  var _page = _MobilePage.home;
+class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
+  var _textMode = false;
 
-  void _toggleContent() {
+  void _toggleTextMode() {
     final voice = ref.read(voiceSessionProvider);
     if (voice.phase == VoiceInputPhase.recording ||
         voice.phase == VoiceInputPhase.transcribing) {
       return;
     }
-    setState(() => _contentVisible = !_contentVisible);
+    setState(() => _textMode = !_textMode);
   }
 
   Future<void> _startVoice() async {
@@ -85,12 +82,8 @@ class _NativeMobileHomeScreenState
   Future<void> _stopVoice() async {
     if (!ref.read(voiceSessionProvider).canStop) return;
     await widget.onStopVoice();
-    if (mounted) setState(() => _contentVisible = true);
+    if (mounted) setState(() => _textMode = true);
   }
-
-  void _openPage(_MobilePage page) => setState(() => _page = page);
-
-  void _returnHome() => setState(() => _page = _MobilePage.home);
 
   @override
   Widget build(BuildContext context) {
@@ -117,7 +110,7 @@ class _NativeMobileHomeScreenState
         voice.phase == VoiceInputPhase.recording ||
         voice.phase == VoiceInputPhase.transcribing;
     final showText =
-        _contentVisible ||
+        _textMode ||
         voice.phase == VoiceInputPhase.awaitingConfirmation ||
         session.draftPhase == DraftPhase.confirmed ||
         snapshot.state == SignalCoreState.approval ||
@@ -137,93 +130,85 @@ class _NativeMobileHomeScreenState
           fit: StackFit.expand,
           children: [
             Positioned.fill(
-              child: _MobileStarfield(
-                signal: context.visualTokens.signal,
-                signalStrong: context.visualTokens.signalStrong,
-                signalWarm: context.visualTokens.signalWarm,
-                structureLine: context.visualTokens.structureLine,
-                customBackgroundPreview:
-                    widget.preferences.customBackgroundPreview,
-                light: Theme.of(context).brightness == Brightness.light,
+              child: CustomPaint(
+                painter: _MobileStarfieldPainter(
+                  signal: context.visualTokens.signal,
+                  signalStrong: context.visualTokens.signalStrong,
+                  signalWarm: context.visualTokens.signalWarm,
+                  structureLine: context.visualTokens.structureLine,
+                  customBackgroundPreview:
+                      widget.preferences.customBackgroundPreview,
+                  light: Theme.of(context).brightness == Brightness.light,
+                ),
               ),
             ),
             SafeArea(
-              child: switch (_page) {
-                _MobilePage.home => Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Positioned.fill(
-                      child: showText
-                          ? _MobileTextMode(
-                              source: source,
-                              direct: direct,
-                              workspace: workspace,
-                              session: session,
-                              voice: voice,
-                              snapshot: snapshot,
-                              speechEnabled: speechEnabled,
-                              ownsLease: ownsLease,
-                              composer: widget.composer,
-                              onTapCore: _toggleContent,
-                              onLongPressStart: _startVoice,
-                              onLongPressEnd: _stopVoice,
-                              onConfirm: widget.onConfirm,
-                              onReopen: widget.onReopen,
-                              onSend: widget.onSend,
-                              onNextDraft: widget.onNextDraft,
-                              onStopVoice: _stopVoice,
-                              onCancelVoice: widget.onCancelVoice,
-                              onDiscardVoice: widget.onDiscardVoice,
-                              onChanged: ref
-                                  .read(clientSessionProvider.notifier)
-                                  .editDraft,
-                            )
-                          : voiceFocused
-                          ? _MobileVoiceStage(
-                              snapshot: snapshot,
-                              voice: voice,
-                              onTap: _toggleContent,
-                              onLongPressStart: _startVoice,
-                              onLongPressEnd: _stopVoice,
-                            )
-                          : _MobileIdleStage(
-                              snapshot: snapshot,
-                              onTap: _toggleContent,
-                              onLongPressStart: _startVoice,
-                              onLongPressEnd: _stopVoice,
-                            ),
+              child: Column(
+                children: [
+                  _MobileTopBar(
+                    phase: session.connectionPhase,
+                    message: workspace.safeErrorMessage,
+                    onConnection: switch (session.connectionPhase) {
+                      GatewayConnectionPhase.unpaired => widget.onOpenPairing,
+                      GatewayConnectionPhase.connected => () => unawaited(
+                        widget.onDisconnect(),
+                      ),
+                      GatewayConnectionPhase.connecting ||
+                      GatewayConnectionPhase.reconnecting => null,
+                      GatewayConnectionPhase.offline ||
+                      GatewayConnectionPhase.failed => () => unawaited(
+                        widget.onConnect(),
+                      ),
+                    },
+                    onSettings: () => showMobileVisualSettingsSheet(
+                      context,
+                      preferences: widget.preferences,
+                      onOpenVoiceSettings: widget.onOpenVoiceSettings,
                     ),
-                    _MobileControlDeck(
-                      visible: showText,
-                      phase: session.connectionPhase,
-                      message: workspace.safeErrorMessage,
-                      onConnection: () => _openPage(_MobilePage.connection),
-                      onSettings: () => _openPage(_MobilePage.settings),
-                    ),
-                  ],
-                ),
-                _MobilePage.settings => _MobileVisualSettingsPage(
-                  preferences: widget.preferences,
-                  onBack: _returnHome,
-                  onOpenVoiceSettings: widget.onOpenVoiceSettings,
-                ),
-                _MobilePage.connection => _MobileConnectionPage(
-                  phase: session.connectionPhase,
-                  onBack: _returnHome,
-                  onPair: () {
-                    _returnHome();
-                    widget.onOpenPairing();
-                  },
-                  onConnect: () {
-                    _returnHome();
-                    unawaited(widget.onConnect());
-                  },
-                  onDisconnect: () {
-                    _returnHome();
-                    unawaited(widget.onDisconnect());
-                  },
-                ),
-              },
+                  ),
+                  Expanded(
+                    child: voiceFocused
+                        ? _MobileVoiceStage(
+                            snapshot: snapshot,
+                            voice: voice,
+                            onTap: _toggleTextMode,
+                            onLongPressStart: _startVoice,
+                            onLongPressEnd: _stopVoice,
+                          )
+                        : showText
+                        ? _MobileTextMode(
+                            source: source,
+                            direct: direct,
+                            workspace: workspace,
+                            session: session,
+                            voice: voice,
+                            snapshot: snapshot,
+                            speechEnabled: speechEnabled,
+                            ownsLease: ownsLease,
+                            composer: widget.composer,
+                            onTapCore: _toggleTextMode,
+                            onLongPressStart: _startVoice,
+                            onLongPressEnd: _stopVoice,
+                            onConfirm: widget.onConfirm,
+                            onReopen: widget.onReopen,
+                            onSend: widget.onSend,
+                            onNextDraft: widget.onNextDraft,
+                            onStopVoice: _stopVoice,
+                            onCancelVoice: widget.onCancelVoice,
+                            onDiscardVoice: widget.onDiscardVoice,
+                            onChanged: ref
+                                .read(clientSessionProvider.notifier)
+                                .editDraft,
+                          )
+                        : _MobileIdleStage(
+                            snapshot: snapshot,
+                            onTap: _toggleTextMode,
+                            onLongPressStart: _startVoice,
+                            onLongPressEnd: _stopVoice,
+                          ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -241,55 +226,42 @@ class _NativeMobileHomeScreenState
   }
 }
 
-enum _MobilePage { home, settings, connection }
-
-class _MobileControlDeck extends StatelessWidget {
-  const _MobileControlDeck({
-    required this.visible,
+class _MobileTopBar extends StatelessWidget {
+  const _MobileTopBar({
     required this.phase,
     required this.message,
     required this.onConnection,
     required this.onSettings,
   });
 
-  final bool visible;
   final GatewayConnectionPhase phase;
   final String? message;
-  final VoidCallback onConnection;
+  final VoidCallback? onConnection;
   final VoidCallback onSettings;
 
   @override
-  Widget build(BuildContext context) => IgnorePointer(
-    ignoring: !visible,
-    child: AnimatedOpacity(
-      opacity: visible ? 1 : 0,
-      duration: const Duration(milliseconds: 340),
-      curve: Curves.easeOut,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned(
-            top: 18,
-            left: 18,
-            child: _MobileConnectionButton(
-              phase: phase,
-              message: message,
-              onPressed: onConnection,
-            ),
-          ),
-          Positioned(
-            top: 18,
-            right: 18,
-            child: _MobileSettingsButton(onPressed: onSettings),
-          ),
-        ],
-      ),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
+    child: Row(
+      children: [
+        _MobileConnectionIndicator(
+          phase: phase,
+          message: message,
+          onPressed: onConnection,
+        ),
+        const Spacer(),
+        IconButton(
+          tooltip: '打开设置',
+          onPressed: onSettings,
+          icon: const Icon(Icons.settings_outlined),
+        ),
+      ],
     ),
   );
 }
 
-class _MobileConnectionButton extends StatelessWidget {
-  const _MobileConnectionButton({
+class _MobileConnectionIndicator extends StatelessWidget {
+  const _MobileConnectionIndicator({
     required this.phase,
     required this.message,
     required this.onPressed,
@@ -297,7 +269,7 @@ class _MobileConnectionButton extends StatelessWidget {
 
   final GatewayConnectionPhase phase;
   final String? message;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -319,644 +291,59 @@ class _MobileConnectionButton extends StatelessWidget {
         : connecting
         ? const Color(0xFFF4C95D)
         : tokens.danger;
-    final accessibleLabel = message?.trim().isNotEmpty == true
-        ? '$label：${message!.trim()}'
+    final dot = Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(color: color.withValues(alpha: 0.7), blurRadius: 10),
+        ],
+      ),
+    );
+    final shownMessage = message?.trim().isNotEmpty == true
+        ? message!.trim()
         : label;
     return Semantics(
-      button: true,
-      label: '连接状态：$accessibleLabel',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            constraints: BoxConstraints(minWidth: connected ? 38 : 94),
-            height: 38,
-            padding: EdgeInsets.symmetric(horizontal: connected ? 8 : 12),
-            decoration: BoxDecoration(
-              color: Color.alphaBlend(
-                tokens.panel.withValues(alpha: 0.92),
-                tokens.ink,
-              ),
-              border: Border.all(color: tokens.signal.withValues(alpha: 0.5)),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(color: tokens.shadow, blurRadius: 20),
-                BoxShadow(
-                  color: tokens.signal.withValues(alpha: 0.08),
-                  blurRadius: 18,
-                  spreadRadius: -2,
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _PrototypeConnectionGlyph(color: color),
-                if (!connected) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: tokens.textMuted,
-                      fontSize: 12,
-                      letterSpacing: 0.6,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PrototypeConnectionGlyph extends StatelessWidget {
-  const _PrototypeConnectionGlyph({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => SizedBox.square(
-    dimension: 22,
-    child: Stack(
-      alignment: Alignment.center,
-      children: [
-        Container(
-          width: 18,
-          height: 18,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: color),
-            boxShadow: [
-              BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 12),
-            ],
-          ),
-        ),
-        Container(width: 18, height: 1, color: color.withValues(alpha: 0.7)),
-        RotatedBox(
-          quarterTurns: 1,
-          child: Container(
-            width: 18,
-            height: 1,
-            color: color.withValues(alpha: 0.7),
-          ),
-        ),
-        Container(
-          width: 4,
-          height: 4,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-      ],
-    ),
-  );
-}
-
-class _MobileSettingsButton extends StatelessWidget {
-  const _MobileSettingsButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    label: '打开设置页面',
-    child: IconButton(
-      tooltip: '打开设置',
-      onPressed: onPressed,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 38, height: 38),
-      style: IconButton.styleFrom(
-        side: BorderSide(
-          color: context.visualTokens.signal.withValues(alpha: 0.5),
-        ),
-        shape: const CircleBorder(),
-        backgroundColor: Color.alphaBlend(
-          context.visualTokens.panel.withValues(alpha: 0.92),
-          context.visualTokens.ink,
-        ),
-        foregroundColor: context.visualTokens.signal,
-      ),
-      icon: const Icon(Icons.settings_outlined, size: 19),
-    ),
-  );
-}
-
-class _MobileVisualSettingsPage extends StatelessWidget {
-  const _MobileVisualSettingsPage({
-    required this.preferences,
-    required this.onBack,
-    required this.onOpenVoiceSettings,
-  });
-
-  final MobileVisualPreferences preferences;
-  final VoidCallback onBack;
-  final Future<void> Function(BuildContext) onOpenVoiceSettings;
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: preferences,
-    builder: (context, _) {
-      final tokens = context.visualTokens;
-      final light = preferences.theme == MobileVisualTheme.light;
-      return SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(0, 34, 0, 18),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Stack(
-            children: [
-              Positioned(
-                top: 0,
-                left: 0,
-                child: _MobileBackButton(onPressed: onBack),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 54),
-                child: Column(
-                  children: [
-                    const _MobilePageHeading(
-                      kind: _MobilePageHeadingKind.settings,
-                    ),
-                    const SizedBox(height: 34),
-                    _MobileSettingsItem(
-                      icon: const _ThemeGlyph(),
-                      title: '主题',
-                      value: light ? '亮色' : '深色',
-                      trailing: IconButton(
-                        tooltip: light ? '切换暗色主题视觉样式' : '切换亮色主题视觉样式',
-                        onPressed: () => unawaited(
-                          preferences.setTheme(
-                            light
-                                ? MobileVisualTheme.dark
-                                : MobileVisualTheme.light,
-                          ),
-                        ),
-                        style: IconButton.styleFrom(
-                          side: BorderSide(
-                            color: tokens.signal.withValues(alpha: 0.52),
-                          ),
-                          shape: const CircleBorder(),
-                          foregroundColor: tokens.signal,
-                        ),
-                        icon: Icon(
-                          light
-                              ? Icons.light_mode_outlined
-                              : Icons.dark_mode_outlined,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _MobileSettingsItem(
-                      icon: const _BackgroundGlyph(),
-                      title: '背景',
-                      value: preferences.customBackgroundPreview ? '自定义' : '星空',
-                      trailing: IconButton(
-                        tooltip: '导入自定义背景',
-                        onPressed: () => preferences.setCustomBackgroundPreview(
-                          !preferences.customBackgroundPreview,
-                        ),
-                        style: IconButton.styleFrom(
-                          side: BorderSide(
-                            color: tokens.signal.withValues(alpha: 0.52),
-                          ),
-                          shape: const CircleBorder(),
-                          foregroundColor: tokens.signal,
-                        ),
-                        icon: const Icon(Icons.file_upload_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _MobileSettingsItem(
-                      icon: const _FontGlyph(),
-                      title: '文字大小',
-                      value: preferences.fontSize <= 19
-                          ? '小号'
-                          : preferences.fontSize >= 25
-                          ? '大号'
-                          : '标准',
-                      trailing: SizedBox(
-                        width: 132,
-                        child: Slider(
-                          min: 18,
-                          max: 28,
-                          divisions: 10,
-                          value: preferences.fontSize,
-                          label: preferences.fontSize.round().toString(),
-                          onChanged: (value) =>
-                              unawaited(preferences.setFontSize(value)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    TextButton.icon(
-                      onPressed: () => unawaited(onOpenVoiceSettings(context)),
-                      icon: const Icon(Icons.graphic_eq_outlined),
-                      label: const Text('语音与来源设置'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
-}
-
-class _MobileSettingsItem extends StatelessWidget {
-  const _MobileSettingsItem({
-    required this.icon,
-    required this.title,
-    required this.value,
-    required this.trailing,
-  });
-
-  final Widget icon;
-  final String title;
-  final String value;
-  final Widget trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.visualTokens;
-    return Container(
-      constraints: const BoxConstraints(minHeight: 78),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Color.alphaBlend(
-          tokens.panel.withValues(alpha: 0.8),
-          tokens.ink,
-        ),
-        border: Border.all(color: tokens.structureLine),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: tokens.shadow.withValues(alpha: 0.6),
-            blurRadius: 28,
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          _MobileSettingsGlyphBox(child: icon),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: tokens.textPrimary,
-                    letterSpacing: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: TextStyle(
-                    color: tokens.textMuted,
-                    fontSize: 12,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          trailing,
-        ],
-      ),
-    );
-  }
-}
-
-class _MobileSettingsGlyphBox extends StatelessWidget {
-  const _MobileSettingsGlyphBox({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 42,
-    height: 42,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      border: Border.all(
-        color: context.visualTokens.signal.withValues(alpha: 0.32),
-      ),
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: child,
-  );
-}
-
-class _ThemeGlyph extends StatelessWidget {
-  const _ThemeGlyph();
-
-  @override
-  Widget build(BuildContext context) => Stack(
-    alignment: Alignment.center,
-    children: [
-      Icon(Icons.circle_outlined, size: 17, color: context.visualTokens.signal),
-      Container(
-        width: 12,
-        height: 14,
-        margin: const EdgeInsets.only(left: 6),
-        decoration: BoxDecoration(
-          color: Color.alphaBlend(
-            context.visualTokens.panel.withValues(alpha: 0.8),
-            context.visualTokens.ink,
-          ),
-          shape: BoxShape.circle,
-        ),
-      ),
-    ],
-  );
-}
-
-class _BackgroundGlyph extends StatelessWidget {
-  const _BackgroundGlyph();
-
-  @override
-  Widget build(BuildContext context) => Icon(
-    Icons.landscape_outlined,
-    size: 20,
-    color: context.visualTokens.signal,
-  );
-}
-
-class _FontGlyph extends StatelessWidget {
-  const _FontGlyph();
-
-  @override
-  Widget build(BuildContext context) => Text(
-    'A',
-    style: TextStyle(
-      color: context.visualTokens.signal,
-      fontFamily: 'Georgia',
-      fontSize: 20,
-      fontStyle: FontStyle.italic,
-    ),
-  );
-}
-
-enum _MobilePageHeadingKind { settings, connection }
-
-class _MobilePageHeading extends StatelessWidget {
-  const _MobilePageHeading({required this.kind});
-
-  final _MobilePageHeadingKind kind;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.visualTokens;
-    return SizedBox.square(
-      dimension: 108,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: tokens.signal.withValues(alpha: 0.36)),
-              boxShadow: [
-                BoxShadow(
-                  color: tokens.signal.withValues(alpha: 0.1),
-                  blurRadius: 44,
-                ),
-              ],
-            ),
-          ),
-          if (kind == _MobilePageHeadingKind.settings)
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  center: const Alignment(-0.45, -0.55),
-                  colors: [
-                    tokens.textPrimary,
-                    tokens.signal,
-                    tokens.signalWarm,
-                  ],
-                  stops: const [0.07, 0.25, 1],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: tokens.signal.withValues(alpha: 0.44),
-                    blurRadius: 22,
-                  ),
-                ],
-              ),
+      button: onPressed != null,
+      label: '连接状态：$label',
+      child: connected
+          ? IconButton(
+              tooltip: '连接状态：$label',
+              onPressed: onPressed,
+              padding: const EdgeInsets.all(10),
+              visualDensity: VisualDensity.compact,
+              icon: dot,
             )
-          else ...[
-            Container(
-              width: 34,
-              height: 34,
+          : Container(
+              constraints: const BoxConstraints(maxWidth: 230),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: tokens.signal),
+                color: tokens.panel,
+                border: Border.all(color: tokens.structureLineStrong),
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: [BoxShadow(color: tokens.shadow, blurRadius: 18)],
               ),
-            ),
-            Container(
-              width: 7,
-              height: 7,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFF55E58C),
-                boxShadow: [
-                  BoxShadow(color: Color(0xCC55E58C), blurRadius: 18),
-                ],
-              ),
-            ),
-          ],
-          Transform.rotate(
-            angle: math.pi * 44 / 180,
-            child: Container(
-              width: 76,
-              height: 1,
-              color: tokens.signal.withValues(alpha: 0.34),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MobileBackButton extends StatelessWidget {
-  const _MobileBackButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) => IconButton(
-    tooltip: '返回主页面',
-    onPressed: onPressed,
-    padding: EdgeInsets.zero,
-    constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-    style: IconButton.styleFrom(
-      side: BorderSide(color: context.visualTokens.structureLine),
-      shape: const CircleBorder(),
-      foregroundColor: context.visualTokens.textMuted,
-    ),
-    icon: const Icon(Icons.reply_outlined, size: 19),
-  );
-}
-
-class _MobileConnectionPage extends StatelessWidget {
-  const _MobileConnectionPage({
-    required this.phase,
-    required this.onBack,
-    required this.onPair,
-    required this.onConnect,
-    required this.onDisconnect,
-  });
-
-  final GatewayConnectionPhase phase;
-  final VoidCallback onBack;
-  final VoidCallback onPair;
-  final VoidCallback onConnect;
-  final VoidCallback onDisconnect;
-
-  @override
-  Widget build(BuildContext context) {
-    final connected = phase == GatewayConnectionPhase.connected;
-    final paired = phase != GatewayConnectionPhase.unpaired;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(0, 34, 0, 18),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Stack(
-          children: [
-            Positioned(
-              top: 0,
-              left: 0,
-              child: _MobileBackButton(onPressed: onBack),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 54),
-              child: Column(
-                children: [
-                  const _MobilePageHeading(
-                    kind: _MobilePageHeadingKind.connection,
-                  ),
-                  const SizedBox(height: 34),
-                  _MobileConnectionOption(
-                    label: '已连接',
-                    color: const Color(0xFF55E58C),
-                    selected: connected,
-                    onPressed: connected ? onDisconnect : null,
-                  ),
-                  const SizedBox(height: 12),
-                  _MobileConnectionOption(
-                    label: '连接中',
-                    color: const Color(0xFFF4C95D),
-                    selected:
-                        phase == GatewayConnectionPhase.connecting ||
-                        phase == GatewayConnectionPhase.reconnecting,
-                    onPressed: null,
-                  ),
-                  const SizedBox(height: 12),
-                  _MobileConnectionOption(
-                    label: paired ? '未连接' : '未配对',
-                    color: context.visualTokens.danger,
-                    selected:
-                        !connected &&
-                        phase != GatewayConnectionPhase.connecting &&
-                        phase != GatewayConnectionPhase.reconnecting,
-                    onPressed: paired ? onConnect : onPair,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MobileConnectionOption extends StatelessWidget {
-  const _MobileConnectionOption({
-    required this.label,
-    required this.color,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final String label;
-  final Color color;
-  final bool selected;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.visualTokens;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(20),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 260),
-          constraints: const BoxConstraints(minHeight: 64),
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-          decoration: BoxDecoration(
-            color: Color.alphaBlend(
-              (selected ? tokens.signal : tokens.panel).withValues(
-                alpha: selected ? 0.08 : 0.8,
-              ),
-              tokens.ink,
-            ),
-            border: Border.all(
-              color: selected
-                  ? tokens.signal.withValues(alpha: 0.58)
-                  : tokens.structureLine,
-            ),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: tokens.signal.withValues(alpha: 0.08),
-                      blurRadius: 22,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 9,
-                height: 9,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.75),
-                      blurRadius: 12,
+              child: InkWell(
+                onTap: onPressed,
+                borderRadius: BorderRadius.circular(999),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    dot,
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        shownMessage,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
-              Text(
-                label,
-                style: TextStyle(color: tokens.textPrimary, letterSpacing: 1.1),
-              ),
-              const Spacer(),
-              if (selected) Icon(Icons.check, size: 18, color: tokens.signal),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 }
@@ -979,7 +366,7 @@ class _MobileIdleStage extends StatelessWidget {
     builder: (context, constraints) => Center(
       child: _MobileCoreGesture(
         snapshot: snapshot,
-        dimension: math.min(constraints.maxWidth * 0.92, 370),
+        dimension: math.min(constraints.maxWidth * 0.92, 360),
         onTap: onTap,
         onLongPressStart: onLongPressStart,
         onLongPressEnd: onLongPressEnd,
@@ -1010,7 +397,7 @@ class _MobileVoiceStage extends StatelessWidget {
         child: Center(
           child: _MobileCoreGesture(
             snapshot: snapshot,
-            dimension: math.min(MediaQuery.sizeOf(context).width * 0.92, 370),
+            dimension: math.min(MediaQuery.sizeOf(context).width * 0.92, 360),
             onTap: onTap,
             onLongPressStart: onLongPressStart,
             onLongPressEnd: onLongPressEnd,
@@ -1106,68 +493,51 @@ class _MobileTextMode extends StatelessWidget {
             onClarification: workspaceController.resolveClarification,
             onInterrupt: workspaceController.interrupt,
           );
-    return Stack(
-      fit: StackFit.expand,
+    return Column(
       children: [
-        if (snapshot.state != SignalCoreState.idle)
-          Positioned(
-            top: 0,
-            left: 0,
-            child: Semantics(
-              container: true,
-              liveRegion: true,
-              label: snapshot.label,
-              child: const SizedBox(width: 1, height: 1),
-            ),
-          ),
-        Positioned.fill(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(0, 92, 0, 118),
-            child: content,
-          ),
-        ),
-        Positioned.fill(
+        Expanded(child: content),
+        SizedBox(
+          height: 126,
           child: ClipRect(
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: Transform.translate(
-                offset: const Offset(0, 246),
-                child: _MobileCoreGesture(
-                  snapshot: snapshot,
-                  dimension: math.min(
-                    MediaQuery.sizeOf(context).width * 1.12,
-                    460,
+            child: LayoutBuilder(
+              builder: (context, _) {
+                final dimension = math
+                    .min(MediaQuery.sizeOf(context).width * 1.12, 460)
+                    .toDouble();
+                return Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Transform.translate(
+                    offset: Offset(0, dimension * 0.24),
+                    child: _MobileCoreGesture(
+                      snapshot: snapshot,
+                      dimension: dimension,
+                      onTap: onTapCore,
+                      onLongPressStart: onLongPressStart,
+                      onLongPressEnd: onLongPressEnd,
+                    ),
                   ),
-                  onTap: onTapCore,
-                  onLongPressStart: onLongPressStart,
-                  onLongPressEnd: onLongPressEnd,
-                ),
-              ),
+                );
+              },
             ),
           ),
         ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: _MobileDraftComposer(
-            textController: composer,
-            session: session,
-            voice: voice,
-            sendEnabled: source == ChatSource.directLlm
-                ? direct.isConfigured && direct.phase != DirectChatPhase.sending
-                : ownsLease,
-            requiresGatewayConnection: source != ChatSource.directLlm,
-            sendLabel: source == ChatSource.directLlm ? '发送' : '交给 Hermes',
-            onChanged: onChanged,
-            onConfirm: onConfirm,
-            onReopen: onReopen,
-            onSend: onSend,
-            onNextDraft: onNextDraft,
-            onStopVoice: onStopVoice,
-            onCancelVoice: onCancelVoice,
-            onDiscardVoice: onDiscardVoice,
-          ),
+        _MobileDraftComposer(
+          textController: composer,
+          session: session,
+          voice: voice,
+          sendEnabled: source == ChatSource.directLlm
+              ? direct.isConfigured && direct.phase != DirectChatPhase.sending
+              : ownsLease,
+          requiresGatewayConnection: source != ChatSource.directLlm,
+          sendLabel: source == ChatSource.directLlm ? '发送' : '交给 Hermes',
+          onChanged: onChanged,
+          onConfirm: onConfirm,
+          onReopen: onReopen,
+          onSend: onSend,
+          onNextDraft: onNextDraft,
+          onStopVoice: onStopVoice,
+          onCancelVoice: onCancelVoice,
+          onDiscardVoice: onDiscardVoice,
         ),
       ],
     );
@@ -1382,57 +752,11 @@ class _MobileCoreGesture extends StatefulWidget {
 }
 
 class _MobileCoreGestureState extends State<_MobileCoreGesture> {
-  static const _longPressDelay = Duration(milliseconds: 540);
-
   var _pressed = false;
-  var _longPressTriggered = false;
-  Timer? _pressTimer;
 
   void _setPressed(bool pressed) {
     if (_pressed == pressed || !mounted) return;
     setState(() => _pressed = pressed);
-  }
-
-  void _onPointerDown(PointerDownEvent event) {
-    if (event.kind == PointerDeviceKind.mouse &&
-        event.buttons != kPrimaryButton) {
-      return;
-    }
-    _pressTimer?.cancel();
-    _longPressTriggered = false;
-    _setPressed(true);
-    _pressTimer = Timer(_longPressDelay, () {
-      _longPressTriggered = true;
-      unawaited(widget.onLongPressStart());
-    });
-  }
-
-  void _onPointerUp(PointerUpEvent event) {
-    _pressTimer?.cancel();
-    _pressTimer = null;
-    _setPressed(false);
-    if (_longPressTriggered) {
-      unawaited(widget.onLongPressEnd());
-    } else {
-      widget.onTap();
-    }
-    _longPressTriggered = false;
-  }
-
-  void _onPointerCancel(PointerCancelEvent event) {
-    _pressTimer?.cancel();
-    _pressTimer = null;
-    _setPressed(false);
-    if (_longPressTriggered) {
-      unawaited(widget.onLongPressEnd());
-    }
-    _longPressTriggered = false;
-  }
-
-  @override
-  void dispose() {
-    _pressTimer?.cancel();
-    super.dispose();
   }
 
   @override
@@ -1441,11 +765,20 @@ class _MobileCoreGestureState extends State<_MobileCoreGesture> {
     label: '${widget.snapshot.label}; tap for text, long-press for voice input',
     onTap: widget.onTap,
     onLongPress: widget.onLongPressStart,
-    child: Listener(
+    child: GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onPointerDown: _onPointerDown,
-      onPointerUp: _onPointerUp,
-      onPointerCancel: _onPointerCancel,
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      onTap: widget.onTap,
+      onLongPressStart: (_) {
+        _setPressed(true);
+        unawaited(widget.onLongPressStart());
+      },
+      onLongPressEnd: (_) {
+        _setPressed(false);
+        unawaited(widget.onLongPressEnd());
+      },
       child: AnimatedScale(
         scale: _pressed ? 0.985 : 1,
         duration: const Duration(milliseconds: 120),
@@ -1475,74 +808,6 @@ class _MobileEmptyText extends StatelessWidget {
   );
 }
 
-class _MobileStarfield extends StatefulWidget {
-  const _MobileStarfield({
-    required this.signal,
-    required this.signalStrong,
-    required this.signalWarm,
-    required this.structureLine,
-    required this.customBackgroundPreview,
-    required this.light,
-  });
-
-  final Color signal;
-  final Color signalStrong;
-  final Color signalWarm;
-  final Color structureLine;
-  final bool customBackgroundPreview;
-  final bool light;
-
-  @override
-  State<_MobileStarfield> createState() => _MobileStarfieldState();
-}
-
-class _MobileStarfieldState extends State<_MobileStarfield>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _drift;
-
-  @override
-  void initState() {
-    super.initState();
-    _drift = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 18),
-    )..repeat();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (MediaQuery.maybeDisableAnimationsOf(context) == true) {
-      _drift.stop();
-      _drift.value = 0;
-    } else if (!_drift.isAnimating) {
-      _drift.repeat();
-    }
-  }
-
-  @override
-  void dispose() {
-    _drift.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _drift,
-    builder: (context, _) => CustomPaint(
-      painter: _MobileStarfieldPainter(
-        signal: widget.signal,
-        signalStrong: widget.signalStrong,
-        signalWarm: widget.signalWarm,
-        structureLine: widget.structureLine,
-        customBackgroundPreview: widget.customBackgroundPreview,
-        light: widget.light,
-        phase: _drift.value,
-      ),
-    ),
-  );
-}
-
 class _MobileStarfieldPainter extends CustomPainter {
   const _MobileStarfieldPainter({
     required this.signal,
@@ -1551,7 +816,6 @@ class _MobileStarfieldPainter extends CustomPainter {
     required this.structureLine,
     required this.customBackgroundPreview,
     required this.light,
-    required this.phase,
   });
 
   final Color signal;
@@ -1560,7 +824,6 @@ class _MobileStarfieldPainter extends CustomPainter {
   final Color structureLine;
   final bool customBackgroundPreview;
   final bool light;
-  final double phase;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1616,8 +879,6 @@ class _MobileStarfieldPainter extends CustomPainter {
       (0.09, 0.82, 0.8, Colors.white),
       (0.74, 0.88, 1.0, signalWarm),
     ];
-    canvas.save();
-    canvas.translate(-12 * phase, 10 * phase);
     for (final (x, y, radius, color) in stars) {
       canvas.drawCircle(
         Offset(size.width * x, size.height * y),
@@ -1625,22 +886,6 @@ class _MobileStarfieldPainter extends CustomPainter {
         Paint()..color = color.withValues(alpha: light ? 0.34 : 0.7),
       );
     }
-    canvas.restore();
-    canvas.save();
-    canvas.translate(8 * phase, -7 * phase);
-    for (final (x, y, radius, color) in [
-      (0.18, 0.28, 0.7, Colors.white),
-      (0.58, 0.13, 0.65, signal),
-      (0.36, 0.76, 0.65, Colors.white),
-      (0.88, 0.7, 0.7, signalWarm),
-    ]) {
-      canvas.drawCircle(
-        Offset(size.width * x, size.height * y),
-        radius,
-        Paint()..color = color.withValues(alpha: light ? 0.18 : 0.34),
-      );
-    }
-    canvas.restore();
   }
 
   @override
@@ -1650,6 +895,5 @@ class _MobileStarfieldPainter extends CustomPainter {
       oldDelegate.signalWarm != signalWarm ||
       oldDelegate.structureLine != structureLine ||
       oldDelegate.customBackgroundPreview != customBackgroundPreview ||
-      oldDelegate.light != light ||
-      oldDelegate.phase != phase;
+      oldDelegate.light != light;
 }

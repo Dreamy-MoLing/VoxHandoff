@@ -29,7 +29,7 @@ import 'direct_chat_view.dart';
 import 'direct_llm_settings_sheet.dart';
 import 'design/agent_talk_theme.dart';
 import 'message_composer.dart';
-import 'mobile_webview_home_screen.dart';
+import 'mobile_home_screen.dart';
 import 'mobile_visual_preferences.dart';
 import 'pairing_dialog.dart';
 import 'voice_settings_sheet.dart';
