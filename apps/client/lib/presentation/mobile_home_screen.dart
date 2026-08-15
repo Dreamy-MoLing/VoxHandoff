@@ -260,6 +260,14 @@ class _MobileTopBar extends StatelessWidget {
             IconButton(
               tooltip: '打开设置',
               onPressed: onSettings,
+              style: IconButton.styleFrom(
+                minimumSize: const Size(28, 28),
+                maximumSize: const Size(28, 28),
+                padding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              iconSize: 18,
               icon: const Icon(Icons.settings_outlined),
             ),
           ],
@@ -356,13 +364,25 @@ class _MobileConnectionIndicatorState
       label: '连接状态：$label',
       child: showMessage
           ? Container(
-              constraints: const BoxConstraints(maxWidth: 230),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              constraints: const BoxConstraints(maxWidth: 230, minHeight: 32),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                color: tokens.panel,
-                border: Border.all(color: tokens.structureLineStrong),
+                color: tokens.panel.withValues(alpha: 0.82),
+                border: Border.all(
+                  color: tokens.signal.withValues(alpha: 0.42),
+                ),
                 borderRadius: BorderRadius.circular(999),
-                boxShadow: [BoxShadow(color: tokens.shadow, blurRadius: 18)],
+                boxShadow: [
+                  BoxShadow(
+                    color: tokens.shadow,
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                  BoxShadow(
+                    color: tokens.signal.withValues(alpha: 0.12),
+                    blurRadius: 18,
+                  ),
+                ],
               ),
               child: InkWell(
                 onTap: widget.onPressed,
@@ -377,6 +397,7 @@ class _MobileConnectionIndicatorState
                         shownMessage,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14, height: 1),
                       ),
                     ),
                   ],
@@ -387,8 +408,9 @@ class _MobileConnectionIndicatorState
           ? IconButton(
               tooltip: '连接状态：$label',
               onPressed: widget.onPressed,
-              padding: const EdgeInsets.all(10),
+              padding: EdgeInsets.zero,
               visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints.tightFor(width: 28, height: 28),
               icon: dot,
             )
           : const SizedBox.shrink(),
