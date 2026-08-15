@@ -1359,3 +1359,48 @@ owner 后续核对 provider credential 传递链路后再开新一轮；本轮�
 - 边界：本轮最多两次录音已用完；没有第三次录音、伪造文本或 Confirm。Hermes 零改动，
   设备只经 `100.96.66.108:5555` Tailscale ADB，未 push。阶段日志为
   `/tmp/voxhandoff-acceptance-20260814.log`。
+
+## 12. Stacked PR 分层协作规范（2026-08-15 启用）
+
+> 背景：AI 编码代理（Codex）默认把整个功能塞进一个巨型 PR，导致难审、难合、
+> reviewer 上下文丢失、反馈质量下降。GitHub 官方方案是 stacked PR：按依赖链把
+> 功能拆成有序小 PR，每层一个关注点，CI 逐层评估。参考
+> https://github.blog/engineering/turn-one-giant-ai-generated-pull-request-to-a-reviewable-stack/
+
+### 12.1 分层原则
+
+- 一次功能实现必须拆层，禁止让 Codex 一次提交覆盖跨域大 PR。
+- 典型分层（按依赖自下而上）：**数据层 → API 层 → 接线层 → UI 层**。
+- 每层只关心一个关注点，小到 reviewer 能一次拿住；依赖关系自然从下层 PR 流入。
+- 每层一个分支、一个 PR、一组对应测试；上层分支基于下层分支，不直接基于 `main`。
+- 对应我们的 Codex 工作流：任务书按层编写，每层独立派发、独立验收、独立写
+  DELIVERY 证据，验收通过才进入下一层。
+
+### 12.2 gh-stack 命令
+
+```bash
+# 一次性安装
+gh extension install github/gh-stack
+gh skill install github/gh-stack
+
+# 日常使用
+gh stack init                 # 以 main 为基底开新栈
+gh stack add <branch>         # 在当前栈顶加一层
+gh stack push                 # 推送全部层分支
+gh stack submit               # 为每层创建/更新 PR
+gh stack rebase               # 本地级联 rebase（比 Web 端 Rebase 按钮安全，保留签名提交）
+gh stack sync                 # 拉取远端、级联 rebase、推送、同步 PR 状态
+gh stack checkout <stack|PR>  # 切换栈/PR
+gh stack view                 # 查看当前栈
+```
+
+- 审阅顺序：**自上而下读**（先看顶层 PR 理解最终目标），**自下而上审**（从底层依赖逐层验证）。
+- 注意：Web 端「Rebase stack」按钮在 GitHub 服务器上执行，会重置 committer 且不保留
+  签名提交；分支保护要求签名时使用 `gh stack rebase` 本地执行。
+
+### 12.3 当前约定
+
+- 本仓库执行 Android-first MVP，尚未进入大规模栈协作；本节作为规范先行登记，
+  从下一批跨域功能（数据+API+接线+UI 同时改动）开始强制启用。
+- 分层提交仍然遵守 3.6 的 Git 治理：中文 conventional commits、一个提交一个逻辑
+  变化、push/PR 前有明确授权。
