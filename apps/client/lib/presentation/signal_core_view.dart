@@ -77,7 +77,9 @@ class _SignalCoreViewState extends State<SignalCoreView>
     if (widget.snapshot.state == SignalCoreState.failed) {
       _faultPulse.forward();
     }
-    _loadShader();
+    if (!widget.mobileVisual) {
+      _loadShader();
+    }
   }
 
   @override
@@ -112,6 +114,14 @@ class _SignalCoreViewState extends State<SignalCoreView>
   }
 
   void _syncAnimation() {
+    if (widget.mobileVisual) {
+      final duration = widget.snapshot.state == SignalCoreState.recording
+          ? const Duration(milliseconds: 2200)
+          : const Duration(milliseconds: 3800);
+      if (_animation.duration != duration) {
+        _animation.duration = duration;
+      }
+    }
     if (_motionDisabled) {
       _animation.stop();
       _animation.value = 0;
@@ -180,25 +190,26 @@ class _SignalCoreViewState extends State<SignalCoreView>
                   ),
                 ),
               ),
-              Positioned(
-                left: widget.dimension * 0.16,
-                right: widget.dimension * 0.16,
-                bottom: widget.dimension * 0.08,
-                child: ExcludeSemantics(
-                  child: Text(
-                    _displayLabel(widget.snapshot.state),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.fade,
-                    style: TextStyle(
-                      color: stateColor.withValues(alpha: 0.92),
-                      fontSize: math.max(9, widget.dimension * 0.05),
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: widget.dimension * 0.006,
+              if (!widget.mobileVisual)
+                Positioned(
+                  left: widget.dimension * 0.16,
+                  right: widget.dimension * 0.16,
+                  bottom: widget.dimension * 0.08,
+                  child: ExcludeSemantics(
+                    child: Text(
+                      _displayLabel(widget.snapshot.state),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.fade,
+                      style: TextStyle(
+                        color: stateColor.withValues(alpha: 0.92),
+                        fontSize: math.max(9, widget.dimension * 0.05),
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: widget.dimension * 0.006,
+                      ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
@@ -253,6 +264,10 @@ class SignalCorePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
     final radius = size.shortestSide / 2;
+    if (mobileVisual) {
+      _paintPrototypeCore(canvas, center, radius);
+      return;
+    }
     final shaderProgram = program;
     if (shaderProgram != null) {
       final shader = shaderProgram.fragmentShader()
@@ -446,121 +461,310 @@ class SignalCorePainter extends CustomPainter {
       radius * (0.055 + activity * 0.025),
       Paint()..color = stateColor.withValues(alpha: 0.9),
     );
-
-    if (mobileVisual) {
-      _paintMobileOrb(canvas, center, radius, activity);
-    }
   }
 
-  void _paintMobileOrb(
-    Canvas canvas,
-    Offset center,
-    double radius,
-    double activity,
-  ) {
-    final orbRadius = radius * (0.38 + activity * 0.035);
-    final breathing = reducedMotion
-        ? 0.0
-        : math.sin(phase * math.pi * 2) * radius * 0.018;
-    final haloRadius = radius * (0.62 + activity * 0.04) + breathing;
+  void _paintPrototypeCore(Canvas canvas, Offset center, double radius) {
+    final activity = math.max(snapshot.audioLevel, snapshot.playbackLevel);
+    final listening = snapshot.state == SignalCoreState.recording;
+    final motion = reducedMotion ? 0.5 : phase;
+    final pulse = math.sin(motion * math.pi * 2);
+    final outerScale = reducedMotion ? 1.0 : 0.9975 + pulse * 0.0375;
+    final innerScale = reducedMotion ? 1.0 : 1.005 + pulse * 0.055;
+    final outerRotation = reducedMotion
+        ? -17 * math.pi / 180
+        : (-17 + (pulse + 1) * 8.5) * math.pi / 180;
+    final innerRotation = reducedMotion
+        ? 26 * math.pi / 180
+        : (26 + (pulse + 1) * 13) * math.pi / 180;
 
+    _paintBrokenHalo(
+      canvas,
+      center,
+      radius * 0.84 * outerScale,
+      outerRotation,
+      signal.withValues(alpha: reducedMotion ? 0.82 : 0.82 + pulse * 0.09),
+      outer: true,
+    );
+    _paintBrokenHalo(
+      canvas,
+      center,
+      radius * 0.64 * innerScale,
+      innerRotation,
+      signalWarm.withValues(alpha: reducedMotion ? 0.72 : 0.72 + pulse * 0.14),
+      outer: false,
+    );
+
+    final orbRadius = radius * 0.84;
+    final glowColor = listening ? signalWarm : signal;
     canvas.drawCircle(
       center,
-      haloRadius,
+      orbRadius + radius * 0.04,
       Paint()
-        ..color = stateColor.withValues(alpha: 0.12)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18),
+        ..color = glowColor.withValues(alpha: listening ? 0.26 : 0.2)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 22),
     );
+
     canvas.save();
-    final clip = Path()
-      ..addOval(Rect.fromCircle(center: center, radius: radius * 0.92));
-    canvas.clipPath(clip);
-    final beamPhase = reducedMotion ? 0.0 : phase * math.pi * 2;
+    canvas.clipPath(
+      Path()..addOval(Rect.fromCircle(center: center, radius: orbRadius)),
+    );
+    final beamPhase = reducedMotion ? 0.0 : pulse * 0.12;
     canvas.save();
     canvas.translate(center.dx, center.dy);
-    canvas.rotate(beamPhase * 0.18);
-    for (var index = 0; index < 3; index += 1) {
-      canvas.save();
-      canvas.rotate(index * math.pi * 2 / 3);
-      canvas.drawRect(
-        Rect.fromCenter(
-          center: Offset.zero,
-          width: radius * (0.12 + activity * 0.04),
-          height: radius * 1.8,
-        ),
-        Paint()..color = signalDeep.withValues(alpha: 0.16),
-      );
-      canvas.restore();
-    }
-    canvas.restore();
+    canvas.rotate(beamPhase);
+    _paintBeam(
+      canvas,
+      Rect.fromCenter(
+        center: Offset(-radius * 0.23, 0),
+        width: radius * 0.17,
+        height: radius * 2.25,
+      ),
+      Colors.white.withValues(alpha: 0.45),
+      7,
+      math.pi * 42 / 180,
+    );
+    _paintBeam(
+      canvas,
+      Rect.fromCenter(
+        center: Offset(radius * 0.25, radius * 0.06),
+        width: radius * 0.1,
+        height: radius * 1.65,
+      ),
+      Colors.white.withValues(alpha: 0.36),
+      7,
+      -math.pi * 41 / 180,
+    );
+    _paintBeam(
+      canvas,
+      Rect.fromCenter(
+        center: Offset.zero,
+        width: radius * 2.2,
+        height: radius * 0.12,
+      ),
+      Colors.white.withValues(alpha: 0.19),
+      5,
+      -math.pi * 18 / 180,
+    );
     canvas.restore();
 
+    final orbGradient = Paint()
+      ..shader = ui.Gradient.radial(
+        center - Offset(radius * 0.12, radius * 0.16),
+        orbRadius * 1.55,
+        [
+          signalWarm.withValues(alpha: 0.88),
+          signalStrong.withValues(alpha: 0.86),
+          stateColor.withValues(alpha: 0.92),
+          signalDeep.withValues(alpha: 0.98),
+        ],
+        const [0, 0.28, 0.68, 1],
+      );
+    canvas.drawCircle(center, orbRadius, orbGradient);
     canvas.drawCircle(
       center + Offset(0, radius * 0.035),
-      orbRadius + radius * 0.035,
-      Paint()
-        ..color = shadow.withValues(alpha: 0.42)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
-    );
-    canvas.drawCircle(
-      center,
       orbRadius,
       Paint()
-        ..shader = ui.Gradient.radial(
-          center - Offset(radius * 0.12, radius * 0.16),
-          orbRadius * 1.55,
-          [
-            signalWarm.withValues(alpha: 0.88),
-            signalStrong.withValues(alpha: 0.86),
-            stateColor.withValues(alpha: 0.92),
-            signalDeep.withValues(alpha: 0.98),
-          ],
-          const [0, 0.28, 0.68, 1],
-        ),
+        ..color = shadow.withValues(alpha: 0.38)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = radius * 0.12
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
     );
+
+    final orbHighlight = Paint()
+      ..color = Colors.white.withValues(alpha: 0.2)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = radius * 0.055;
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(43 * math.pi / 180);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset.zero,
+        width: radius * 1.9,
+        height: radius * 1.25,
+      ),
+      orbHighlight,
+    );
+    canvas.restore();
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(-29 * math.pi / 180);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset.zero,
+        width: radius * 1.72,
+        height: radius * 1.08,
+      ),
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.09)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = radius * 0.04,
+    );
+    canvas.restore();
     canvas.drawCircle(
       center - Offset(radius * 0.13, radius * 0.17),
       orbRadius * 0.17,
       Paint()..color = Colors.white.withValues(alpha: 0.72),
     );
-    if (snapshot.state == SignalCoreState.recording ||
-        snapshot.state == SignalCoreState.speaking) {
-      _paintMobileWaveform(canvas, center, orbRadius, activity);
-    }
-    final glintAngle = reducedMotion ? -0.72 : -0.72 + phase * math.pi * 2;
-    final glintCenter =
-        center +
-        Offset(math.cos(glintAngle), math.sin(glintAngle)) * orbRadius * 0.84;
+    canvas.restore();
+
+    final glintCenter = center + Offset(-radius * 0.34, -radius * 0.47);
     canvas.drawCircle(
       glintCenter,
-      radius * 0.026,
-      Paint()..color = Colors.white.withValues(alpha: 0.92),
+      radius * 0.13,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.92)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1),
+    );
+    if (listening) {
+      _paintPrototypeWaveform(canvas, center, radius, activity);
+      _paintPrototypeMic(canvas, center, radius, signal);
+    }
+  }
+
+  void _paintBrokenHalo(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double rotation,
+    Color color, {
+    required bool outer,
+  }) {
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..strokeCap = StrokeCap.butt
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.35);
+    final start = rotation + (outer ? -0.12 : 0.22);
+    final firstSweep = outer ? 1.42 * math.pi : 0.92 * math.pi;
+    final secondStart = start + (outer ? 1.78 : 1.32) * math.pi;
+    final secondSweep = outer ? 0.92 * math.pi : 1.35 * math.pi;
+    canvas.drawArc(rect, start, firstSweep, false, paint);
+    canvas.drawArc(rect, secondStart, secondSweep, false, paint);
+
+    final accent = Paint()
+      ..color = color.withValues(alpha: color.a * 0.42)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius * (outer ? 1.11 : 1.14)),
+      start + math.pi * 0.3,
+      outer ? 0.92 * math.pi : 1.12 * math.pi,
+      false,
+      accent,
+    );
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius * (outer ? 0.88 : 0.84)),
+      secondStart - math.pi * 0.2,
+      outer ? 0.72 * math.pi : 0.86 * math.pi,
+      false,
+      accent,
     );
   }
 
-  void _paintMobileWaveform(
+  void _paintBeam(
+    Canvas canvas,
+    Rect rect,
+    Color color,
+    double blur,
+    double rotation,
+  ) {
+    canvas.save();
+    canvas.rotate(rotation);
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..color = color
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, blur),
+    );
+    canvas.restore();
+  }
+
+  void _paintPrototypeMic(
     Canvas canvas,
     Offset center,
-    double orbRadius,
+    double radius,
+    Color color,
+  ) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(1.5, radius * 0.012)
+      ..strokeCap = StrokeCap.round;
+    final head = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: center + Offset(0, -radius * 0.055),
+        width: radius * 0.125,
+        height: radius * 0.24,
+      ),
+      Radius.circular(radius * 0.07),
+    );
+    canvas.drawRRect(head, paint);
+    final stem = Rect.fromCenter(
+      center: center + Offset(0, radius * 0.075),
+      width: radius * 0.27,
+      height: radius * 0.23,
+    );
+    canvas.drawArc(stem, 0, math.pi, false, paint);
+    canvas.drawLine(
+      center + Offset(0, radius * 0.19),
+      center + Offset(0, radius * 0.27),
+      paint,
+    );
+    canvas.drawLine(
+      center + Offset(-radius * 0.09, radius * 0.27),
+      center + Offset(radius * 0.09, radius * 0.27),
+      paint,
+    );
+  }
+
+  void _paintPrototypeWaveform(
+    Canvas canvas,
+    Offset center,
+    double radius,
     double activity,
   ) {
-    const shape = [0.42, 0.68, 0.92, 0.58, 0.34, 0.72, 0.5, 0.84, 0.38];
-    final barWidth = orbRadius * 0.075;
-    final gap = orbRadius * 0.045;
+    const shape = <double>[
+      0.28,
+      0.42,
+      0.62,
+      0.86,
+      0.56,
+      0.34,
+      0.72,
+      0.48,
+      0.9,
+      0.64,
+      0.38,
+      0.78,
+      0.52,
+      0.3,
+      0.68,
+      0.46,
+      0.76,
+      0.32,
+    ];
+    final barWidth = math.max(2.0, radius * 0.018);
+    final gap = math.max(2.0, radius * 0.022);
     final totalWidth = shape.length * barWidth + (shape.length - 1) * gap;
     final startX = center.dx - totalWidth / 2;
-    final waveformColor = snapshot.state == SignalCoreState.speaking
-        ? signalWarm
-        : Colors.white;
     for (var index = 0; index < shape.length; index += 1) {
-      final height = orbRadius * (0.12 + shape[index] * activity * 0.9);
+      final modulation = reducedMotion
+          ? 1.0
+          : 0.82 + 0.18 * math.sin(phase * math.pi * 2 + index * 0.7);
+      final height =
+          radius *
+          (0.035 + shape[index] * (0.08 + activity * 0.32)) *
+          modulation;
       final x = startX + index * (barWidth + gap);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTWH(x, center.dy - height / 2, barWidth, height),
           Radius.circular(barWidth),
         ),
-        Paint()..color = waveformColor.withValues(alpha: 0.9),
+        Paint()..color = Colors.white.withValues(alpha: 0.9),
       );
     }
   }
