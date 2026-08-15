@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -7,13 +8,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/chat_source_controller.dart';
 import '../application/client_session_controller.dart';
-import '../application/device_pairing_controller.dart';
 import '../application/direct_chat_controller.dart';
 import '../application/gateway_workspace_controller.dart';
 import '../application/speech_playback_controller.dart';
 import '../application/voice_session_controller.dart';
 import '../domain/client_session.dart';
-import '../domain/device_pairing.dart';
 import '../domain/direct_chat.dart';
 import '../domain/gateway_workspace.dart';
 import '../domain/signal_core.dart';
@@ -21,7 +20,6 @@ import '../domain/voice.dart';
 import 'conversation_view.dart';
 import 'design/agent_talk_theme.dart';
 import 'direct_chat_view.dart';
-import 'message_composer.dart';
 import 'mobile_visual_preferences.dart';
 import 'mobile_visual_settings_sheet.dart';
 import 'signal_core_view.dart';
@@ -90,7 +88,6 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(clientSessionProvider);
-    final pairing = ref.watch(devicePairingProvider);
     final source = ref.watch(chatSourceProvider);
     final direct = ref.watch(directChatProvider);
     final workspace = ref.watch(gatewayWorkspaceProvider);
@@ -150,6 +147,19 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
                 children: [
                   _MobileTopBar(
                     phase: session.connectionPhase,
+                    message: workspace.safeErrorMessage,
+                    onConnection: switch (session.connectionPhase) {
+                      GatewayConnectionPhase.unpaired => widget.onOpenPairing,
+                      GatewayConnectionPhase.connected => () => unawaited(
+                        widget.onDisconnect(),
+                      ),
+                      GatewayConnectionPhase.connecting ||
+                      GatewayConnectionPhase.reconnecting => null,
+                      GatewayConnectionPhase.offline ||
+                      GatewayConnectionPhase.failed => () => unawaited(
+                        widget.onConnect(),
+                      ),
+                    },
                     onSettings: () => showMobileVisualSettingsSheet(
                       context,
                       preferences: widget.preferences,
@@ -183,24 +193,18 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
                             onReopen: widget.onReopen,
                             onSend: widget.onSend,
                             onNextDraft: widget.onNextDraft,
-                            onStartVoice: _startVoice,
                             onStopVoice: _stopVoice,
                             onCancelVoice: widget.onCancelVoice,
                             onDiscardVoice: widget.onDiscardVoice,
                             onChanged: ref
                                 .read(clientSessionProvider.notifier)
                                 .editDraft,
-                            onOpenPairing: widget.onOpenPairing,
-                            onConnect: widget.onConnect,
-                            onDisconnect: widget.onDisconnect,
                           )
                         : _MobileIdleStage(
                             snapshot: snapshot,
                             onTap: _toggleTextMode,
                             onLongPressStart: _startVoice,
                             onLongPressEnd: _stopVoice,
-                            pairing: pairing,
-                            onOpenPairing: widget.onOpenPairing,
                           ),
                   ),
                 ],
@@ -223,9 +227,16 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
 }
 
 class _MobileTopBar extends StatelessWidget {
-  const _MobileTopBar({required this.phase, required this.onSettings});
+  const _MobileTopBar({
+    required this.phase,
+    required this.message,
+    required this.onConnection,
+    required this.onSettings,
+  });
 
   final GatewayConnectionPhase phase;
+  final String? message;
+  final VoidCallback? onConnection;
   final VoidCallback onSettings;
 
   @override
@@ -233,10 +244,14 @@ class _MobileTopBar extends StatelessWidget {
     padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
     child: Row(
       children: [
-        _MobileConnectionIndicator(phase: phase),
+        _MobileConnectionIndicator(
+          phase: phase,
+          message: message,
+          onPressed: onConnection,
+        ),
         const Spacer(),
         IconButton(
-          tooltip: 'Open visual settings',
+          tooltip: '打开设置',
           onPressed: onSettings,
           icon: const Icon(Icons.settings_outlined),
         ),
@@ -246,9 +261,15 @@ class _MobileTopBar extends StatelessWidget {
 }
 
 class _MobileConnectionIndicator extends StatelessWidget {
-  const _MobileConnectionIndicator({required this.phase});
+  const _MobileConnectionIndicator({
+    required this.phase,
+    required this.message,
+    required this.onPressed,
+  });
 
   final GatewayConnectionPhase phase;
+  final String? message;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -258,12 +279,12 @@ class _MobileConnectionIndicator extends StatelessWidget {
         phase == GatewayConnectionPhase.connecting ||
         phase == GatewayConnectionPhase.reconnecting;
     final label = switch (phase) {
-      GatewayConnectionPhase.unpaired => 'Unpaired',
-      GatewayConnectionPhase.connecting => 'Connecting',
-      GatewayConnectionPhase.connected => 'Connected',
-      GatewayConnectionPhase.reconnecting => 'Reconnecting',
-      GatewayConnectionPhase.offline => 'Offline',
-      GatewayConnectionPhase.failed => 'Connection failed',
+      GatewayConnectionPhase.unpaired => '未配对',
+      GatewayConnectionPhase.connecting => '连接中',
+      GatewayConnectionPhase.connected => '已连接',
+      GatewayConnectionPhase.reconnecting => '重连中',
+      GatewayConnectionPhase.offline => '未连接',
+      GatewayConnectionPhase.failed => '连接失败',
     };
     final color = connected
         ? const Color(0xFF55E58C)
@@ -281,11 +302,22 @@ class _MobileConnectionIndicator extends StatelessWidget {
         ],
       ),
     );
+    final shownMessage = message?.trim().isNotEmpty == true
+        ? message!.trim()
+        : label;
     return Semantics(
-      label: 'Connection: $label',
+      button: onPressed != null,
+      label: '连接状态：$label',
       child: connected
-          ? Padding(padding: const EdgeInsets.all(12), child: dot)
+          ? IconButton(
+              tooltip: '连接状态：$label',
+              onPressed: onPressed,
+              padding: const EdgeInsets.all(10),
+              visualDensity: VisualDensity.compact,
+              icon: dot,
+            )
           : Container(
+              constraints: const BoxConstraints(maxWidth: 230),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
                 color: tokens.panel,
@@ -293,9 +325,23 @@ class _MobileConnectionIndicator extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
                 boxShadow: [BoxShadow(color: tokens.shadow, blurRadius: 18)],
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [dot, const SizedBox(width: 8), Text(label)],
+              child: InkWell(
+                onTap: onPressed,
+                borderRadius: BorderRadius.circular(999),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    dot,
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        shownMessage,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
     );
@@ -308,42 +354,23 @@ class _MobileIdleStage extends StatelessWidget {
     required this.onTap,
     required this.onLongPressStart,
     required this.onLongPressEnd,
-    required this.pairing,
-    required this.onOpenPairing,
   });
 
   final SignalCoreSnapshot snapshot;
   final VoidCallback onTap;
   final Future<void> Function() onLongPressStart;
   final Future<void> Function() onLongPressEnd;
-  final PairingState pairing;
-  final VoidCallback onOpenPairing;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) => Column(
-      children: [
-        const Spacer(),
-        _MobileCoreGesture(
-          snapshot: snapshot,
-          dimension: math.min(constraints.maxWidth * 0.76, 292),
-          onTap: onTap,
-          onLongPressStart: onLongPressStart,
-          onLongPressEnd: onLongPressEnd,
-        ),
-        const Spacer(),
-        if (pairing.phase != PairingPhase.paired)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(28, 0, 28, 18),
-            child: TextButton.icon(
-              onPressed: onOpenPairing,
-              icon: const Icon(Icons.link_outlined),
-              label: const Text('Pair Gateway to start'),
-            ),
-          )
-        else
-          const SizedBox(height: 18),
-      ],
+    builder: (context, constraints) => Center(
+      child: _MobileCoreGesture(
+        snapshot: snapshot,
+        dimension: math.min(constraints.maxWidth * 0.92, 360),
+        onTap: onTap,
+        onLongPressStart: onLongPressStart,
+        onLongPressEnd: onLongPressEnd,
+      ),
     ),
   );
 }
@@ -366,31 +393,25 @@ class _MobileVoiceStage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(
     children: [
-      const Spacer(),
-      _MobileCoreGesture(
-        snapshot: snapshot,
-        dimension: math.min(MediaQuery.sizeOf(context).width * 0.84, 330),
-        onTap: onTap,
-        onLongPressStart: onLongPressStart,
-        onLongPressEnd: onLongPressEnd,
-      ),
-      const SizedBox(height: 20),
-      Semantics(
-        liveRegion: true,
-        label: voice.provisionalTranscript.isEmpty
-            ? 'Recording, input level ${voice.audioLevel.toStringAsFixed(2)}'
-            : 'Live transcript: ${voice.provisionalTranscript}',
-        child: Text(
-          voice.provisionalTranscript.isEmpty
-              ? 'Recording · release to stop'
-              : voice.provisionalTranscript,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: TextStyle(color: context.visualTokens.textMuted),
+      Expanded(
+        child: Center(
+          child: _MobileCoreGesture(
+            snapshot: snapshot,
+            dimension: math.min(MediaQuery.sizeOf(context).width * 0.92, 360),
+            onTap: onTap,
+            onLongPressStart: onLongPressStart,
+            onLongPressEnd: onLongPressEnd,
+          ),
         ),
       ),
-      const Spacer(),
+      if (voice.phase != VoiceInputPhase.recording)
+        Semantics(
+          liveRegion: true,
+          label: voice.provisionalTranscript.isEmpty
+              ? snapshot.label
+              : '实时转写：${voice.provisionalTranscript}',
+          child: const SizedBox(height: 1),
+        ),
     ],
   );
 }
@@ -413,14 +434,10 @@ class _MobileTextMode extends StatelessWidget {
     required this.onReopen,
     required this.onSend,
     required this.onNextDraft,
-    required this.onStartVoice,
     required this.onStopVoice,
     required this.onCancelVoice,
     required this.onDiscardVoice,
     required this.onChanged,
-    required this.onOpenPairing,
-    required this.onConnect,
-    required this.onDisconnect,
   });
 
   final ChatSource source;
@@ -439,14 +456,10 @@ class _MobileTextMode extends StatelessWidget {
   final VoidCallback onReopen;
   final Future<void> Function() onSend;
   final VoidCallback onNextDraft;
-  final Future<void> Function() onStartVoice;
   final Future<void> Function() onStopVoice;
   final Future<void> Function() onCancelVoice;
   final Future<void> Function() onDiscardVoice;
   final ValueChanged<String> onChanged;
-  final VoidCallback onOpenPairing;
-  final Future<void> Function() onConnect;
-  final Future<void> Function() onDisconnect;
 
   @override
   Widget build(BuildContext context) {
@@ -482,50 +495,46 @@ class _MobileTextMode extends StatelessWidget {
           );
     return Column(
       children: [
-        _MobileTargetStrip(
-          source: source,
-          workspace: workspace,
-          session: session,
-          onOpenPairing: onOpenPairing,
-          onConnect: onConnect,
-          onDisconnect: onDisconnect,
-        ),
         Expanded(child: content),
         SizedBox(
-          height: 104,
+          height: 126,
           child: ClipRect(
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: _MobileCoreGesture(
-                snapshot: snapshot,
-                dimension: math.min(
-                  MediaQuery.sizeOf(context).width * 0.88,
-                  360,
-                ),
-                onTap: onTapCore,
-                onLongPressStart: onLongPressStart,
-                onLongPressEnd: onLongPressEnd,
-              ),
+            child: LayoutBuilder(
+              builder: (context, _) {
+                final dimension = math
+                    .min(MediaQuery.sizeOf(context).width * 1.12, 460)
+                    .toDouble();
+                return Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Transform.translate(
+                    offset: Offset(0, dimension * 0.24),
+                    child: _MobileCoreGesture(
+                      snapshot: snapshot,
+                      dimension: dimension,
+                      onTap: onTapCore,
+                      onLongPressStart: onLongPressStart,
+                      onLongPressEnd: onLongPressEnd,
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ),
-        MessageComposer(
+        _MobileDraftComposer(
           textController: composer,
           session: session,
           voice: voice,
+          sendEnabled: source == ChatSource.directLlm
+              ? direct.isConfigured && direct.phase != DirectChatPhase.sending
+              : ownsLease,
+          requiresGatewayConnection: source != ChatSource.directLlm,
+          sendLabel: source == ChatSource.directLlm ? '发送' : '交给 Hermes',
           onChanged: onChanged,
           onConfirm: onConfirm,
           onReopen: onReopen,
           onSend: onSend,
           onNextDraft: onNextDraft,
-          sendEnabled: source == ChatSource.directLlm
-              ? direct.isConfigured && direct.phase != DirectChatPhase.sending
-              : ownsLease,
-          requiresGatewayConnection: source != ChatSource.directLlm,
-          sendLabel: source == ChatSource.directLlm
-              ? 'Send'
-              : 'Handoff to Hermes',
-          onStartVoice: onStartVoice,
           onStopVoice: onStopVoice,
           onCancelVoice: onCancelVoice,
           onDiscardVoice: onDiscardVoice,
@@ -535,7 +544,195 @@ class _MobileTextMode extends StatelessWidget {
   }
 }
 
-class _MobileCoreGesture extends StatelessWidget {
+class _MobileDraftComposer extends StatelessWidget {
+  const _MobileDraftComposer({
+    required this.textController,
+    required this.session,
+    required this.voice,
+    required this.sendEnabled,
+    required this.requiresGatewayConnection,
+    required this.sendLabel,
+    required this.onChanged,
+    required this.onConfirm,
+    required this.onReopen,
+    required this.onSend,
+    required this.onNextDraft,
+    required this.onStopVoice,
+    required this.onCancelVoice,
+    required this.onDiscardVoice,
+  });
+
+  final TextEditingController textController;
+  final ClientSessionState session;
+  final VoiceSessionState voice;
+  final bool sendEnabled;
+  final bool requiresGatewayConnection;
+  final String sendLabel;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onConfirm;
+  final VoidCallback onReopen;
+  final Future<void> Function() onSend;
+  final VoidCallback onNextDraft;
+  final Future<void> Function() onStopVoice;
+  final Future<void> Function() onCancelVoice;
+  final Future<void> Function() onDiscardVoice;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.visualTokens;
+    final confirmed = session.draftPhase == DraftPhase.confirmed;
+    final accepted = session.draftPhase == DraftPhase.accepted;
+    final uncertain = session.draftPhase == DraftPhase.uncertain;
+    final canSend =
+        confirmed &&
+        (requiresGatewayConnection ? session.canSubmit : true) &&
+        sendEnabled;
+    final actions = <Widget>[];
+    if (voice.phase == VoiceInputPhase.recording) {
+      actions.add(
+        _MobileActionButton(
+          label: '停止录音并转写',
+          icon: Icons.stop_rounded,
+          onPressed: () => unawaited(onStopVoice()),
+          filled: true,
+        ),
+      );
+      actions.add(
+        _MobileActionButton(
+          label: '取消录音',
+          icon: Icons.close,
+          onPressed: () => unawaited(onCancelVoice()),
+        ),
+      );
+    } else if (voice.canCancel) {
+      actions.add(
+        _MobileActionButton(
+          label: '取消语音输入',
+          icon: Icons.close,
+          onPressed: () => unawaited(onCancelVoice()),
+        ),
+      );
+    } else if (voice.phase == VoiceInputPhase.awaitingConfirmation) {
+      actions.add(
+        _MobileActionButton(
+          label: '丢弃语音草稿',
+          icon: Icons.delete_outline,
+          onPressed: () => unawaited(onDiscardVoice()),
+        ),
+      );
+    }
+    if (accepted) {
+      actions.add(
+        _MobileActionButton(
+          label: '开始新草稿',
+          icon: Icons.add,
+          onPressed: onNextDraft,
+          filled: true,
+        ),
+      );
+    } else if (confirmed) {
+      actions.add(
+        _MobileActionButton(
+          label: '重新编辑草稿',
+          icon: Icons.edit_outlined,
+          onPressed: onReopen,
+        ),
+      );
+    } else if (session.canConfirmDraft) {
+      actions.add(
+        _MobileActionButton(
+          label: '确认草稿',
+          icon: Icons.check,
+          onPressed: onConfirm,
+          filled: true,
+        ),
+      );
+    }
+    if (confirmed || uncertain) {
+      actions.add(
+        _MobileActionButton(
+          label: uncertain ? '结果不确定，未重复发送' : sendLabel,
+          icon: uncertain ? Icons.warning_amber_rounded : Icons.arrow_upward,
+          onPressed: canSend ? () => unawaited(onSend()) : null,
+          filled: canSend,
+        ),
+      );
+    }
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: tokens.panel.withValues(alpha: 0.84),
+            border: Border.all(color: tokens.structureLine),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: tokens.shadow, blurRadius: 24)],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: textController,
+                  enabled: session.canEditDraft && !confirmed,
+                  minLines: 1,
+                  maxLines: 3,
+                  onChanged: onChanged,
+                  decoration: const InputDecoration(
+                    hintText: '编辑要说的话',
+                    border: InputBorder.none,
+                    isDense: true,
+                  ),
+                ),
+                if (actions.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Wrap(spacing: 2, children: actions),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileActionButton extends StatelessWidget {
+  const _MobileActionButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.filled = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: label,
+    button: true,
+    child: IconButton(
+      tooltip: label,
+      onPressed: onPressed,
+      style: filled
+          ? IconButton.styleFrom(
+              backgroundColor: context.visualTokens.signal,
+              foregroundColor: context.visualTokens.ink,
+            )
+          : null,
+      icon: Icon(icon),
+    ),
+  );
+}
+
+class _MobileCoreGesture extends StatefulWidget {
   const _MobileCoreGesture({
     required this.snapshot,
     required this.dimension,
@@ -551,97 +748,48 @@ class _MobileCoreGesture extends StatelessWidget {
   final Future<void> Function() onLongPressEnd;
 
   @override
+  State<_MobileCoreGesture> createState() => _MobileCoreGestureState();
+}
+
+class _MobileCoreGestureState extends State<_MobileCoreGesture> {
+  var _pressed = false;
+
+  void _setPressed(bool pressed) {
+    if (_pressed == pressed || !mounted) return;
+    setState(() => _pressed = pressed);
+  }
+
+  @override
   Widget build(BuildContext context) => Semantics(
     button: true,
-    label: '${snapshot.label}; tap for text, long-press for voice input',
-    onTap: onTap,
-    onLongPress: onLongPressStart,
+    label: '${widget.snapshot.label}; tap for text, long-press for voice input',
+    onTap: widget.onTap,
+    onLongPress: widget.onLongPressStart,
     child: GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      onLongPressStart: (_) => onLongPressStart(),
-      onLongPressEnd: (_) => onLongPressEnd(),
-      child: SignalCoreView(
-        snapshot: snapshot,
-        dimension: dimension,
-        mobileVisual: true,
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      onTap: widget.onTap,
+      onLongPressStart: (_) {
+        _setPressed(true);
+        unawaited(widget.onLongPressStart());
+      },
+      onLongPressEnd: (_) {
+        _setPressed(false);
+        unawaited(widget.onLongPressEnd());
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.985 : 1,
+        duration: const Duration(milliseconds: 120),
+        child: SignalCoreView(
+          snapshot: widget.snapshot,
+          dimension: widget.dimension,
+          mobileVisual: true,
+        ),
       ),
     ),
   );
-}
-
-class _MobileTargetStrip extends StatelessWidget {
-  const _MobileTargetStrip({
-    required this.source,
-    required this.workspace,
-    required this.session,
-    required this.onOpenPairing,
-    required this.onConnect,
-    required this.onDisconnect,
-  });
-
-  final ChatSource source;
-  final GatewayWorkspaceState workspace;
-  final ClientSessionState session;
-  final VoidCallback onOpenPairing;
-  final Future<void> Function() onConnect;
-  final Future<void> Function() onDisconnect;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.visualTokens;
-    final isConnected =
-        session.connectionPhase == GatewayConnectionPhase.connected;
-    final selected = workspace.selectedConversation;
-    final title = source == ChatSource.directLlm
-        ? 'Direct LLM'
-        : selected?.title ?? 'Hermes workspace';
-    final subtitle = source == ChatSource.directLlm
-        ? 'Pure chat · history saved locally'
-        : selected == null
-        ? 'Choose a conversation to send'
-        : selected.agentId;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 4, 18, 4),
-      child: Row(
-        children: [
-          Icon(
-            source == ChatSource.directLlm
-                ? Icons.forum_outlined
-                : Icons.hub_outlined,
-            color: tokens.signal,
-            size: 20,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: tokens.textMuted, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          if (source == ChatSource.hermes)
-            IconButton(
-              tooltip: isConnected ? 'Disconnect Gateway' : 'Connect Gateway',
-              onPressed:
-                  workspace.connectionPhase == GatewayConnectionPhase.unpaired
-                  ? onOpenPairing
-                  : isConnected
-                  ? onDisconnect
-                  : onConnect,
-              icon: Icon(isConnected ? Icons.link_off : Icons.link_outlined),
-            ),
-        ],
-      ),
-    );
-  }
 }
 
 class _MobileEmptyText extends StatelessWidget {
@@ -652,7 +800,7 @@ class _MobileEmptyText extends StatelessWidget {
     child: Padding(
       padding: const EdgeInsets.all(28),
       child: Text(
-        'Choose a conversation, or edit text below.\nComplete replies remain available as text.',
+        '暂无对话。',
         textAlign: TextAlign.center,
         style: TextStyle(color: context.visualTokens.textMuted),
       ),
