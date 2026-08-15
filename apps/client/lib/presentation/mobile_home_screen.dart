@@ -145,7 +145,6 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
                   signal: context.visualTokens.signal,
                   signalStrong: context.visualTokens.signalStrong,
                   signalWarm: context.visualTokens.signalWarm,
-                  structureLine: context.visualTokens.structureLine,
                   customBackgroundPreview:
                       widget.preferences.customBackgroundPreview,
                   light: Theme.of(context).brightness == Brightness.light,
@@ -999,7 +998,6 @@ class _MobileStarfieldPainter extends CustomPainter {
     required this.signal,
     required this.signalStrong,
     required this.signalWarm,
-    required this.structureLine,
     required this.customBackgroundPreview,
     required this.light,
   });
@@ -1007,7 +1005,6 @@ class _MobileStarfieldPainter extends CustomPainter {
   final Color signal;
   final Color signalStrong;
   final Color signalWarm;
-  final Color structureLine;
   final bool customBackgroundPreview;
   final bool light;
 
@@ -1072,14 +1069,6 @@ class _MobileStarfieldPainter extends CustomPainter {
           ),
       );
     }
-    final axis = Paint()
-      ..color = structureLine.withValues(alpha: light ? 0.45 : 0.6)
-      ..strokeWidth = 1;
-    canvas.drawLine(
-      Offset(size.width / 2, 0),
-      Offset(size.width / 2, size.height),
-      axis,
-    );
     final stars = <(double, double, double, Color)>[
       (0.12, 0.16, 1.0, Colors.white),
       (0.82, 0.11, 1.0, signal),
@@ -1114,7 +1103,6 @@ class _MobileStarfieldPainter extends CustomPainter {
       oldDelegate.signal != signal ||
       oldDelegate.signalStrong != signalStrong ||
       oldDelegate.signalWarm != signalWarm ||
-      oldDelegate.structureLine != structureLine ||
       oldDelegate.customBackgroundPreview != customBackgroundPreview ||
       oldDelegate.light != light;
 }

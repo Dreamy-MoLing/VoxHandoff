@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -250,7 +251,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     final compactAppBar = MediaQuery.sizeOf(context).width < 480;
     final isDirect = source == ChatSource.directLlm;
-    if (MediaQuery.sizeOf(context).width < 600) {
+    final isMobilePlatform = Platform.isAndroid || Platform.isIOS;
+    if (isMobilePlatform || MediaQuery.sizeOf(context).width < 600) {
       if (!_mobilePreferencesRestoreStarted) {
         _mobilePreferencesRestoreStarted = true;
         unawaited(_visualPreferences.restore());
