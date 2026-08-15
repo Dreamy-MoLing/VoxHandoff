@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="description" content="VoxHandoff 图形化语音 Agent 视觉范本" />
+    <title>VoxHandoff</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell" id="app-shell" data-theme="dark" data-view="home" data-custom-background="false">
+      <div class="app-shell__backdrop" aria-hidden="true"></div>
+
+      <div class="home-view" id="home-view">
+        <section class="agent-stage" aria-label="中央 Agent 核心">
+          <div class="agent-widget" id="agent-widget" data-expanded="false" data-tts-visible="false" data-connection="connected" data-connection-message="false">
+            <div class="control-deck" aria-label="核心快捷控制">
+              <button
+                class="control-button control-button--connection"
+                id="connection-button"
+                type="button"
+                aria-label="连接状态：已连接"
+                aria-pressed="true"
+              >
+                <span class="connection-glyph" aria-hidden="true">
+                  <span class="connection-glyph__ring"></span>
+                  <span class="connection-glyph__dot"></span>
+                </span>
+                <span class="connection-button__message" id="connection-message" aria-hidden="true"></span>
+              </button>
+
+              <button
+                class="control-button control-button--settings"
+                id="settings-button"
+                type="button"
+                aria-label="打开设置页面"
+              >
+                <svg class="settings-glyph" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9.7 3.7 10.5 2h3l.8 1.7 1.7.7 1.8-.5 2.1 2.1-.5 1.8.7 1.7 1.7.8v3l-1.7.8-.7 1.7.5 1.8-2.1 2.1-1.8-.5-1.7.7-.8 1.7h-3l-.8-1.7-1.7-.7-1.8.5-2.1-2.1.5-1.8-.7-1.7-1.7-.8v-3l1.7-.8.7-1.7-.5-1.8 2.1-2.1 1.8.5 1.7-.7Z" />
+                  <circle cx="12" cy="12" r="3.2" />
+                </svg>
+              </button>
+
+            </div>
+
+            <button
+              class="agent-core"
+              id="agent-core"
+              type="button"
+              data-state="ready"
+              aria-label="Agent 核心，短按显示文字，长按进行语音录入"
+              aria-expanded="false"
+              aria-controls="tts-panel"
+            >
+              <span class="agent-core__halo agent-core__halo--outer" aria-hidden="true"></span>
+              <span class="agent-core__halo agent-core__halo--inner" aria-hidden="true"></span>
+              <span class="agent-core__orb" aria-hidden="true">
+                <span class="agent-core__beam agent-core__beam--one"></span>
+                <span class="agent-core__beam agent-core__beam--two"></span>
+                <span class="agent-core__beam agent-core__beam--three"></span>
+                <span class="agent-core__glint"></span>
+              </span>
+              <span class="agent-core__mic" aria-hidden="true">
+                <span class="agent-core__mic-head"></span>
+                <span class="agent-core__mic-stem"></span>
+                <span class="agent-core__mic-base"></span>
+              </span>
+              <span class="agent-core__recording-surface" aria-hidden="true">
+                <span class="agent-core__waveform">
+                  <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                </span>
+              </span>
+            </button>
+
+            <div class="tts-panel" id="tts-panel" aria-hidden="true" hidden>
+              <div class="conversation" id="tts-text">
+                <div class="conversation-row conversation-row--assistant">
+                  <span class="conversation-bubble">我已准备好，随时可以开始。</span>
+                </div>
+                <div class="conversation-row conversation-row--user">
+                  <span class="conversation-bubble">开始今天的对话</span>
+                </div>
+                <div class="conversation-row conversation-row--assistant">
+                  <span class="conversation-bubble conversation-bubble--quiet">我会在这里陪伴你。</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section class="settings-view" id="settings-view" aria-label="设置页面" hidden>
+        <div class="settings-page">
+          <button
+            class="settings-back-button"
+            id="settings-back-button"
+            type="button"
+            aria-label="返回主页面"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 7 4 12l5 5M5 12h9a5 5 0 0 1 5 5v1" />
+            </svg>
+          </button>
+
+          <div class="settings-page__heading" aria-hidden="true">
+            <span class="settings-page__heading-orb"></span>
+            <span class="settings-page__heading-line"></span>
+          </div>
+
+          <div class="settings-list">
+            <div class="settings-item">
+              <span class="settings-item__glyph settings-item__glyph--theme" aria-hidden="true">
+                <span></span>
+              </span>
+              <div class="settings-item__copy">
+                <span class="settings-item__title">主题</span>
+                <span class="settings-item__value" id="theme-value">深色</span>
+              </div>
+              <button
+                class="icon-button"
+                id="theme-toggle"
+                type="button"
+                aria-label="切换明暗主题视觉样式"
+                aria-pressed="false"
+              >
+                <span class="theme-glyph theme-glyph--sun" aria-hidden="true"></span>
+                <span class="theme-glyph theme-glyph--moon" aria-hidden="true"></span>
+              </button>
+            </div>
+
+            <div class="settings-item">
+              <span class="settings-item__glyph settings-item__glyph--background" aria-hidden="true">
+                <span></span>
+              </span>
+              <div class="settings-item__copy">
+                <span class="settings-item__title">背景</span>
+                <span class="settings-item__value" id="background-value">星空</span>
+              </div>
+              <button
+                class="icon-button icon-button--upload"
+                id="background-button"
+                type="button"
+                aria-label="导入自定义背景"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+                </svg>
+              </button>
+              <input id="background-input" type="file" accept="image/*" hidden />
+            </div>
+
+            <div class="settings-item settings-item--font">
+              <span class="settings-item__glyph settings-item__glyph--font" aria-hidden="true">A</span>
+              <div class="settings-item__copy">
+                <span class="settings-item__title">文字大小</span>
+                <span class="settings-item__value" id="font-value">标准</span>
+              </div>
+              <input id="font-size-control" type="range" min="18" max="28" value="21" step="1" aria-label="调整文字大小" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="connection-view" id="connection-view" aria-label="连接配置页面" hidden>
+        <div class="connection-page">
+          <button
+            class="settings-back-button"
+            id="connection-back-button"
+            type="button"
+            aria-label="返回主页面"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 7 4 12l5 5M5 12h9a5 5 0 0 1 5 5v1" />
+            </svg>
+          </button>
+
+          <div class="connection-page__heading" aria-hidden="true">
+            <span class="connection-page__heading-ring"></span>
+            <span class="connection-page__heading-dot"></span>
+          </div>
+
+          <div class="connection-options">
+            <button class="connection-option" type="button" data-status="connected">
+              <span class="connection-option__lamp"></span>
+              <span>已连接</span>
+            </button>
+            <button class="connection-option" type="button" data-status="connecting">
+              <span class="connection-option__lamp"></span>
+              <span>连接中</span>
+            </button>
+            <button class="connection-option" type="button" data-status="disconnected">
+              <span class="connection-option__lamp"></span>
+              <span>未连接</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
+

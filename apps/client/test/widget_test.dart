@@ -50,4 +50,36 @@ void main() {
     expect(find.text('Hermes workspace'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('matches the prototype home interaction sequence', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const ProviderScope(child: AgentTalkApp()));
+    await tester.pump(const Duration(milliseconds: 450));
+
+    await tester.tap(find.byKey(const ValueKey('signal-core-view')));
+    await tester.pump(const Duration(milliseconds: 450));
+    expect(find.byTooltip('打开设置'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+
+    await tester.tap(find.byTooltip('打开设置'));
+    await tester.pump(const Duration(milliseconds: 450));
+    expect(find.text('主题'), findsOneWidget);
+    expect(find.text('背景'), findsOneWidget);
+    expect(find.text('文字大小'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('返回主页面'));
+    await tester.pump(const Duration(milliseconds: 450));
+    await tester.tap(find.text('未配对'));
+    await tester.pump(const Duration(milliseconds: 450));
+    expect(find.text('已连接'), findsOneWidget);
+    expect(find.text('连接中'), findsOneWidget);
+    expect(find.text('未配对'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
