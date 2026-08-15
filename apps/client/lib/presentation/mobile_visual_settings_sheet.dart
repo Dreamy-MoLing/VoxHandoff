@@ -102,25 +102,7 @@ class _MobileVisualSettingsSheet extends StatelessWidget {
                       ),
                     ),
                   const SizedBox(height: 12),
-                  _SettingsRow(
-                    glyph: const Text(
-                      'A',
-                      style: TextStyle(fontFamily: 'Georgia', fontSize: 20),
-                    ),
-                    title: '文字大小',
-                    value: _fontLabel(preferences.fontSize),
-                    trailing: SizedBox(
-                      width: 132,
-                      child: Slider(
-                        min: 18,
-                        max: 28,
-                        divisions: 10,
-                        value: preferences.fontSize,
-                        label: preferences.fontSize.round().toString(),
-                        onChanged: preferences.setFontSize,
-                      ),
-                    ),
-                  ),
+                  _SettingsFontRow(preferences: preferences),
                   const SizedBox(height: 18),
                   Align(
                     alignment: Alignment.centerLeft,
@@ -255,13 +237,103 @@ class _SettingsRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title),
+                Text(
+                  title,
+                  style: const TextStyle(fontSize: 14, letterSpacing: 0.08),
+                ),
                 const SizedBox(height: 4),
-                Text(value, style: TextStyle(color: tokens.textMuted)),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: tokens.textMuted,
+                    fontSize: 12,
+                    letterSpacing: 0.06,
+                  ),
+                ),
               ],
             ),
           ),
           trailing,
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsFontRow extends StatelessWidget {
+  const _SettingsFontRow({required this.preferences});
+
+  final MobileVisualPreferences preferences;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.visualTokens;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 78),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: tokens.panel.withValues(alpha: 0.8),
+        border: Border.all(color: tokens.structureLine),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: tokens.shadow.withValues(alpha: 0.6),
+            blurRadius: 28,
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: tokens.signal.withValues(alpha: 0.08),
+              border: Border.all(color: tokens.signal.withValues(alpha: 0.32)),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: IconTheme(
+              data: IconThemeData(color: tokens.signal),
+              child: const Text(
+                'A',
+                style: TextStyle(fontFamily: 'Georgia', fontSize: 20),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '文字大小',
+                  style: const TextStyle(fontSize: 14, letterSpacing: 0.08),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _fontLabel(preferences.fontSize),
+                  style: TextStyle(
+                    color: tokens.textMuted,
+                    fontSize: 12,
+                    letterSpacing: 0.06,
+                  ),
+                ),
+                SizedBox(
+                  height: 32,
+                  child: Slider(
+                    min: 18,
+                    max: 28,
+                    divisions: 10,
+                    value: preferences.fontSize,
+                    label: preferences.fontSize.round().toString(),
+                    onChanged: preferences.setFontSize,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

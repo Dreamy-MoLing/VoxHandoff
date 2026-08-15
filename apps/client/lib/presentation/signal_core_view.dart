@@ -531,9 +531,9 @@ class SignalCorePainter extends CustomPainter {
     _paintBeam(
       canvas,
       Rect.fromCenter(
-        center: Offset(-radius * 0.23, 0),
-        width: radius * 0.17,
-        height: radius * 2.25,
+        center: Offset(-radius * 0.42, radius * 0.252),
+        width: radius * 0.336,
+        height: radius * 2.184,
       ),
       Colors.white.withValues(alpha: 0.45),
       7,
@@ -542,9 +542,9 @@ class SignalCorePainter extends CustomPainter {
     _paintBeam(
       canvas,
       Rect.fromCenter(
-        center: Offset(radius * 0.25, radius * 0.06),
-        width: radius * 0.1,
-        height: radius * 1.65,
+        center: Offset(radius * 0.302, radius * 0.109),
+        width: radius * 0.2016,
+        height: radius * 1.596,
       ),
       Colors.white.withValues(alpha: 0.36),
       7,
@@ -553,9 +553,9 @@ class SignalCorePainter extends CustomPainter {
     _paintBeam(
       canvas,
       Rect.fromCenter(
-        center: Offset.zero,
-        width: radius * 2.2,
-        height: radius * 0.12,
+        center: Offset(radius * 0.084, -radius * 0.0504),
+        width: radius * 2.184,
+        height: radius * 0.168,
       ),
       Colors.white.withValues(alpha: 0.19),
       5,
@@ -624,10 +624,10 @@ class SignalCorePainter extends CustomPainter {
     );
     canvas.restore();
 
-    final glintCenter = center + Offset(-radius * 0.34, -radius * 0.47);
+    final glintCenter = center + Offset(-radius * 0.294, -radius * 0.412);
     canvas.drawCircle(
       glintCenter,
-      radius * 0.13,
+      radius * 0.1092,
       Paint()
         ..color = Colors.white.withValues(alpha: 0.92)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1),
@@ -703,45 +703,30 @@ class SignalCorePainter extends CustomPainter {
     double radius,
     double activity,
   ) {
-    const shape = <double>[
-      0.28,
-      0.42,
-      0.62,
-      0.86,
-      0.56,
-      0.34,
-      0.72,
-      0.48,
-      0.9,
-      0.64,
-      0.38,
-      0.78,
-      0.52,
-      0.3,
-      0.68,
-      0.46,
-      0.76,
-      0.32,
-    ];
-    final barWidth = math.max(2.0, radius * 0.018);
-    final gap = math.max(2.0, radius * 0.022);
-    final totalWidth = shape.length * barWidth + (shape.length - 1) * gap;
+    const barCount = 18;
+    const barWidth = 3.0;
+    const gap = 3.0;
+    final totalWidth = barCount * barWidth + (barCount - 1) * gap;
+    final normalizedActivity = activity.clamp(0.0, 1.0).toDouble();
+    final audioScale = 0.72 + normalizedActivity * 0.46;
     final startX = center.dx - totalWidth / 2;
-    for (var index = 0; index < shape.length; index += 1) {
-      final modulation = reducedMotion
-          ? 1.0
-          : 0.82 + 0.18 * math.sin(phase * math.pi * 2 + index * 0.7);
-      final height =
-          radius *
-          (0.035 + shape[index] * (0.08 + activity * 0.32)) *
-          modulation;
+    for (var index = 0; index < barCount; index += 1) {
+      final childNumber = index + 1;
+      final baseHeight = childNumber % 5 == 0
+          ? 18.0
+          : childNumber % 3 == 0
+          ? 34.0
+          : childNumber.isEven
+          ? 22.0
+          : 12.0;
+      final height = baseHeight * audioScale;
       final x = startX + index * (barWidth + gap);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTWH(x, center.dy - height / 2, barWidth, height),
           Radius.circular(barWidth),
         ),
-        Paint()..color = Colors.white.withValues(alpha: 0.9),
+        Paint()..color = signal.withValues(alpha: 0.9),
       );
     }
   }

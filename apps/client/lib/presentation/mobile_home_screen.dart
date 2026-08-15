@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -85,6 +86,15 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
     if (mounted) setState(() => _textMode = true);
   }
 
+  Future<void> _finishVoicePress() async {
+    final voice = ref.read(voiceSessionProvider);
+    if (voice.canStop) {
+      await _stopVoice();
+    } else if (voice.canCancel) {
+      await widget.onCancelVoice();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(clientSessionProvider);
@@ -146,7 +156,7 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
               child: Column(
                 children: [
                   _MobileTopBar(
-                    visible: showText && !voiceFocused,
+                    visible: showText,
                     phase: session.connectionPhase,
                     message: workspace.safeErrorMessage,
                     onConnection: switch (session.connectionPhase) {
@@ -168,15 +178,7 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
                     ),
                   ),
                   Expanded(
-                    child: voiceFocused
-                        ? _MobileVoiceStage(
-                            snapshot: snapshot,
-                            voice: voice,
-                            onTap: _toggleTextMode,
-                            onLongPressStart: _startVoice,
-                            onLongPressEnd: _stopVoice,
-                          )
-                        : showText
+                    child: showText
                         ? _MobileTextMode(
                             source: source,
                             direct: direct,
@@ -189,7 +191,7 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
                             composer: widget.composer,
                             onTapCore: _toggleTextMode,
                             onLongPressStart: _startVoice,
-                            onLongPressEnd: _stopVoice,
+                            onLongPressEnd: _finishVoicePress,
                             onConfirm: widget.onConfirm,
                             onReopen: widget.onReopen,
                             onSend: widget.onSend,
@@ -201,11 +203,19 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
                                 .read(clientSessionProvider.notifier)
                                 .editDraft,
                           )
+                        : voiceFocused
+                        ? _MobileVoiceStage(
+                            snapshot: snapshot,
+                            voice: voice,
+                            onTap: _toggleTextMode,
+                            onLongPressStart: _startVoice,
+                            onLongPressEnd: _finishVoicePress,
+                          )
                         : _MobileIdleStage(
                             snapshot: snapshot,
                             onTap: _toggleTextMode,
                             onLongPressStart: _startVoice,
-                            onLongPressEnd: _stopVoice,
+                            onLongPressEnd: _finishVoicePress,
                           ),
                   ),
                 ],
@@ -248,7 +258,7 @@ class _MobileTopBar extends StatelessWidget {
       visible: visible,
       maintainState: true,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
+        padding: const EdgeInsets.fromLTRB(36, 12, 36, 4),
         child: Row(
           children: [
             _MobileConnectionIndicator(
@@ -435,7 +445,7 @@ class _MobileIdleStage extends StatelessWidget {
   Widget build(BuildContext context) => Center(
     child: _MobileCoreGesture(
       snapshot: snapshot,
-      dimension: math.min(MediaQuery.sizeOf(context).width * 0.58, 230),
+      dimension: math.min(MediaQuery.sizeOf(context).width * 0.92, 370),
       onTap: onTap,
       onLongPressStart: onLongPressStart,
       onLongPressEnd: onLongPressEnd,
@@ -463,12 +473,17 @@ class _MobileVoiceStage extends StatelessWidget {
     children: [
       Expanded(
         child: Center(
-          child: _MobileCoreGesture(
-            snapshot: snapshot,
-            dimension: math.min(MediaQuery.sizeOf(context).width * 0.58, 230),
-            onTap: onTap,
-            onLongPressStart: onLongPressStart,
-            onLongPressEnd: onLongPressEnd,
+          child: OverflowBox(
+            alignment: Alignment.center,
+            maxWidth: math.min(MediaQuery.sizeOf(context).width * 1.12, 460),
+            maxHeight: math.min(MediaQuery.sizeOf(context).width * 1.12, 460),
+            child: _MobileCoreGesture(
+              snapshot: snapshot,
+              dimension: math.min(MediaQuery.sizeOf(context).width * 1.12, 460),
+              onTap: onTap,
+              onLongPressStart: onLongPressStart,
+              onLongPressEnd: onLongPressEnd,
+            ),
           ),
         ),
       ),
@@ -563,64 +578,65 @@ class _MobileTextMode extends StatelessWidget {
             onClarification: workspaceController.resolveClarification,
             onInterrupt: workspaceController.interrupt,
           );
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned.fill(child: content),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: 180,
-          child: ClipRect(
-            child: LayoutBuilder(
-              builder: (context, _) {
-                final dimension = math
-                    .min(MediaQuery.sizeOf(context).width * 0.84, 320)
-                    .toDouble();
-                return Align(
-                  alignment: Alignment.bottomCenter,
-                  child: OverflowBox(
-                    alignment: Alignment.bottomCenter,
-                    minWidth: dimension,
-                    maxWidth: dimension,
-                    minHeight: dimension,
-                    maxHeight: dimension,
-                    child: _MobileCoreGesture(
-                      snapshot: snapshot,
-                      dimension: dimension,
-                      onTap: onTapCore,
-                      onLongPressStart: onLongPressStart,
-                      onLongPressEnd: onLongPressEnd,
-                    ),
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      liveRegion: snapshot.state != SignalCoreState.idle,
+      label: snapshot.label,
+      value: snapshot.state.name,
+      onTap: onTapCore,
+      onLongPress: () => unawaited(onLongPressStart()),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(child: content),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: -250,
+            height: math.min(MediaQuery.sizeOf(context).width * 1.12, 460),
+            child: OverflowBox(
+              alignment: Alignment.topCenter,
+              maxWidth: math.min(MediaQuery.sizeOf(context).width * 1.12, 460),
+              maxHeight: math.min(MediaQuery.sizeOf(context).width * 1.12, 460),
+              child: ExcludeSemantics(
+                child: _MobileCoreGesture(
+                  snapshot: snapshot,
+                  dimension: math.min(
+                    MediaQuery.sizeOf(context).width * 1.12,
+                    460,
                   ),
-                );
-              },
+                  onTap: onTapCore,
+                  onLongPressStart: onLongPressStart,
+                  onLongPressEnd: onLongPressEnd,
+                ),
+              ),
             ),
           ),
-        ),
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: _MobileDraftComposer(
-            textController: composer,
-            session: session,
-            voice: voice,
-            sendEnabled: source == ChatSource.directLlm
-                ? direct.isConfigured && direct.phase != DirectChatPhase.sending
-                : ownsLease,
-            requiresGatewayConnection: source != ChatSource.directLlm,
-            sendLabel: source == ChatSource.directLlm ? '发送' : '交给 Hermes',
-            onChanged: onChanged,
-            onConfirm: onConfirm,
-            onReopen: onReopen,
-            onSend: onSend,
-            onNextDraft: onNextDraft,
-            onStopVoice: onStopVoice,
-            onCancelVoice: onCancelVoice,
-            onDiscardVoice: onDiscardVoice,
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: _MobileDraftComposer(
+              textController: composer,
+              session: session,
+              voice: voice,
+              sendEnabled: source == ChatSource.directLlm
+                  ? direct.isConfigured &&
+                        direct.phase != DirectChatPhase.sending
+                  : ownsLease,
+              requiresGatewayConnection: source != ChatSource.directLlm,
+              sendLabel: source == ChatSource.directLlm ? '发送' : '交给 Hermes',
+              onChanged: onChanged,
+              onConfirm: onConfirm,
+              onReopen: onReopen,
+              onSend: onSend,
+              onNextDraft: onNextDraft,
+              onStopVoice: onStopVoice,
+              onCancelVoice: onCancelVoice,
+              onDiscardVoice: onDiscardVoice,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -868,11 +884,74 @@ class _MobileCoreGesture extends StatefulWidget {
 }
 
 class _MobileCoreGestureState extends State<_MobileCoreGesture> {
+  static const _longPressDuration = Duration(milliseconds: 540);
+
+  Timer? _pressTimer;
+  int? _pointer;
+  var _longPressTriggered = false;
+  var _ignoreNextTap = false;
   var _pressed = false;
+
+  @override
+  void dispose() {
+    _pressTimer?.cancel();
+    super.dispose();
+  }
 
   void _setPressed(bool pressed) {
     if (_pressed == pressed || !mounted) return;
     setState(() => _pressed = pressed);
+  }
+
+  void _clearPressTimer() {
+    _pressTimer?.cancel();
+    _pressTimer = null;
+  }
+
+  bool _acceptsPointer(PointerDownEvent event) =>
+      event.kind != PointerDeviceKind.mouse || event.buttons == kPrimaryButton;
+
+  void _onPointerDown(PointerDownEvent event) {
+    if (!_acceptsPointer(event) || _pointer != null) return;
+    _clearPressTimer();
+    _pointer = event.pointer;
+    _longPressTriggered = false;
+    _ignoreNextTap = false;
+    _setPressed(true);
+    _pressTimer = Timer(_longPressDuration, () {
+      if (!mounted || _pointer != event.pointer || _longPressTriggered) return;
+      _pressTimer = null;
+      _longPressTriggered = true;
+      _ignoreNextTap = true;
+      unawaited(widget.onLongPressStart());
+    });
+  }
+
+  void _onPointerUp(PointerUpEvent event) {
+    if (event.pointer != _pointer) return;
+    _clearPressTimer();
+    final longPress = _longPressTriggered;
+    final suppressTap = _ignoreNextTap;
+    _pointer = null;
+    _longPressTriggered = false;
+    _ignoreNextTap = false;
+    _setPressed(false);
+    if (longPress) {
+      unawaited(widget.onLongPressEnd());
+    } else if (!suppressTap) {
+      widget.onTap();
+    }
+  }
+
+  void _onPointerCancel(PointerCancelEvent event) {
+    if (event.pointer != _pointer) return;
+    _clearPressTimer();
+    final longPress = _longPressTriggered;
+    _pointer = null;
+    _longPressTriggered = false;
+    _ignoreNextTap = false;
+    _setPressed(false);
+    if (longPress) unawaited(widget.onLongPressEnd());
   }
 
   @override
@@ -880,21 +959,12 @@ class _MobileCoreGestureState extends State<_MobileCoreGesture> {
     button: true,
     label: '${widget.snapshot.label}; tap for text, long-press for voice input',
     onTap: widget.onTap,
-    onLongPress: widget.onLongPressStart,
-    child: GestureDetector(
+    onLongPress: () => unawaited(widget.onLongPressStart()),
+    child: Listener(
       behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _setPressed(true),
-      onTapUp: (_) => _setPressed(false),
-      onTapCancel: () => _setPressed(false),
-      onTap: widget.onTap,
-      onLongPressStart: (_) {
-        _setPressed(true);
-        unawaited(widget.onLongPressStart());
-      },
-      onLongPressEnd: (_) {
-        _setPressed(false);
-        unawaited(widget.onLongPressEnd());
-      },
+      onPointerDown: _onPointerDown,
+      onPointerUp: _onPointerUp,
+      onPointerCancel: _onPointerCancel,
       child: AnimatedScale(
         scale: _pressed ? 0.985 : 1,
         duration: const Duration(milliseconds: 120),
@@ -915,7 +985,11 @@ class _MobileEmptyText extends StatelessWidget {
   Widget build(BuildContext context) => Center(
     child: Padding(
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 18),
-      child: const MobileConversationBubble(text: '我已准备好，随时可以开始。', quiet: true),
+      child: const MobileConversationBubble(
+        text: '我已准备好，随时可以开始。',
+        quiet: true,
+        centered: true,
+      ),
     ),
   );
 }

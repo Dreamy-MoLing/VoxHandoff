@@ -31,6 +31,7 @@ class DirectChatView extends StatelessWidget {
                       child: MobileConversationBubble(
                         text: '我已准备好，随时可以开始。',
                         quiet: true,
+                        centered: true,
                       ),
                     )
                   : const Center(
@@ -40,7 +41,9 @@ class DirectChatView extends StatelessWidget {
                       ),
                     )
             : ListView.builder(
-                padding: const EdgeInsets.all(16),
+                padding: mobileVisual
+                    ? const EdgeInsets.fromLTRB(20, 18, 20, 18)
+                    : const EdgeInsets.all(16),
                 itemCount: state.messages.length,
                 itemBuilder: (context, index) => _MessageBubble(
                   message: state.messages[index],

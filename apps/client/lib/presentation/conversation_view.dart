@@ -98,11 +98,12 @@ class ConversationView extends StatelessWidget {
                         child: MobileConversationBubble(
                           text: '我已准备好，随时可以开始。',
                           quiet: true,
+                          centered: true,
                         ),
                       )
                     : ListView.builder(
                         key: const ValueKey('mobile-conversation'),
-                        padding: const EdgeInsets.fromLTRB(14, 18, 14, 18),
+                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
                         itemCount: workspace.timeline.length,
                         itemBuilder: (context, index) => _MobileTurnBubbles(
                           turn: workspace.timeline[index],
@@ -252,9 +253,14 @@ class _MobileTurnBubbles extends StatelessWidget {
     if (_latestConnectionWarning(turn) case final warning?) {
       bubbles.add(Text(warning, style: TextStyle(color: tokens.attention)));
     }
+    final spacedBubbles = <Widget>[];
+    for (var index = 0; index < bubbles.length; index += 1) {
+      if (index > 0) spacedBubbles.add(const SizedBox(height: 18));
+      spacedBubbles.add(bubbles[index]);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [...bubbles, const SizedBox(height: 18)],
+      children: [...spacedBubbles, const SizedBox(height: 18)],
     );
   }
 }
@@ -264,46 +270,67 @@ class MobileConversationBubble extends StatelessWidget {
     required this.text,
     this.user = false,
     this.quiet = false,
+    this.centered = false,
     super.key,
   });
 
   final String text;
   final bool user;
   final bool quiet;
+  final bool centered;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.visualTokens;
     final color = user ? tokens.signalWarm : tokens.signal;
-    return Align(
-      alignment: user ? Alignment.centerRight : Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 360),
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 18),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: user
-                ? tokens.signalWarm.withValues(alpha: 0.08)
-                : tokens.panel.withValues(alpha: 0.58),
-            border: Border.all(color: color.withValues(alpha: 0.22)),
-            borderRadius: BorderRadius.circular(18),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final rowWidth = availableWidth * 0.86;
+        final bubble = ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: rowWidth * 0.92),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: user
+                  ? tokens.signalWarm.withValues(alpha: 0.08)
+                  : tokens.panel.withValues(alpha: 0.58),
+              border: Border.all(color: color.withValues(alpha: 0.22)),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: SelectableText(
+              text,
+              textAlign: user ? TextAlign.right : TextAlign.left,
+              style:
+                  TextStyle(
+                    color: tokens.textPrimary,
+                    fontSize: quiet ? 17.22 : 21,
+                    height: 1.55,
+                    letterSpacing: 0.04,
+                  ).copyWith(
+                    color: tokens.textPrimary.withValues(
+                      alpha: quiet ? 0.4 : 1,
+                    ),
+                  ),
+            ),
           ),
-          child: SelectableText(
-            text,
-            textAlign: user ? TextAlign.right : TextAlign.left,
-            style:
-                TextStyle(
-                  color: tokens.textPrimary,
-                  fontSize: quiet ? 17.22 : 21,
-                  height: 1.55,
-                  letterSpacing: 0.04,
-                ).copyWith(
-                  color: tokens.textPrimary.withValues(alpha: quiet ? 0.4 : 1),
-                ),
+        );
+        final row = SizedBox(
+          width: rowWidth,
+          child: Align(
+            alignment: user ? Alignment.centerRight : Alignment.centerLeft,
+            child: bubble,
           ),
-        ),
-      ),
+        );
+        return centered
+            ? Center(child: row)
+            : Align(
+                alignment: user ? Alignment.centerRight : Alignment.centerLeft,
+                child: row,
+              );
+      },
     );
   }
 }
