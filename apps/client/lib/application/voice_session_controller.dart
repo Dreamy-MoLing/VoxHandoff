@@ -114,6 +114,7 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
   }
 
   Future<void> startRecording({String? language}) async {
+    unawaited(ref.read(speechPlaybackProvider.notifier).interruptSpeech());
     if (!state.canStart) {
       throw StateError('Voice input is already active.');
     }

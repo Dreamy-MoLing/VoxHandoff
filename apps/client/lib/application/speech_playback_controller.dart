@@ -178,10 +178,10 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
     );
   }
 
-  /// Barge-in entry point. It is intentionally not wired to the M2 voice
-  /// controller in this branch; the coordinator will call it when recording
-  /// starts.
+  /// Barge-in entry point. Recording starts invoke it without waiting for TTS
+  /// cleanup; unavailable TTS and playback ports remain no-ops.
   Future<void> interruptSpeech() async {
+    // 无 TTS 时打断为空操作；不可用端口由 stopSpeech 安全收敛。
     await stopSpeech();
   }
 

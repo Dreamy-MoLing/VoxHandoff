@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:agent_talk_client/application/client_session_controller.dart';
+import 'package:agent_talk_client/application/speech_playback_controller.dart';
 import 'package:agent_talk_client/application/voice_provider_settings_controller.dart';
 import 'package:agent_talk_client/application/voice_session_controller.dart';
 import 'package:agent_talk_client/domain/client_session.dart';
+import 'package:agent_talk_client/domain/speech.dart';
 import 'package:agent_talk_client/domain/voice.dart';
 import 'package:agent_talk_client/domain/voice_provider_settings.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -69,6 +71,44 @@ void main() {
       expect(store.saved, hasLength(1));
     },
   );
+
+  test('recording interrupts TTS without waiting for speech cleanup', () async {
+    final capture = _FakeCapturePort();
+    final stt = _FakeSttPort();
+    final interruptStarted = Completer<void>();
+    final interruptGate = Completer<void>();
+    final playback = _SpySpeechPlaybackController(
+      interruptStarted: interruptStarted,
+      interruptGate: interruptGate,
+    );
+    final container = ProviderContainer(
+      overrides: [
+        audioCapturePortProvider.overrideWithValue(capture),
+        sttPortProvider.overrideWithValue(stt),
+        speechStopPortProvider.overrideWithValue(_FakeSpeechStop()),
+        speechPlaybackProvider.overrideWith(() => playback),
+      ],
+    );
+    addTearDown(() {
+      if (!interruptGate.isCompleted) interruptGate.complete();
+      container.dispose();
+    });
+
+    final starting = container
+        .read(voiceSessionProvider.notifier)
+        .startRecording();
+    await interruptStarted.future;
+    await _eventually(
+      () =>
+          container.read(voiceSessionProvider).phase ==
+          VoiceInputPhase.recording,
+    );
+    expect(playback.interruptions, 1);
+
+    interruptGate.complete();
+    await starting;
+    await container.read(voiceSessionProvider.notifier).cancelRecording();
+  });
 
   test('recording forwards the configured STT language', () async {
     final capture = _FakeCapturePort();
@@ -421,6 +461,27 @@ class _FakeSpeechStop implements SpeechStopPort {
   @override
   Future<void> stopSpeech() async {
     stops += 1;
+  }
+}
+
+class _SpySpeechPlaybackController extends SpeechPlaybackController {
+  _SpySpeechPlaybackController({
+    required this.interruptStarted,
+    required this.interruptGate,
+  });
+
+  final Completer<void> interruptStarted;
+  final Completer<void> interruptGate;
+  int interruptions = 0;
+
+  @override
+  SpeechPlaybackState build() => const SpeechPlaybackState();
+
+  @override
+  Future<void> interruptSpeech() async {
+    interruptions += 1;
+    if (!interruptStarted.isCompleted) interruptStarted.complete();
+    await interruptGate.future;
   }
 }
 
