@@ -254,6 +254,25 @@ CA，release/base 仍只信 system roots。服务使用本地
   （API server 默认关闭、8642 未认证 GET 连接失败，未伪造）。上游补齐后的
   VoxHandoff 最小工作与验收依赖清单见报告
   `/tmp/voxhandoff-c-report.md`（不随仓库提交，属临时审计产物）。
+- **D-038 远程 STT CA 信任根修复与真机语音闭环（本轮，Codex 提交
+  `241ded1`/`ba0f702`）**：readiness 报 "could not be reached" 的根因是手机
+  secure storage 里存的旧 CA（`Agent_Talk isolated test Gateway`，有效期已于
+  2026-08-15 09:18:06 GMT 到期）与当前 STT 服务证书链（`VoxHandoff Acceptance
+  CA`，SAN 覆盖 100.103.253.87）不匹配 → TLS 握手失败，服务端只有
+  BrokenPipe 无应用层请求。修复：新增 `SecureRemoteSttTrustedRootCertificateStore`，
+  远程 STT CA 用独立 OS secure-storage key 保存，不再与 Gateway 配对 profile
+  耦合；未配对 Gateway 设备也能通过 `Re-import trusted CA` 导入远程 STT CA，
+  已有配对 CA 仅作迁移回退；生产路径与 Voice settings readiness 均改读新 helper。
+  已在手机上重新导入当前 CA（设备文件 hash 与主机一致）。独立复验：定向 19 项、
+  pinned Flutter 3.44.6 `flutter:check` 262 passed + 2 live smoke skip、
+  `flutter analyze` 无 issue、`git diff --check` 通过。
+  **真机语音闭环打通（本轮）**：外放 TTS 测试音频 + 手机长按录音，服务端日志
+  `POST /v1/transcribe 200`；手机采集 97,920 bytes PCM（zeroReads=0）；UI
+  出现非空中文草稿（TTS 句的同音错字，属模型质量非链路故障）并进入
+  `awaitingConfirmation`，确认后出现"交给 Hermes / 重新编辑草稿"。至此
+  0.1 顺序中的语音输入门（前台录音 + 远程 STT + 可编辑终稿）真机证据已取得；
+  剩余：断网/重启/权限撤销矩阵、Hermes 真实 Gateway 纵向链路（H1 上游阻断）、
+  release signing、TTS 降级实机验证。
 
 ## 0.2 2026-08-11 验收修复（历史维护）
 
