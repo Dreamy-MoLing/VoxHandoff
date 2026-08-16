@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'private_ca_certificate_picker.dart';
+import 'remote_stt_trusted_root_certificate_store.dart';
 import 'secure_pairing_stores.dart';
 
 abstract interface class GatewayTrustedRootCertificateImporter {
@@ -22,10 +23,12 @@ class SecureGatewayTrustedRootCertificateImporter
   const SecureGatewayTrustedRootCertificateImporter({
     required this.profileStore,
     required this.certificatePicker,
+    this.remoteSttCertificateStore,
   });
 
   final SecureGatewayConnectionProfileStore profileStore;
   final PrivateCaCertificatePicker certificatePicker;
+  final SecureRemoteSttTrustedRootCertificateStore? remoteSttCertificateStore;
 
   @override
   Future<bool> import() async {
@@ -37,6 +40,18 @@ class SecureGatewayTrustedRootCertificateImporter
     );
     final profile = await _loadProfile();
     if (profile == null) {
+      final remoteSttCertificateStore = this.remoteSttCertificateStore;
+      if (remoteSttCertificateStore != null) {
+        try {
+          await remoteSttCertificateStore.save(normalizedCertificate);
+        } on Object {
+          throw const GatewayTrustedRootCertificateImportException(
+            'remote_stt_profile_save_failed',
+            'The remote STT trust certificate could not be saved.',
+          );
+        }
+        return true;
+      }
       throw const GatewayTrustedRootCertificateImportException(
         'gateway_pairing_required',
         'Pair the device before importing a Gateway trust certificate.',
@@ -48,6 +63,7 @@ class SecureGatewayTrustedRootCertificateImporter
       trustedRootCertificates: utf8.encode(normalizedCertificate),
     );
     try {
+      await remoteSttCertificateStore?.save(normalizedCertificate);
       await profileStore.save(updatedProfile);
     } on FormatException {
       throw const GatewayTrustedRootCertificateImportException(

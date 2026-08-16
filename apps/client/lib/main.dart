@@ -17,7 +17,7 @@ import 'infrastructure/audio/media_kit_audio_playback.dart';
 import 'infrastructure/audio/record_audio_capture.dart';
 import 'infrastructure/desktop/production_desktop_integration.dart';
 import 'infrastructure/security/flutter_secure_value_store.dart';
-import 'infrastructure/security/secure_pairing_stores.dart';
+import 'infrastructure/security/remote_stt_trusted_root_certificate_store.dart';
 import 'infrastructure/security/voice_provider_settings_store.dart';
 import 'infrastructure/storage/drift_local_direct_chat_store.dart';
 import 'infrastructure/storage/drift_local_transcript_store.dart';
@@ -52,13 +52,11 @@ Future<void> main() async {
   final directChatStore = await DriftLocalDirectChatStore.forApplication();
   final playback = MediaKitAudioPlayback();
   final secureValueStore = FlutterSecureValueStore();
-  final gatewayProfileStore = SecureGatewayConnectionProfileStore(
-    secureValueStore,
-  );
   List<int>? remoteTrustedRootCertificates;
   try {
-    remoteTrustedRootCertificates =
-        (await gatewayProfileStore.load())?.trustedRootCertificates;
+    remoteTrustedRootCertificates = await loadRemoteSttTrustedRootCertificates(
+      secureValueStore,
+    );
   } on Object {
     // A malformed Gateway profile must not prevent the app from opening. The
     // remote provider will fail closed unless it uses system trust.
@@ -74,8 +72,7 @@ Future<void> main() async {
             remoteTrustedRootCertificates: remoteTrustedRootCertificates,
             remoteTrustedRootCertificatesProvider: () async {
               try {
-                return (await gatewayProfileStore.load())
-                    ?.trustedRootCertificates;
+                return loadRemoteSttTrustedRootCertificates(secureValueStore);
               } on Object {
                 return remoteTrustedRootCertificates;
               }

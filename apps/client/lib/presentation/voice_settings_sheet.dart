@@ -10,6 +10,7 @@ import '../domain/voice.dart';
 import '../infrastructure/security/flutter_secure_value_store.dart';
 import '../infrastructure/security/gateway_trusted_root_certificate_importer.dart';
 import '../infrastructure/security/private_ca_certificate_picker.dart';
+import '../infrastructure/security/remote_stt_trusted_root_certificate_store.dart';
 import '../infrastructure/security/secure_pairing_stores.dart';
 import '../infrastructure/stt/remote_stt_port.dart';
 import 'direct_llm_settings_sheet.dart';
@@ -23,6 +24,9 @@ final gatewayTrustedRootCertificateImporterProvider =
           FlutterSecureValueStore(),
         ),
         certificatePicker: const PlatformPrivateCaCertificatePicker(),
+        remoteSttCertificateStore: SecureRemoteSttTrustedRootCertificateStore(
+          FlutterSecureValueStore(),
+        ),
       ),
     );
 
@@ -35,9 +39,9 @@ final remoteSttTransportFactoryProvider = Provider<RemoteSttTransportFactory>(
         tokenProvider: tokenProvider,
         trustedRootCertificatesProvider: () async {
           try {
-            return (await SecureGatewayConnectionProfileStore(
+            return loadRemoteSttTrustedRootCertificates(
               FlutterSecureValueStore(),
-            ).load())?.trustedRootCertificates;
+            );
           } on Object {
             return null;
           }

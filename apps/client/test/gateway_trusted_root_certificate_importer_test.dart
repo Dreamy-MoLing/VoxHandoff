@@ -1,6 +1,7 @@
 import 'package:agent_talk_client/infrastructure/security/device_key_vault.dart';
 import 'package:agent_talk_client/infrastructure/security/gateway_trusted_root_certificate_importer.dart';
 import 'package:agent_talk_client/infrastructure/security/private_ca_certificate_picker.dart';
+import 'package:agent_talk_client/infrastructure/security/remote_stt_trusted_root_certificate_store.dart';
 import 'package:agent_talk_client/infrastructure/security/secure_pairing_stores.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -80,6 +81,26 @@ void main() {
           'gateway_pairing_required',
         ),
       ),
+    );
+  });
+
+  test('imports a remote STT CA before Gateway pairing', () async {
+    final values = _MemorySecureStore();
+    final certificateStore = SecureRemoteSttTrustedRootCertificateStore(values);
+
+    final imported = await SecureGatewayTrustedRootCertificateImporter(
+      profileStore: SecureGatewayConnectionProfileStore(values),
+      certificatePicker: _FakeCertificatePicker(
+        '  -----BEGIN CERTIFICATE-----\nremote-ca\n-----END CERTIFICATE-----  ',
+      ),
+      remoteSttCertificateStore: certificateStore,
+    ).import();
+
+    expect(imported, isTrue);
+    expect(
+      await certificateStore.load(),
+      '-----BEGIN CERTIFICATE-----\nremote-ca\n-----END CERTIFICATE-----'
+          .codeUnits,
     );
   });
 }
