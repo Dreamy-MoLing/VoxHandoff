@@ -1,20 +1,25 @@
-# VoxHandoff 技术架构（v2：移动端人格化交互层）
+# VoxHandoff 技术架构（v2.1：Hermes 人格化语音移动伴侣）
 
-> 基线日期：2026-08-16。旧版"完整 Agent 控制面"架构已归档至
+> 基线日期：2026-08-16（v2.1 修订）。旧版"完整 Agent 控制面"架构已归档至
 > `spec/archive/2026-08-16-full-agent/ARCHITECTURE.md`，不再作为当前
 > 实现基线。
 
 ## 1. 架构原则
 
-### 1.0 当前执行变体：Android-first 交互层
+### 1.0 当前执行变体：Android-first 语音移动伴侣
 
-VoxHandoff v2 是 Hermes 的移动端人格化交互层：手机负责录音、转写确认、
-聊天、播放、记忆、人格与 SignalCore 视觉；Agent 后端能力（工具/任务/审批）
-属于 Hermes，本产品不重新建立独立 Agent 控制面。
+VoxHandoff v2.1 是 Hermes 的**第三方 voice-first mobile companion**：手机
+负责录音、转写确认、聊天、播放、记忆呈现、人格与 SignalCore 视觉；Agent
+能力（工具/任务/审批）属于 Hermes。Hermes 对话接口是 v0.1.0 主后端；
+Direct LLM 延后为可选。Hermes 语音能力（streaming TTS/barge-in/唤醒词）是
+CLI/桌面/消息平台内建体验，**不是第三方 HTTP API**——VoxHandoff 的 STT/TTS
+适配层自研保留，作为护城河。
 
-- 本地优先：录音、STT/TTS 配置、LLM API key 和离线历史尽量留在设备；
-- 助手统一：人格、记忆、语音和视觉由稳定 `assistantId` 关联；聊天 backend
-  是能力端口，不是多个 UI 产品；
+- 本地优先：录音、STT/TTS 配置、凭据和客户端状态尽量留在设备；
+- 助手统一：人格、语音和视觉由稳定 `assistantId` 关联；后端是能力端口，
+  不是多个 UI 产品；
+- 记忆权威单一化：Hermes 是长期人格/工作记忆权威；本地只保留客户端状态
+  （UI/视觉/声音/转写缓存/隐私偏好/设备凭据）；
 - 身份分离：Assistant、Provider Profile、conversation、request、message、
   TTS segment 使用各自 opaque identity；
 - 确认即绑定：确认文本时同时冻结 backend target snapshot；目标变化使确认失效；
@@ -38,7 +43,7 @@ Gateway、本地 PostgreSQL 或 STT sidecar（STT/TTS 由用户同意的远程 p
 | 安全存储 | `flutter_secure_storage` + 平台复核 | 独立 key 存 token/CA/凭据，普通库只存引用 |
 | 视觉 | Flutter widgets/CustomPainter + GLSL fragment shader | Rive 仅辅助微动效；核心视觉有静态回退 |
 | 本地数据库 | Drift | schema 版本化、migration、重启/升级测试 |
-| 聊天协议 | OpenAI-compatible chat completions（Direct LLM）；Hermes 自身对话 API（可选） | 严格 bounded I/O、终态互斥、不映射 Agent 语义 |
+| 聊天协议 | Hermes 对话接口（chat/completions 或等价，**契约以 S0 spike 结论为准**）；Direct LLM 延后可选 | 严格 bounded I/O、终态互斥、不映射 Agent 语义 |
 | STT | 远程 HTTPS provider（faster-whisper 适配）或本地服务 | 版本化契约、显式 consent、token 独立 secure storage |
 | TTS | provider-neutral port；Piper/GSV 本地或远程 | 预热/分段/取消；失败降级字幕 |
 
@@ -52,9 +57,9 @@ apps/client（Flutter UI）
 └── lib/domain            领域模型（独立于 Flutter/协议类型）
 
 packages/core            领域类型、状态机、确认快照、消息终态（依赖无关）
-packages/adapters        Direct LLM adapter；Hermes 对话 adapter（可选）
+packages/adapters        Hermes 对话 adapter（主链路）；Direct LLM adapter（延后可选）
 
-services/stt             faster-whisper HTTPS adapter（版本化 /v1 契约）
+services/stt             faster-whisper HTTPS adapter（版本化 /v1 契约，护城河）
 services/tts             （可选）Piper/GSV 服务封装或远程 provider 适配
 
 services/gateway         冻结（归档）——不作为 v0.1.0 实现基线
@@ -73,13 +78,25 @@ services/node            冻结（归档）——不作为 v0.1.0 实现基线
 ### 3.2 packages/core 与 packages/adapters
 
 - core 保持依赖无关：AssistantProfile、ProviderProfile、conversation、
-  request、message 终态、确认快照、记忆/摘要规则、SignalCore 状态机；
-- adapters 只做协议翻译：OpenAI-compatible chat（Direct LLM）严格 bounded、
-  版本化；Hermes 对话 adapter（可选）按 Hermes 实际 API 协商，不假设能力
-  存在；禁止把聊天流伪造成 Agent 工具/审批/执行事实；
+  request、message 终态、确认快照、SignalCore 状态机；记忆规则只描述
+  "客户端展示缓存"与"Hermes 权威"边界，不在本地复制长期记忆权威；
+- adapters 只做协议翻译：Hermes 对话 adapter（主链路）按 Hermes 实际 API
+  协商（chat/completions 或等价，契约以 S0 spike 结论为准），不假设能力
+  存在；Direct LLM adapter（延后可选）沿用 OpenAI-compatible chat 严格
+  bounded、版本化；禁止把聊天流伪造成 Agent 工具/审批/执行事实；
 - 旧 Hermes adapter/Gateway 翻译代码归档冻结，不进入 v0.1.0 生产路径。
 
-### 3.3 services/stt
+### 3.3 交互模式组件（Call/Command）
+
+- 两个模式共享同一录音、STT、记忆呈现、人格与 SignalCore 视觉；
+- Call Mode：录音停止即发送（轻量回显 + 1 键取消），流式 TTS 分段播报，
+  barge-in（用户开口打断 TTS）；streaming TTS/barge-in 由 VoxHandoff 自研
+  适配层实现，v0.1.0 允许退化为"分句完成后播报"但必须支持打断；
+- Command Mode：显式确认快照绑定目标，完成后播报或手动播报；
+- 工作型指令（审批/发布/删除/付款/授权/sudo）即使处于 Call Mode 也必须
+  回退到 Command 级确认。
+
+### 3.4 services/stt
 
 - 版本化 HTTPS 契约：`GET /v1/health`、`POST /v1/transcribe`、可选
   `GET /v1/disclosure`；默认 loopback、独立 Bearer token、有界请求、
@@ -89,7 +106,7 @@ services/node            冻结（归档）——不作为 v0.1.0 实现基线
   配对），未配对设备也可导入；改变 provider CA 必须重新导入并重做
   readiness/consent 检查。
 
-### 3.4 冻结模块（升级路径）
+### 3.5 冻结模块（升级路径）
 
 `services/gateway`、`services/node`、旧 PostgreSQL ledger 与旧 Hermes
 Connector 实现已归档冻结。当 Hermes 上游补齐 run 幂等与 approval ID 后，
@@ -98,25 +115,31 @@ Connector 实现已归档冻结。当 Hermes 上游补齐 run 幂等与 approval
 
 ## 4. 数据流
 
-### 4.1 语音输入
+### 4.1 语音输入（v0.1.0 固定：停止后上传）
 
 1. 用户按住说话/点击录音 → `AndroidAudioCapture` 原生 AudioRecord 采 16 kHz
    PCM（MethodChannel 控制 + EventChannel 推流）；
 2. 停止录音后内存 PCM 经 bounded transport 上传到已同意远程 STT；
 3. `POST /v1/transcribe` 返回 final transcript（或明确失败，保留文字草稿）；
-4. transcript 可编辑、确认；确认生成不可变文本 revision + 目标快照；
+4. transcript 可编辑、确认（Call Mode 轻量回显/Command Mode 显式确认）；
 5. 原始 PCM 在 final/cancel 后立即删除。
+
+（流式 STT 临时字幕是 Call Mode 升级项，不在 v0.1.0 数据流主路径。）
 
 ### 4.2 聊天
 
-1. 确认后的文本经 Direct LLM adapter（或 Hermes 对话 adapter）发送；
+1. 确认后的文本经 Hermes 对话 adapter 发送（Direct LLM 延后可选）；
 2. 流式 delta 实时显示，数据库合并写入；terminal 到达立即写终态；
-3. 只有 `completed` 触发完成式 TTS、摘要与默认后续上下文；
+3. Call Mode 下稳定句子到达即可开始 TTS 分段播报（或分句完成播报）；
+   Command Mode 下 `completed` 触发完成式 TTS；
 4. TTS 失败/离线降级为字幕，完整回复始终可读。
 
 ### 4.3 记忆
 
-- 固定记忆/滚动摘要按 conversation 隔离，本地 Drift 持久化；
+- **Hermes 是长期人格/工作记忆权威**（spike 确认接口语义后）；本地只保留
+  客户端状态（UI/视觉/声音/转写缓存/隐私偏好/设备凭据）；
+- 若 v0.1.0 的 Hermes 接口只支持无状态对话，本地可暂存 conversation 历史
+  作为"展示缓存"，标记为非权威，未来迁移到 Hermes 权威；
 - 上下文组装受硬预算约束，禁止无界发送全部历史；
 - 删除/编辑递增 contextSnapshotRevision 并撤销旧确认。
 

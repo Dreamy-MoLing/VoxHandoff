@@ -1,23 +1,32 @@
-# VoxHandoff 产品规格（v2：Hermes 移动端人格化交互层）
+# VoxHandoff 产品规格（v2.1：Hermes 人格化语音移动伴侣）
 
-> 基线日期：2026-08-16。本版为重新定位后的需求基线；旧版"完整 Agent
-> 控制面"规格已归档至 `spec/archive/2026-08-16-full-agent/`，作为未来
-> 升级路径参考，不再是当前需求来源。
+> 基线日期：2026-08-16（v2.1 修订）。定位从"移动端人格化交互层"进一步收窄为
+> **Hermes 的第三方 voice-first mobile companion**——把 Hermes 变成一个人格化、
+> 低摩擦、接近电话交流体验的私人助手。旧版"完整 Agent 控制面"规格已归档至
+> `spec/archive/2026-08-16-full-agent/`，作为未来升级路径参考，不再是当前需求
+> 来源。
 
 ## 1. 产品定义
 
-VoxHandoff 是面向 Hermes 用户的**移动端人格化语音交互层**：一个可命名、
-可塑造人格、可选择声音、可管理记忆的私人助手前端。它不重新发明 Agent
-后端——Agent 能力属于 Hermes；VoxHandoff 负责"人"与"界面"这一侧：
-录音、转写确认、聊天、播放、记忆、人格与视觉呈现。
+VoxHandoff 是面向 Hermes 用户的**第三方 voice-first mobile companion**：
+一个可命名、可塑造人格、可选择声音、可管理记忆的私人助手前端，把 Hermes
+的 Agent 能力包成**接近电话交流**的移动体验。它不重新发明 Agent 后端——
+Agent 能力属于 Hermes；VoxHandoff 负责"人"与"界面"这一侧：录音、转写确认、
+聊天、播放、记忆呈现、人格与 SignalCore 视觉。
 
-核心体验是自然、连续、可打断的分轮语音对话：看得见当前目标，能编辑和
-确认文字，能停止播报，任何语音故障都不丢文字。用户开口默认只打断 TTS；
-不承诺后台常听、唤醒词或持续全双工。
+**与官方移动端的差异**：Hermes 官方 mobile shell（PR #52673，Expo/React
+Native + WebView 复用 Desktop renderer）是把完整 Hermes Desktop 搬到手机；
+VoxHandoff 的差异化是**人格化、低摩擦、电话式体验**——SignalCore 视觉、
+专属声音与人格、专为语音设计的交互，而不是 Desktop 的移动镜像。
 
-VoxHandoff 不是新的 Agent 框架、不是公共模型中转、不是遥控器壳——它是
-**人格化前端**：同一助手身份贯穿聊天与可用的 Hermes 工作能力，差异化的
-护城河在人格、声音、记忆策略和 SignalCore 视觉，不在 Agent 后端。
+**上游边界（必须诚实记录）**：Hermes 的语音能力（streaming TTS、barge-in、
+唤醒词、Discord 语音频道）是 CLI/桌面/消息平台**内建体验，不是第三方 HTTP
+API**；VoxHandoff 无法直接调用它们。因此 STT/TTS 适配层由 VoxHandoff 自研
+并保留为护城河，不能删减去"复用 Hermes 语音"。
+
+核心体验是自然、连续、可打断的分轮语音对话：看得见当前目标，能编辑和确认
+文字，能停止播报，任何语音故障都不丢文字。用户开口默认只打断 TTS；不承诺
+后台常听、唤醒词或持续全双工。
 
 ### 1.1 目标用户与成功标准
 
@@ -44,20 +53,21 @@ Agent 后端的个人用户。产品成功至少意味着：
 
 ### 2.2 后端能力边界（v0.1.0）
 
+**Hermes 是 v0.1.0 的唯一主后端**。VoxHandoff 通过 Hermes 自身暴露的对话/
+API 能力完成聊天与可用的 Agent 工作；Direct LLM 保留代码与设计，降级为后续
+可选能力（v0.1.0 不默认启用、不作为发布门）。
+
 | 能力 | 来源 | 状态 |
 | --- | --- | --- |
-| 纯聊天/陪伴 | Direct LLM Provider Profile（OpenAI-compatible chat API） | v0.1.0 主链路 |
-| Hermes 工作对话 | Hermes 自身 API（chat/completions 或等价对话接口） | v0.1.0 可选，需配置 |
-| 工具/任务/审批深度集成 | 旧 Gateway/Node 控制面 | **冻结**，等 Hermes 上游补齐 run 幂等与 approval ID 后作为升级路径，非 v0.1.0 |
+| 聊天/工作对话 | Hermes 自身 API（chat/completions 或等价对话接口，**具体契约以 S0 integration spike 结论为准**） | v0.1.0 主链路 |
+| 语音输入/输出 | VoxHandoff 自研 STT/TTS 适配层（faster-whisper / Piper / GSV 等） | v0.1.0 保留（护城河，不可删） |
+| Direct LLM 纯聊天 | OpenAI-compatible chat API | 延后，可选，非发布门 |
+| 工具/任务/审批深度集成 | 旧 Gateway/Node 控制面 | **冻结**，等 Hermes 上游补齐 run 幂等与 approval ID 后作为升级路径 |
 
-Direct LLM Profile：用户自接的 OpenAI-compatible API 负责纯聊天或陪伴；API key
-只保存在本机 OS 安全存储，与不可变 Profile ID 绑定；默认不上传录音，只有绑定
-目标快照的已确认文本才发送。该来源没有 Agent host、tool event、approval 或
-跨设备 command 语义。
-
-Hermes 对话：通过 Hermes 自身的对话/API 能力接入；不重新建立独立的
-Gateway/PostgreSQL/Connector 控制面（旧实现已归档冻结）。Hermes 工具审批等
-深度语义按 Hermes 上游能力现状处理，v0.1.0 不承诺手机端审批面板。
+Hermes 对话：通过 Hermes 自身能力接入；不重新建立独立 Gateway/PostgreSQL/
+Connector 控制面（旧实现已归档冻结）。Hermes 工具审批等深度语义按 Hermes
+上游能力现状处理，v0.1.0 不承诺手机端审批面板；手机端遇到需要审批的工作时
+明确提示"需在 Hermes 端处理"。
 
 ### 2.3 部署形态
 
@@ -106,42 +116,85 @@ Gateway/PostgreSQL/Connector 控制面（旧实现已归档冻结）。Hermes �
 
 ### 3.4 长期记忆与上下文
 
-- 每 conversation 独立历史与单调 `contextSnapshotRevision`；任何改变下一请求
-  payload 的事实都递增 revision 并撤销旧确认；
+**记忆权威单一化**：Hermes 是长期人格与工作记忆的权威（Hermes 自身
+profile/session/memory 是唯一长期状态）；VoxHandoff 本地只保留客户端状态：
+UI 偏好、SignalCore 视觉、声音、转写缓存、隐私偏好与设备级安全凭据。避免
+"手机认识的我"与"Hermes 认识的我"不一致。
+
+- 若 Hermes 主接口支持会话/记忆语义（以 S0 spike 结论为准），VoxHandoff
+  直接使用 Hermes 的记忆与上下文，不在本地复制长期人格/记忆权威；
+- 若 v0.1.0 的 Hermes 接口只支持无状态对话，VoxHandoff 可在本地暂存
+  conversation 历史用于 UI 展示与重连，但必须标记为"本地展示缓存"而非
+  长期记忆权威；未来 Hermes 接口能力到位后迁移到 Hermes 权威；
+- 需要"仅手机知道的私人记忆"时，必须单独定义作用域（scope），不能与
+  Hermes 权威记忆混用；
+- 每 conversation 独立历史与单调 `contextSnapshotRevision`；任何改变下一
+  请求 payload 的事实都递增 revision 并撤销旧确认；
 - 最小上下文组合：助手系统提示 → 显式允许的固定记忆 → 滚动摘要 → 预算内
-  最近完整轮次；
+  最近完整轮次（若由本地组装；Hermes 会话语义可用时以 Hermes 为准）；
 - 部分/取消/失败/不完整回复不进后续可信上下文；
-- 记忆默认保存在当前设备；未来同步前须单独定义加密、授权、删除与可见范围。
+- 记忆数据的加密、授权、删除与可见范围在引入同步前单独定义。
 
 ## 4. 核心用户流程
 
 ### 4.1 首次配置
 
-1. 创建/恢复 Assistant Profile（名称、人格、语言、记忆、SignalCore）；
-2. 配置 Direct LLM Provider Profile（可选）与 Hermes 对话接口（可选）；
+1. 创建/恢复 Assistant Profile（名称、人格、语言、SignalCore）；
+2. 配置 Hermes 对话接口（主链路，含认证与目标）；Direct LLM Provider
+   Profile 保留为后续可选；
 3. 配置 STT/TTS Profile，分别测试录音、识别、聊天、播放；
-4. 选择默认聊天后端、会话、麦克风、声音、语速、播报策略。
+4. 选择默认交互模式（Call/Command）、会话、麦克风、声音、语速、播报策略。
 
 错误必须指出失败环节，不使用无法行动的"请求失败"。
 
-### 4.2 发起请求
+### 4.2 交互模式：Call Mode 与 Command Mode
+
+v0.1.0 定义两种显式交互模式，产品体验目标是把日常对话做得像打电话而不是
+"语音输入聊天框"：
+
+| 模式 | 定位 | 流程 | TTS | 确认 |
+| --- | --- | --- | --- | --- |
+| **Call Mode**（默认，陪伴/闲聊） | 连续、低摩擦的语音交流 | 录音结束即发送（跳过手动确认；用户可在发送前瞬间取消） | 稳定句子到达即可开始播报（streaming TTS），用户开口立即 barge-in | 轻量：发送前显示一句话回显，可 1 键取消 |
+| **Command Mode**（工作/指令） | 需要精确目标与安全确认的指令 | 录音 → final transcript → 可编辑 → **显式确认** → 发送 | 完成后播报或手动播报 | 完整：确认快照绑定目标，目标变化重新确认 |
+
+- 两个模式共享同一录音、STT、记忆、人格与 SignalCore 视觉；差异只在
+  "发送是否需要显式确认"与"TTS 是否流式"。
+- 用户可在设置或会话中切换默认模式；工作型指令（含审批、发布、删除、
+  付款、授权、sudo 等）即使处于 Call Mode 也必须回退到 Command 级确认。
+- v0.1.0 的 STT 链路固定为"录音停止 → 远程 STT → final transcript"
+  （已真机打通）；真正的流式 STT 临时字幕作为 Call Mode 的升级项，不在
+  v0.1.0 发布门内。
+- Call Mode 的 streaming TTS 与 barge-in 由 VoxHandoff 自研适配层实现；
+  若无法在 v0.1.0 达到稳定语句级流式播放，允许先退化为"分句完成后播报"，
+  但必须支持"用户开口打断 TTS"。
+
+### 4.3 发起请求（Call Mode）
+
+1. 按住说话或点击录音；
+2. 显示麦克风占用与音量；用户开口时若 TTS 正在播放则立即 barge-in；
+3. 停止录音后 STT 生成 final transcript，显示一句话回显（可瞬间取消）；
+4. 发送到 Hermes 对话接口；
+5. 流式更新回复；稳定句子到达即可开始 TTS 播报（或分句完成播报）；
+6. 回复按明确终态持久化；完整回复始终可文字阅读；
+7. 用户开口立即打断 TTS；显式动作才中断 Hermes 工作。
+
+### 4.4 发起请求（Command Mode）
 
 1. 按住说话或点击录音；
 2. 显示麦克风占用与音量；
-3. 流式 STT 显示临时字幕；
-4. 结束录音后生成 final transcript；
-5. 用户修改、取消或确认；确认生成不可变文本 revision 与目标快照；
-6. 显示当前助手、backend、conversation/Profile；
-7. 发送到 Direct LLM / Hermes 对话接口；
-8. 流式更新回复；
-9. 回复按明确终态持久化；只有 `completed` 可触发完成式 TTS；
-10. 可停止播报，可继续文字阅读。
+3. 结束录音后生成 final transcript；
+4. 用户修改、取消或**显式确认**；确认生成不可变文本 revision 与目标快照；
+5. 显示当前助手、backend、conversation/Profile；
+6. 发送到 Hermes 对话接口；
+7. 流式更新回复；
+8. 回复按明确终态持久化；只有 `completed` 可触发完成式 TTS；
+9. 可停止播报，可继续文字阅读。
 
 确认快照至少绑定：normalized `confirmedText`、draft ID/revision、text hash、
 `assistantId`、`assistantRevision`、conversation 的 context revision/hash、
-ChatSource、`conversationId` 与 backend target revision；Direct LLM 额外绑定
-`providerProfileId`、credential/configuration revision、origin 与 model。
-任一权威值变化使确认失效并回到可编辑草稿。
+ChatSource、`conversationId` 与 backend target revision；Hermes 主链路额外
+绑定 Hermes endpoint 的会话标识与凭据引用。任一权威值变化使确认失效并回到
+可编辑草稿。
 
 发送前目标离线时保留为草稿，恢复后必须再次确认，不自动排队。
 
@@ -175,17 +228,21 @@ ChatSource、`conversationId` 与 backend target revision；Direct LLM 额外绑
   保留策略，并取得显式同意；origin/TLS/保留变化须重新确认；
 - 没有 STT 时仍可文字输入使用全部功能。
 
-### 5.2 Direct LLM conversation 与消息终态
+### 5.2 Hermes 对话主链路与消息终态
 
-- 一 Profile 多 conversation；历史按 conversationId 隔离；
-- 每轮只发送预算器选中的上下文，不无界发送全部历史；
-- 流式 delta 实时显示，数据库合并写入；每条 message 最多每 250 ms 刷盘，
-  terminal 到达立即写终态；
+- v0.1.0 主对话链路是 Hermes 对话接口（chat/completions 或等价，契约以
+  S0 spike 结论为准）；Direct LLM Provider 保留代码与设计，延后为可选能力；
+- Hermes 对话若支持会话/流式/中断语义（spike 确认后），直接使用并透传
+  真实事件；不把无状态 chat 冒充 Agent 工具/审批/执行事实；
+- 每轮请求有稳定 `requestId`/`commandId`；流式 delta 实时显示，数据库合并
+  写入；terminal 到达立即写终态；
 - 请求与响应有硬字节上限、deadline、取消；非 2xx 有界读取；
-- 切换 Profile/conversation 前先显式取消当前请求并写 `cancelled`；
+- 切换 Profile/conversation/后端前先显式取消当前请求并写 `cancelled`；
 - 终态互斥：`streaming` / `completed` / `cancelled` / `failed` /
   `incomplete` / `truncated`；只有 `completed` 触发完成式 TTS、摘要与默认
   后续上下文。
+- Direct LLM（延后可选）沿用同一终态模型与 bounded I/O 约束；连接测试
+  使用独立 transport，不取消/复用活动聊天 request。
 
 ### 5.3 完整回复与语音回复
 
@@ -207,8 +264,8 @@ ChatSource、`conversationId` 与 backend target revision；Direct LLM 额外绑
 
 ### 5.5 设置与诊断
 
-- Direct LLM / Hermes 对话 / STT / TTS 独立连接测试；
-- 助手人格/记忆/backend/麦克风/语言/音色/语速/播报/动态效果设置；
+- Hermes 对话 / STT / TTS 独立连接测试（Direct LLM 保留测试入口，延后可选）；
+- 助手人格/backend/麦克风/语言/音色/语速/播报/交互模式/动态效果设置；
 - OS 安全存储保存密钥，普通库只保存引用；
 - 诊断导出前预览，认证头/令牌/密钥/敏感 payload 脱敏；
 - 显示组件版本、当前连接、最近失败阶段；
@@ -220,8 +277,8 @@ ChatSource、`conversationId` 与 backend target revision；Direct LLM 额外绑
 | --- | --- | --- |
 | 原始录音/临时音频 | 录制设备私有临时区 | final/cancel 后立即删除；失败残留 ≤24h |
 | 原始 transcript | 录制设备本地库 | 7 天，可立即删除或关闭 |
-| Direct LLM 对话与终态 | 配置该 Provider 的设备本地库 | 保留至用户按 conversation/Profile 删除 |
-| 固定记忆与滚动摘要 | 当前设备本地库 | 保留至用户编辑/删除 |
+| Hermes 对话与终态 | Hermes 权威（spike 确认后）；本地仅展示缓存 | 以 Hermes 策略为准；本地缓存随 conversation 删除 |
+| 客户端状态（UI/视觉/声音/隐私偏好） | 当前设备本地库 | 保留至用户编辑/删除 |
 | TTS 缓存 | 播放设备本地缓存 | 应用退出或 24h |
 | 无正文诊断与阶段指标 | 本地诊断库 | 7 天 |
 
@@ -243,20 +300,31 @@ ChatSource、`conversationId` 与 backend target revision；Direct LLM 额外绑
 
 ### 7.1 延迟预算
 
+**hard gate（客户端自身可控，v0.1.0 发布门）**：
+
 | 阶段 | 目标 |
 | --- | --- |
-| 结束说话 → final transcript | P50 ≤ 1.0 s，P95 ≤ 2.5 s |
-| 已确认文本 → 本地接口 accepted | ≤ 100 ms |
-| 远程 API → 首 token | P50 ≤ 1.0 s（正常网络） |
-| 稳定首句 → 热 TTS 首段 | P50 ≤ 1.0 s，P95 ≤ 2.5 s |
+| 录音启动 → 开始采集 | ≤ 300 ms |
+| 停止录音 → 上传发起 | ≤ 300 ms |
 | 用户操作 → TTS 停止 | ≤ 300 ms |
+| 本地 UI 事件 → 渲染 | ≤ 100 ms |
 
-指标不含 Agent 思考与工具运行；无法达成记录实测，不隐藏等待。
+**observed（依赖远程 provider/网络，作为观测指标记录，不设客户端硬门）**：
+
+| 阶段 | 观测目标（正常网络） |
+| --- | --- |
+| 结束说话 → final transcript（远程 STT） | P50 ≤ 1.0 s，P95 ≤ 2.5 s |
+| 已确认文本 → 远程接口首响应 | P50 ≤ 1.0 s |
+| 稳定首句 → 热 TTS 首段 | P50 ≤ 1.0 s，P95 ≤ 2.5 s |
+
+客户端可控的延迟是 hard gate；远程 STT/LLM/TTS 延迟记录为不同 provider 与
+network profile 的观测指标，不作为客户端硬发布门。指标不含 Agent 思考与
+工具运行；无法达成记录实测，不隐藏等待。
 
 ### 7.2 稳定性
 
 - 50 次端到端循环客户端自身成功率 ≥ 95%；
-- Direct LLM 连续 10 轮不串线；
+- Hermes 对话连续 10 轮不串线（spike 确认接口语义后验收）；
 - 单个外部服务崩溃/超时不导致 app 退出；
 - 重启不自动执行未完成请求；
 - 任一语音环节失败仍能查看完整回复；

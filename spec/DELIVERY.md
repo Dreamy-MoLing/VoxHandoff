@@ -1,24 +1,32 @@
-# VoxHandoff 开发与交付规范（v2：移动端人格化交互层）
+# VoxHandoff 开发与交付规范（v2.1：Hermes 人格化语音移动伴侣）
 
-> 基线日期：2026-08-16。本文件是 v2 重新定位后的交付基线；旧版
-> "完整 Agent 控制面"的 DELIVERY 与验收证据归档至
+> 基线日期：2026-08-16（v2.1 修订）。本文件是 v2.1 重新定位后的交付基线；
+> 旧版"完整 Agent 控制面"的 DELIVERY 与验收证据归档至
 > `spec/archive/2026-08-16-full-agent/DELIVERY.md`。
 
-## 0. v2 执行顺序（Android-first）
+## 0. v2.1 执行顺序（Android-first 语音移动伴侣）
 
-1. 基线收口：确认现有资产（SignalCore 视觉、四态交互、录音桥、STT HTTPS
-   adapter、Direct LLM、记忆/确认状态机）在当前 main 可构建、可测试；
-   冻结模块（gateway/node）从产品主链路中移除。
-2. 对话主链路：Direct LLM Provider Profile 真机闭环（配置 → 测试 → 聊天 →
-   消息终态 → 重启恢复）。
-3. 语音输入：前台录音 → 远程 STT → 可编辑草稿 → 确认（已打通，纳入验收）。
-4. TTS/降级：接入一个明确 TTS provider，验证文字结果独立于播放失败。
-5. 实体 Android 验收：安装、权限、重启、断网、重连、连续交互、日志脱敏、
-   发布构建与 release signing。
+0. **M0：authority cutover**（无争议，先行）——提交 v2.1 四份 spec；重写根
+   `AGENTS.md`、根 `README.md`；修改 workspace/build/test 使旧
+   Gateway/Node 退出默认开发路径；确认 `npm run check/test` 与
+   `flutter:check` 在新的默认路径上全绿。
+1. **S0：Hermes integration spike**（关键前置，决定 v0.1.0 主链路契约）——
+   研究 Hermes 0.20.1（2026.8.13）API server 实际暴露的对话接口
+   （chat/completions / responses / runs 等）、会话语义、流式/中断、认证方式
+   与语音能力暴露程度；输出"v0.1.0 Hermes 主链路契约"结论，更新 PRODUCT/
+   ARCHITECTURE 中"以 S0 spike 结论为准"的占位。
+2. **M1：Hermes 对话主链路**——按 S0 契约实现/接通 Hermes 对话 adapter；
+   配置 → 连接测试 → 文本聊天 → 消息终态 → 重启恢复 真机闭环。
+3. **M2：语音输入**——复用已打通资产（录音 → 远程 STT → 中文草稿 →
+   确认），纳入 Call/Command 双模式验收。
+4. **M3：TTS/降级与 Call Mode**——明确 TTS provider，Call Mode 稳定句播报
+   与打断（barge-in），文字结果独立于播放失败。
+5. **M4：实体 Android 验收**——安装、权限、重启、断网、重连、连续交互、
+   日志脱敏、发布构建与 release signing。
 
 每个阶段都必须有可复现检查和独立结果；失败、阻塞和未验证不能写成完成。
 
-## 1. 当前资产（v2 复用）
+## 1. 当前资产（v2.1 复用）
 
 - 移动端 SignalCore 视觉基线（待机/文字/录音/连接四态 + 设置页）已冻结，
   桌面 golden 保持零变化；
@@ -26,28 +34,36 @@
 - 远程 STT HTTPS adapter（`services/stt`，/v1 契约，faster-whisper base）；
 - 远程 STT CA 独立存储（`SecureRemoteSttTrustedRootCertificateStore`），
   未配对设备可导入；
-- Direct LLM（OpenAI-compatible chat）与消息终态、记忆/摘要、确认快照；
+- 消息终态、确认快照、客户端状态机；
 - 真实录音→STT→中文草稿→确认 已在 vivo V2359A 打通（`POST /v1/transcribe
   200`）。
+- 旧 Gateway/Node/PostgreSQL 实现已归档冻结，作为未来升级路径。
 
-## 2. 里程碑（v2）
+## 2. 里程碑（v2.1）
 
 | 里程碑 | 内容 | 门 |
 | --- | --- | --- |
-| M1 基线收口 | 冻结模块移除、构建/测试门全绿、文档基线更新 | `flutter:check`、`npm run check/test` |
-| M2 对话主链路 | Direct LLM 真机闭环 | 配置→测试→聊天→终态→重启恢复 |
-| M3 语音输入 | 录音→STT→草稿→确认（复用已打通资产） | 真机 readiness + 真实录音 200 |
-| M4 TTS/降级 | 明确 TTS provider + 播放/停止/降级 | 播放成功、TTS 失败不阻塞文字 |
-| M5 实体验收 | 权限/重启/断网/重连/连续交互/脱敏/签名 | 发布构建 + 真机矩阵 |
+| M0 authority cutover | v2.1 spec 提交、AGENTS.md/README 重写、旧模块退出默认路径 | `flutter:check`、`npm run check/test` 新路径全绿 |
+| S0 integration spike | Hermes 0.20.1 API 能力审计，确定 v0.1.0 主链路契约 | 输出契约结论并回写 spec |
+| M1 Hermes 对话主链路 | 按 S0 契约接通 Hermes 对话；文本真机闭环 | 配置→测试→聊天→终态→重启恢复 |
+| M2 语音输入 | 录音→STT→草稿→确认（复用已打通资产） | 真机 readiness + 真实录音 200 |
+| M3 TTS/降级与 Call Mode | 明确 TTS provider、稳定句播报、barge-in | 播放成功、打断生效、TTS 失败不阻塞文字 |
+| M4 实体验收 | 权限/重启/断网/重连/连续交互/脱敏/签名 | 发布构建 + 真机矩阵 |
 | H1（冻结） | Hermes 深度 Agent 集成（旧控制面） | 等 Hermes 上游补齐 run 幂等 + approval ID |
 
-## 3. 开发规则（沿用）
+## 3. 开发规则（沿用 + 调整）
 
 - TypeScript 严格；协议边界避免 any；
 - 每次功能实现/修复完成后立即创建本地提交（conventional commits、中文
   说明），按功能域拆分，不积压跨域改动；收工前 `git status` 干净；
 - 阶段性成功可 push 备份，但不要触发 CI（CI 仅 workflow_dispatch）；
-- 跨域功能按 stacked PR 分层交付（数据→API→接线→UI，每层一个分支/PR）；
+- **分层策略调整**：单人项目一个 milestone 一个 branch，内部按逻辑提交；
+  只有数据库 migration、协议契约、安全边界、大型跨层改造才强制 stacked PR
+  （数据→API→接线→UI）。日常小改动不再强制拆多分支。
+- **任务粒度**：Hermes 读取 spec 决定当前 milestone；Codex 每次只拿一个
+  明确任务包（目标/非目标/允许改动区域/验收命令/必须提交的证据）；一个
+  milestone 结束后重新开 Codex 上下文，由 Hermes 独立检查 diff/test；
+  产品规格修改单独做 decision，不由实现中的 Codex 顺手改 spec；
 - spec/ 是唯一权威基线；docs/ 不引用。
 
 ## 4. 测试矩阵
@@ -66,15 +82,18 @@
 
 - 所有非协商安全测试通过；
 - 无已知 Critical/High 可利用漏洞；
-- 50 次端到端成功率 ≥ 95%；Direct LLM 连续 10 轮不串线；
+- 50 次端到端成功率 ≥ 95%；Hermes 对话连续 10 轮不串线；
 - 安装、升级、卸载不删除未明确选择删除的数据；
-- release signing 完成；debug signing 不作为发布证据。
+- release signing 完成；debug signing 不作为发布证据；
+- hard gate 延迟达标（见 PRODUCT.md 7.1），observed 指标记录不设硬门。
 
 ## 5. 明确不在 v0.1.0
 
 - Gateway/Node/PostgreSQL 控制面（冻结）；
 - Hermes 审批面板深度集成；
-- 后台监听/唤醒词/全双工；
+- 后台监听/唤醒词/全双工（唤醒词属 Hermes 内建，不在 VoxHandoff 范围）；
+- 流式 STT 临时字幕（Call Mode 升级项）；
+- Direct LLM 作为主链路（延后可选）；
 - iOS/macOS/Windows 客户端（后续里程碑）；
 - 附件上传（未定义规格前不承诺）。
 
