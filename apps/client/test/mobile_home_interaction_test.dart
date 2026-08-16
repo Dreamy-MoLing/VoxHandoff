@@ -1,7 +1,10 @@
 import 'package:agent_talk_client/app/agent_talk_app.dart';
+import 'package:agent_talk_client/application/chat_source_controller.dart';
 import 'package:agent_talk_client/application/client_session_controller.dart';
+import 'package:agent_talk_client/application/hermes_conversation_controller.dart';
 import 'package:agent_talk_client/application/voice_session_controller.dart';
 import 'package:agent_talk_client/domain/client_session.dart';
+import 'package:agent_talk_client/domain/hermes_conversation.dart';
 import 'package:agent_talk_client/domain/voice.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -62,6 +65,24 @@ class _FakeClientSessionController extends ClientSessionController {
       ClientSessionState(connectionPhase: initialPhase);
 }
 
+class _FakeChatSourceController extends ChatSourceController {
+  _FakeChatSourceController(this.initialSource);
+
+  final ChatSource initialSource;
+
+  @override
+  ChatSource build() => initialSource;
+}
+
+class _FakeHermesConversationController extends HermesConversationController {
+  _FakeHermesConversationController(this.initialState);
+
+  final HermesConversationState initialState;
+
+  @override
+  HermesConversationState build() => initialState;
+}
+
 class _MobileHarness {
   const _MobileHarness({required this.voice, required this.session});
 
@@ -72,6 +93,8 @@ class _MobileHarness {
 Future<_MobileHarness> _pumpPhone(
   WidgetTester tester, {
   GatewayConnectionPhase connectionPhase = GatewayConnectionPhase.unpaired,
+  ChatSource source = ChatSource.hermes,
+  HermesConversationState? hermesConversation,
   bool reducedMotion = false,
 }) async {
   tester.view.physicalSize = _phoneSize;
@@ -93,6 +116,13 @@ Future<_MobileHarness> _pumpPhone(
       overrides: [
         voiceSessionProvider.overrideWith(() => voice),
         clientSessionProvider.overrideWith(() => session),
+        chatSourceProvider.overrideWith(
+          () => _FakeChatSourceController(source),
+        ),
+        if (hermesConversation != null)
+          hermesConversationProvider.overrideWith(
+            () => _FakeHermesConversationController(hermesConversation),
+          ),
       ],
       child: const AgentTalkApp(),
     ),
@@ -275,6 +305,46 @@ void main() {
     expect(find.text('未配对'), findsOneWidget);
   });
 
+  testWidgets('Hermes conversation shows its unconfigured status', (
+    tester,
+  ) async {
+    await _pumpPhone(
+      tester,
+      source: ChatSource.hermesConversation,
+      hermesConversation: _hermesState(HermesConversationPhase.unconfigured),
+    );
+    await _enterTextMode(tester);
+
+    expect(find.text('未配置'), findsOneWidget);
+    expect(find.text('未配对'), findsNothing);
+  });
+
+  testWidgets('Hermes conversation shows its failure status', (tester) async {
+    await _pumpPhone(
+      tester,
+      source: ChatSource.hermesConversation,
+      hermesConversation: _hermesState(HermesConversationPhase.failed),
+    );
+    await _enterTextMode(tester);
+
+    expect(find.text('连接失败'), findsOneWidget);
+    expect(find.text('未配对'), findsNothing);
+  });
+
+  testWidgets('Hermes ready status uses the connected indicator', (
+    tester,
+  ) async {
+    await _pumpPhone(
+      tester,
+      source: ChatSource.hermesConversation,
+      hermesConversation: _hermesState(HermesConversationPhase.ready),
+    );
+    await _enterTextMode(tester);
+
+    expect(find.byTooltip('连接状态：已连接'), findsOneWidget);
+    expect(find.text('未配对'), findsNothing);
+  });
+
   testWidgets('connected capsule disappears after three seconds', (
     tester,
   ) async {
@@ -314,3 +384,17 @@ void main() {
     expect(tester.getBottomRight(find.byKey(_coreKey)).dy, greaterThan(844));
   });
 }
+
+HermesConversationState _hermesState(HermesConversationPhase phase) =>
+    HermesConversationState(
+      phase: phase,
+      configuration: HermesConversationConfiguration(
+        providerProfileId: 'hermes-provider-1',
+        origin: Uri.parse('https://hermes.example.test'),
+        model: 'hermes-model',
+        conversationId: 'hermes-conversation-1',
+        sessionId: 'hermes-session-1',
+        sessionKey: 'hermes-session-key',
+      ),
+      credentialAvailable: true,
+    );

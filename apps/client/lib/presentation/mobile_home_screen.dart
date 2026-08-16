@@ -27,6 +27,40 @@ import 'mobile_visual_preferences.dart';
 import 'mobile_visual_settings_sheet.dart';
 import 'signal_core_view.dart';
 
+enum _MobileConnectionStatus {
+  gatewayUnpaired,
+  hermesUnconfigured,
+  connecting,
+  connected,
+  reconnecting,
+  offline,
+  failed,
+}
+
+_MobileConnectionStatus _mobileGatewayStatus(
+  GatewayConnectionPhase phase,
+) => switch (phase) {
+  GatewayConnectionPhase.unpaired => _MobileConnectionStatus.gatewayUnpaired,
+  GatewayConnectionPhase.connecting => _MobileConnectionStatus.connecting,
+  GatewayConnectionPhase.connected => _MobileConnectionStatus.connected,
+  GatewayConnectionPhase.reconnecting => _MobileConnectionStatus.reconnecting,
+  GatewayConnectionPhase.offline => _MobileConnectionStatus.offline,
+  GatewayConnectionPhase.failed => _MobileConnectionStatus.failed,
+};
+
+_MobileConnectionStatus _mobileHermesStatus(HermesConversationPhase phase) =>
+    switch (phase) {
+      HermesConversationPhase.unconfigured =>
+        _MobileConnectionStatus.hermesUnconfigured,
+      HermesConversationPhase.restoring ||
+      HermesConversationPhase.bootstrapping ||
+      HermesConversationPhase.testing => _MobileConnectionStatus.connecting,
+      HermesConversationPhase.ready ||
+      HermesConversationPhase.sending ||
+      HermesConversationPhase.cancelled => _MobileConnectionStatus.connected,
+      HermesConversationPhase.failed => _MobileConnectionStatus.failed,
+    };
+
 class MobileHomeScreen extends ConsumerStatefulWidget {
   const MobileHomeScreen({
     required this.preferences,
@@ -112,6 +146,7 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
     final speech = ref.watch(speechPlaybackProvider);
     final speechEnabled = ref.watch(speechEnabledProvider);
     final workspaceController = ref.read(gatewayWorkspaceProvider.notifier);
+    final isHermesConversation = source == ChatSource.hermesConversation;
     final ownsLease = workspace.ownsSelectedLease(
       workspaceController.deviceId,
       DateTime.now(),
@@ -121,6 +156,7 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
       session: session,
       voice: voice,
       speech: speech,
+      hermesConversation: isHermesConversation ? hermesConversation : null,
     );
     final voiceFocused =
         voice.phase == VoiceInputPhase.requestingPermission ||
@@ -164,20 +200,29 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
                 children: [
                   _MobileTopBar(
                     visible: showText,
-                    phase: session.connectionPhase,
-                    message: workspace.safeErrorMessage,
-                    onConnection: switch (session.connectionPhase) {
-                      GatewayConnectionPhase.unpaired => widget.onOpenPairing,
-                      GatewayConnectionPhase.connected => () => unawaited(
-                        widget.onDisconnect(),
-                      ),
-                      GatewayConnectionPhase.connecting ||
-                      GatewayConnectionPhase.reconnecting => null,
-                      GatewayConnectionPhase.offline ||
-                      GatewayConnectionPhase.failed => () => unawaited(
-                        widget.onConnect(),
-                      ),
-                    },
+                    status: isHermesConversation
+                        ? _mobileHermesStatus(hermesConversation.phase)
+                        : _mobileGatewayStatus(session.connectionPhase),
+                    message: isHermesConversation
+                        ? null
+                        : workspace.safeErrorMessage,
+                    onConnection: isHermesConversation
+                        ? () => unawaited(
+                            widget.onOpenHermesConversationSettings(context),
+                          )
+                        : switch (session.connectionPhase) {
+                            GatewayConnectionPhase.unpaired =>
+                              widget.onOpenPairing,
+                            GatewayConnectionPhase.connected => () => unawaited(
+                              widget.onDisconnect(),
+                            ),
+                            GatewayConnectionPhase.connecting ||
+                            GatewayConnectionPhase.reconnecting => null,
+                            GatewayConnectionPhase.offline ||
+                            GatewayConnectionPhase.failed => () => unawaited(
+                              widget.onConnect(),
+                            ),
+                          },
                     onSettings: () => showMobileVisualSettingsSheet(
                       context,
                       preferences: widget.preferences,
@@ -253,14 +298,14 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
 class _MobileTopBar extends StatelessWidget {
   const _MobileTopBar({
     required this.visible,
-    required this.phase,
+    required this.status,
     required this.message,
     required this.onConnection,
     required this.onSettings,
   });
 
   final bool visible;
-  final GatewayConnectionPhase phase;
+  final _MobileConnectionStatus status;
   final String? message;
   final VoidCallback? onConnection;
   final VoidCallback onSettings;
@@ -275,7 +320,7 @@ class _MobileTopBar extends StatelessWidget {
         child: Row(
           children: [
             _MobileConnectionIndicator(
-              phase: phase,
+              status: status,
               message: message,
               onPressed: onConnection,
             ),
@@ -302,12 +347,12 @@ class _MobileTopBar extends StatelessWidget {
 
 class _MobileConnectionIndicator extends StatefulWidget {
   const _MobileConnectionIndicator({
-    required this.phase,
+    required this.status,
     required this.message,
     required this.onPressed,
   });
 
-  final GatewayConnectionPhase phase;
+  final _MobileConnectionStatus status;
   final String? message;
   final VoidCallback? onPressed;
 
@@ -324,11 +369,11 @@ class _MobileConnectionIndicatorState
   @override
   void didUpdateWidget(covariant _MobileConnectionIndicator oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.phase != widget.phase) {
+    if (oldWidget.status != widget.status) {
       _connectedMessageTimer?.cancel();
       _connectedMessageTimer = null;
-      if (widget.phase == GatewayConnectionPhase.connected &&
-          oldWidget.phase != GatewayConnectionPhase.connected) {
+      if (widget.status == _MobileConnectionStatus.connected &&
+          oldWidget.status != _MobileConnectionStatus.connected) {
         _showConnectedMessage = true;
         _connectedMessageTimer = Timer(const Duration(seconds: 3), () {
           if (!mounted) return;
@@ -350,17 +395,18 @@ class _MobileConnectionIndicatorState
   @override
   Widget build(BuildContext context) {
     final tokens = context.visualTokens;
-    final connected = widget.phase == GatewayConnectionPhase.connected;
+    final connected = widget.status == _MobileConnectionStatus.connected;
     final connecting =
-        widget.phase == GatewayConnectionPhase.connecting ||
-        widget.phase == GatewayConnectionPhase.reconnecting;
-    final label = switch (widget.phase) {
-      GatewayConnectionPhase.unpaired => '未配对',
-      GatewayConnectionPhase.connecting => '连接中',
-      GatewayConnectionPhase.connected => '已连接',
-      GatewayConnectionPhase.reconnecting => '重连中',
-      GatewayConnectionPhase.offline => '未连接',
-      GatewayConnectionPhase.failed => '连接失败',
+        widget.status == _MobileConnectionStatus.connecting ||
+        widget.status == _MobileConnectionStatus.reconnecting;
+    final label = switch (widget.status) {
+      _MobileConnectionStatus.gatewayUnpaired => '未配对',
+      _MobileConnectionStatus.hermesUnconfigured => '未配置',
+      _MobileConnectionStatus.connecting => '连接中',
+      _MobileConnectionStatus.connected => '已连接',
+      _MobileConnectionStatus.reconnecting => '重连中',
+      _MobileConnectionStatus.offline => '未连接',
+      _MobileConnectionStatus.failed => '连接失败',
     };
     final color = connected
         ? const Color(0xFF55E58C)
