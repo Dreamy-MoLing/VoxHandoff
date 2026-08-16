@@ -49,7 +49,7 @@ The root `docs/` directory contains absorbed pre-development research. It is ign
 - Use opaque IDs. Do not derive security decisions from display labels.
 - 每次功能实现/修复完成后立即创建本地提交（conventional commits），按功能域拆分、不积压跨域改动；收工前 `git status` 必须干净（仅剩被 ignore 项）。
 - 提交说明统一使用**中文**（subject + body），格式沿用 conventional commits（`fix: `、`feat: `、`docs: ` 等前缀）。阶段性成功可 push 到云端备份，但**不要触发 CI**：产品完备前 CI 仅保留 `workflow_dispatch` 手动触发。
-- **分层交付（stacked PR）**：跨域功能（如数据+API+UI 同时改动）必须按依赖链拆层提交：数据层 → API 层 → 接线层 → UI 层，每层一个分支、一个提交组、一个 PR，上层基于下层分支；禁止把整个功能塞进一个巨型 PR。详见 `spec/DELIVERY.md` 第 12 节。
+- **分支策略（对齐 DELIVERY）**：单人项目一个 milestone 一个分支，内部按逻辑拆分中文提交；仅数据库 migration、协议、安全边界、大型跨层改造才强制 stacked PR（数据层 → API 层 → 接线层 → UI 层）。详见 `spec/DELIVERY.md`。
 
 ## Commands
 

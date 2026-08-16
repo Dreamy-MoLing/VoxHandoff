@@ -217,7 +217,7 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Hermes 使用已配对的 Gateway 工作区。请在工作区中连接或断开；Direct LLM 设置不会改变 Hermes 的权限或提交结果不确定时的恢复流程。',
+                'Hermes 对话是 v0.1.0 的主链路。在下方配置后即可连接；Direct LLM 为延后可选能力，其设置不会改变 Hermes 的权限或提交结果不确定时的恢复流程。',
               ),
               const SizedBox(height: 8),
               OutlinedButton.icon(
