@@ -1,11 +1,14 @@
 import 'dart:typed_data';
 
+import 'interaction_mode.dart';
+
 enum VoiceInputPhase {
   idle,
   requestingPermission,
   recording,
   transcribing,
   awaitingConfirmation,
+  awaitingCallConfirm,
   cancelled,
   failed,
 }
@@ -54,6 +57,7 @@ class VoiceSessionState {
     this.audioLevel = 0,
     this.failure,
     this.storageWarning,
+    this.interactionMode = defaultInteractionMode,
   });
 
   final VoiceInputPhase phase;
@@ -64,6 +68,7 @@ class VoiceSessionState {
   final double audioLevel;
   final VoiceStageFailure? failure;
   final VoiceStageFailure? storageWarning;
+  final InteractionMode interactionMode;
 
   bool get canStart =>
       phase == VoiceInputPhase.idle ||
@@ -78,6 +83,11 @@ class VoiceSessionState {
       phase == VoiceInputPhase.recording ||
       phase == VoiceInputPhase.transcribing;
 
+  /// The lightweight call-mode echo is awaiting a one-key send or cancel.
+  bool get canConfirmCallSend => phase == VoiceInputPhase.awaitingCallConfirm;
+
+  bool get canDiscardCallConfirm => phase == VoiceInputPhase.awaitingCallConfirm;
+
   VoiceSessionState copyWith({
     VoiceInputPhase? phase,
     String? sessionId,
@@ -87,6 +97,7 @@ class VoiceSessionState {
     double? audioLevel,
     VoiceStageFailure? failure,
     VoiceStageFailure? storageWarning,
+    InteractionMode? interactionMode,
     bool clearSession = false,
     bool clearTranscript = false,
     bool clearFailure = false,
@@ -108,6 +119,7 @@ class VoiceSessionState {
     storageWarning: clearStorageWarning
         ? null
         : storageWarning ?? this.storageWarning,
+    interactionMode: interactionMode ?? this.interactionMode,
   );
 }
 

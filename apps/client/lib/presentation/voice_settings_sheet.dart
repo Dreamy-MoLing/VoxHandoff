@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/voice_session_controller.dart';
 import '../application/chat_source_controller.dart';
 import '../application/voice_provider_settings_controller.dart';
+import '../domain/interaction_mode.dart';
 import '../domain/voice_provider_settings.dart';
 import '../domain/voice.dart';
 import '../infrastructure/security/flutter_secure_value_store.dart';
@@ -639,6 +640,37 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                           .read(voiceProviderSettingsProvider.notifier)
                           .testTts()
                     : null,
+              ),
+              const Divider(height: 28),
+              const Text(
+                'Voice interaction mode',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              DropdownButtonFormField<InteractionMode>(
+                key: const Key('voice-interaction-mode'),
+                initialValue: settings.interactionMode,
+                decoration: const InputDecoration(
+                  labelText: 'Interaction mode',
+                  helperText:
+                      'Call sends after a one-line preview; Command confirms the editable transcript first. Work-type instructions always confirm in Command mode.',
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: InteractionMode.command,
+                    child: Text('Command (confirm first)'),
+                  ),
+                  DropdownMenuItem(
+                    value: InteractionMode.call,
+                    child: Text('Call (preview then send)'),
+                  ),
+                ],
+                onChanged: (mode) {
+                  if (mode == null) return;
+                  ref
+                      .read(voiceProviderSettingsProvider.notifier)
+                      .saveInteractionMode(mode);
+                },
               ),
             ],
           ),

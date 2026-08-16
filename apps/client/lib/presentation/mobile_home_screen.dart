@@ -129,6 +129,7 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
     final showText =
         _textMode ||
         voice.phase == VoiceInputPhase.awaitingConfirmation ||
+        voice.phase == VoiceInputPhase.awaitingCallConfirm ||
         session.draftPhase == DraftPhase.confirmed ||
         snapshot.state == SignalCoreState.approval ||
         snapshot.state == SignalCoreState.uncertain;
@@ -208,6 +209,9 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
                             onDiscardVoice: widget.onDiscardVoice,
                             onOpenHermesConversationSettings:
                                 widget.onOpenHermesConversationSettings,
+                            onConfirmCallSend: () => ref
+                                .read(voiceSessionProvider.notifier)
+                                .confirmCallSend(),
                             onChanged: ref
                                 .read(clientSessionProvider.notifier)
                                 .editDraft,
@@ -531,6 +535,7 @@ class _MobileTextMode extends StatelessWidget {
     required this.onCancelVoice,
     required this.onDiscardVoice,
     required this.onOpenHermesConversationSettings,
+    required this.onConfirmCallSend,
     required this.onChanged,
   });
 
@@ -555,6 +560,7 @@ class _MobileTextMode extends StatelessWidget {
   final Future<void> Function() onCancelVoice;
   final Future<void> Function() onDiscardVoice;
   final Future<void> Function(BuildContext) onOpenHermesConversationSettings;
+  final Future<void> Function() onConfirmCallSend;
   final ValueChanged<String> onChanged;
 
   @override
@@ -665,6 +671,7 @@ class _MobileTextMode extends StatelessWidget {
               onStopVoice: onStopVoice,
               onCancelVoice: onCancelVoice,
               onDiscardVoice: onDiscardVoice,
+              onConfirmCallSend: onConfirmCallSend,
             ),
           ),
         ],
@@ -689,6 +696,7 @@ class _MobileDraftComposer extends StatelessWidget {
     required this.onStopVoice,
     required this.onCancelVoice,
     required this.onDiscardVoice,
+    required this.onConfirmCallSend,
   });
 
   final TextEditingController textController;
@@ -705,6 +713,7 @@ class _MobileDraftComposer extends StatelessWidget {
   final Future<void> Function() onStopVoice;
   final Future<void> Function() onCancelVoice;
   final Future<void> Function() onDiscardVoice;
+  final Future<void> Function() onConfirmCallSend;
 
   @override
   Widget build(BuildContext context) {
@@ -717,6 +726,7 @@ class _MobileDraftComposer extends StatelessWidget {
         (requiresGatewayConnection ? session.canSubmit : true) &&
         sendEnabled;
     final actions = <Widget>[];
+    var callPreview = false;
     if (voice.phase == VoiceInputPhase.recording) {
       actions.add(
         _MobileActionButton(
@@ -739,6 +749,23 @@ class _MobileDraftComposer extends StatelessWidget {
           label: '取消语音输入',
           icon: Icons.close,
           onPressed: () => unawaited(onCancelVoice()),
+        ),
+      );
+    } else if (voice.phase == VoiceInputPhase.awaitingCallConfirm) {
+      callPreview = true;
+      actions.add(
+        _MobileActionButton(
+          label: '发送',
+          icon: Icons.arrow_upward,
+          onPressed: () => unawaited(onConfirmCallSend()),
+          filled: true,
+        ),
+      );
+      actions.add(
+        _MobileActionButton(
+          label: '取消',
+          icon: Icons.close,
+          onPressed: () => unawaited(onDiscardVoice()),
         ),
       );
     } else if (voice.phase == VoiceInputPhase.awaitingConfirmation) {
@@ -767,7 +794,7 @@ class _MobileDraftComposer extends StatelessWidget {
           onPressed: onReopen,
         ),
       );
-    } else if (session.canConfirmDraft) {
+    } else if (!callPreview && session.canConfirmDraft) {
       actions.add(
         _MobileActionButton(
           label: '确认草稿',

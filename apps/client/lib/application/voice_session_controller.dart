@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/client_session.dart';
+import '../domain/interaction_mode.dart';
 import '../domain/voice.dart';
 import 'voice_provider_settings_controller.dart';
 import 'client_session_controller.dart';
@@ -51,6 +52,30 @@ final voiceSessionProvider =
       VoiceSessionController.new,
     );
 
+/// Presentation-owned Call-mode send: the handler binds a confirmation
+/// snapshot for the current draft through the existing ChatSource abstraction
+/// and dispatches the confirmed text. Hermes transport is M1's scope; this
+/// port keeps the voice controller independent from Gateway/Direct details.
+typedef VoiceCallSendHandler = Future<void> Function(String confirmedText);
+
+class VoiceCallSendHandlers extends Notifier<VoiceCallSendHandler?> {
+  @override
+  VoiceCallSendHandler? build() => null;
+
+  void register(VoiceCallSendHandler handler) {
+    state = handler;
+  }
+
+  void clear() {
+    state = null;
+  }
+}
+
+final voiceCallSendHandlerProvider =
+    NotifierProvider<VoiceCallSendHandlers, VoiceCallSendHandler?>(
+      VoiceCallSendHandlers.new,
+    );
+
 class VoiceSessionController extends Notifier<VoiceSessionState> {
   AudioCaptureSession? _capture;
   SttSessionPort? _stt;
@@ -59,15 +84,21 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
   StreamSubscription<TranscriptUpdate>? _transcriptSubscription;
   Future<void> _pushes = Future.value();
   Completer<void>? _audioDone;
+  Timer? _callConfirmTimer;
   int _generation = 0;
   int _lastTranscriptSequence = 0;
   // Diagnostic counters (never audio content).
   int _audioChunkCount = 0;
   int _audioChunkBytes = 0;
 
+  /// Lifetime of the lightweight Call-mode echo before it auto-discards
+  /// without sending. Overridable so tests can exercise the timeout.
+  Duration callConfirmTimeout = const Duration(seconds: 15);
+
   @override
   VoiceSessionState build() {
     ref.onDispose(() {
+      _callConfirmTimer?.cancel();
       _generation += 1;
       unawaited(_cancelPorts());
     });
@@ -106,9 +137,14 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
     final generation = ++_generation;
     _lastTranscriptSequence = 0;
     final sessionId = _newOpaqueId();
+    final interactionMode = ref
+        .read(voiceProviderSettingsProvider)
+        .settings
+        .interactionMode;
     state = state.copyWith(
       phase: VoiceInputPhase.requestingPermission,
       sessionId: sessionId,
+      interactionMode: interactionMode,
       clearTranscript: true,
       clearFailure: true,
       clearStorageWarning: true,
@@ -220,14 +256,29 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
         );
       }
       ref.read(clientSessionProvider.notifier).editDraft(text);
-      state = state.copyWith(
-        phase: VoiceInputPhase.awaitingConfirmation,
-        provisionalTranscript: text,
-        finalTranscript: text,
-        originalTranscript: text,
-        audioLevel: 0,
-        clearFailure: true,
-      );
+      final forcedCommand =
+          state.interactionMode == InteractionMode.call &&
+          containsSensitiveInstruction(text);
+      if (state.interactionMode == InteractionMode.command || forcedCommand) {
+        state = state.copyWith(
+          phase: VoiceInputPhase.awaitingConfirmation,
+          provisionalTranscript: text,
+          finalTranscript: text,
+          originalTranscript: text,
+          audioLevel: 0,
+          clearFailure: true,
+        );
+      } else {
+        state = state.copyWith(
+          phase: VoiceInputPhase.awaitingCallConfirm,
+          provisionalTranscript: text,
+          finalTranscript: text,
+          originalTranscript: text,
+          audioLevel: 0,
+          clearFailure: true,
+        );
+        _startCallConfirmTimeout();
+      }
       await _persistTranscript(
         sessionId: state.sessionId!,
         transcript: transcript,
@@ -259,7 +310,11 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
   }
 
   Future<void> discardTranscript() async {
-    if (state.phase != VoiceInputPhase.awaitingConfirmation) return;
+    if (state.phase != VoiceInputPhase.awaitingConfirmation &&
+        state.phase != VoiceInputPhase.awaitingCallConfirm) {
+      return;
+    }
+    _cancelCallConfirmTimeout();
     final transcriptId = state.sessionId;
     final original = state.finalTranscript;
     final draft = ref.read(clientSessionProvider);
@@ -280,6 +335,85 @@ class VoiceSessionController extends Notifier<VoiceSessionState> {
         );
       }
     }
+    state = state.copyWith(
+      phase: VoiceInputPhase.idle,
+      clearSession: true,
+      clearTranscript: true,
+      clearFailure: true,
+      audioLevel: 0,
+    );
+  }
+
+  void _startCallConfirmTimeout() {
+    _callConfirmTimer?.cancel();
+    _callConfirmTimer = Timer(callConfirmTimeout, () {
+      _callConfirmTimer = null;
+      unawaited(discardTranscript());
+    });
+  }
+
+  void _cancelCallConfirmTimeout() {
+    _callConfirmTimer?.cancel();
+    _callConfirmTimer = null;
+  }
+
+  /// Switches the current voice session's interaction mode. Call mode sends
+  /// after a lightweight echo; Command mode always requires explicit text
+  /// confirmation. The persisted default is seeded at each startRecording.
+  void setInteractionMode(InteractionMode mode) {
+    if (state.interactionMode == mode) return;
+    state = state.copyWith(interactionMode: mode);
+  }
+
+  /// Confirms and sends a Call-mode echo through the registered
+  /// ChatSource-backed handler. Without a handler (M1 not merged) it fails
+  /// safe and keeps the editable transcript for a manual Command confirm.
+  Future<void> confirmCallSend() async {
+    if (state.phase != VoiceInputPhase.awaitingCallConfirm) return;
+    _cancelCallConfirmTimeout();
+    final text = state.finalTranscript?.trim() ?? '';
+    if (text.isEmpty) {
+      _fail(
+        const VoiceStageFailure(
+          stage: VoiceFailureStage.configuration,
+          code: 'call_confirm_missing_transcript',
+          safeMessage: 'No speech was captured for the call preview.',
+          retryable: true,
+        ),
+      );
+      return;
+    }
+    final generation = _generation;
+    final handler = ref.read(voiceCallSendHandlerProvider);
+    if (handler == null) {
+      // TODO(M1): the Hermes send path arrives with the merged M1 adapter.
+      // Until then Call mode cannot auto-send; it fails safe so the editable
+      // transcript remains available for a manual Command-mode confirm.
+      _fail(
+        const VoiceStageFailure(
+          stage: VoiceFailureStage.configuration,
+          code: 'call_send_unavailable',
+          safeMessage:
+              'Call-mode send is not wired yet. Review the transcript and confirm in text mode.',
+          retryable: true,
+        ),
+      );
+      return;
+    }
+    try {
+      await handler(text);
+    } on Object catch (error) {
+      if (generation != _generation) return;
+      _fail(
+        _safeFailure(
+          error,
+          VoiceFailureStage.configuration,
+          'call_send_failed',
+        ),
+      );
+      return;
+    }
+    if (generation != _generation) return;
     state = state.copyWith(
       phase: VoiceInputPhase.idle,
       clearSession: true,

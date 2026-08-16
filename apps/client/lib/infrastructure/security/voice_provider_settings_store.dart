@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../domain/interaction_mode.dart';
 import '../../domain/voice_provider_settings.dart';
 import 'device_key_vault.dart';
 
@@ -46,10 +47,11 @@ class VoiceProviderSettingsStore {
   Future<void> save(VoiceProviderSettings settings) => _store.write(
     _key,
     jsonEncode({
-      'version': 3,
+      'version': 4,
       'assistant_id': settings.assistantId,
       'assistant_revision': settings.assistantRevision,
       if (settings.microphoneId != null) 'microphone_id': settings.microphoneId,
+      'interaction_mode': settings.interactionMode.name,
       'stt': {
         'kind': settings.stt.kind.name,
         'language': settings.stt.language,
@@ -85,7 +87,8 @@ class VoiceProviderSettingsStore {
       if (decoded is! Map<String, Object?> ||
           (decoded['version'] != 1 &&
               decoded['version'] != 2 &&
-              decoded['version'] != 3)) {
+              decoded['version'] != 3 &&
+              decoded['version'] != 4)) {
         return null;
       }
       final stt = _readStt(decoded['stt']);
@@ -107,12 +110,14 @@ class VoiceProviderSettingsStore {
           (assistantRevision is! int || assistantRevision < 1)) {
         return null;
       }
+      final interactionMode = _readInteractionMode(decoded['interaction_mode']);
       return VoiceProviderSettings(
         assistantId: assistantId is String ? assistantId : 'unbound-assistant',
         assistantRevision: assistantRevision is int ? assistantRevision : 1,
         stt: stt,
         tts: tts,
         microphoneId: microphoneId as String?,
+        interactionMode: interactionMode,
       );
     } on Object {
       return null;
@@ -251,4 +256,12 @@ TtsProviderKind? _ttsKind(String value) {
     if (kind.name == value) return kind;
   }
   return null;
+}
+
+InteractionMode _readInteractionMode(Object? value) {
+  if (value is! String) return defaultInteractionMode;
+  for (final mode in InteractionMode.values) {
+    if (mode.name == value) return mode;
+  }
+  return defaultInteractionMode;
 }
