@@ -121,8 +121,10 @@ profile/session/memory 是唯一长期状态）；VoxHandoff 本地只保留客�
 UI 偏好、SignalCore 视觉、声音、转写缓存、隐私偏好与设备级安全凭据。避免
 "手机认识的我"与"Hermes 认识的我"不一致。
 
-- 若 Hermes 主接口支持会话/记忆语义（以 S0 spike 结论为准），VoxHandoff
-  直接使用 Hermes 的记忆与上下文，不在本地复制长期人格/记忆权威；
+- **Hermes 是长期人格/工作记忆权威**（S0 已确认：同一 profile/HERMES_HOME
+  是唯一运行边界；`X-Hermes-Session-Key` 是传给外部 memory provider 的稳定
+  scope key，内置 MEMORY.md/USER.md 仍是 profile-wide authority）；本地只
+  保留客户端状态（UI/视觉/声音/转写缓存/隐私偏好/设备凭据）；
 - 若 v0.1.0 的 Hermes 接口只支持无状态对话，VoxHandoff 可在本地暂存
   conversation 历史用于 UI 展示与重连，但必须标记为"本地展示缓存"而非
   长期记忆权威；未来 Hermes 接口能力到位后迁移到 Hermes 权威；
@@ -230,8 +232,10 @@ ChatSource、`conversationId` 与 backend target revision；Hermes 主链路额�
 
 ### 5.2 Hermes 对话主链路与消息终态
 
-- v0.1.0 主对话链路是 Hermes 对话接口（chat/completions 或等价，契约以
-  S0 spike 结论为准）；Direct LLM Provider 保留代码与设计，延后为可选能力；
+- v0.1.0 主对话链路是 Hermes 对话接口（**S0 定案：`POST /v1/chat/completions`
+  + `X-Hermes-Session-Id`（稳定 transcript id）+ `X-Hermes-Session-Key`
+  （稳定 memory scope），stream:true**；native `/api/sessions/{id}/chat/stream`
+  为备选）；Direct LLM Provider 保留代码与设计，延后为可选能力；
 - Hermes 对话若支持会话/流式/中断语义（spike 确认后），直接使用并透传
   真实事件；不把无状态 chat 冒充 Agent 工具/审批/执行事实；
 - 每轮请求有稳定 `requestId`/`commandId`；流式 delta 实时显示，数据库合并

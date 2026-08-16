@@ -43,7 +43,7 @@ Gateway、本地 PostgreSQL 或 STT sidecar（STT/TTS 由用户同意的远程 p
 | 安全存储 | `flutter_secure_storage` + 平台复核 | 独立 key 存 token/CA/凭据，普通库只存引用 |
 | 视觉 | Flutter widgets/CustomPainter + GLSL fragment shader | Rive 仅辅助微动效；核心视觉有静态回退 |
 | 本地数据库 | Drift | schema 版本化、migration、重启/升级测试 |
-| 聊天协议 | Hermes 对话接口（chat/completions 或等价，**契约以 S0 spike 结论为准**）；Direct LLM 延后可选 | 严格 bounded I/O、终态互斥、不映射 Agent 语义 |
+| 聊天协议 | Hermes 对话接口（**S0 定案：`POST /v1/chat/completions` + `X-Hermes-Session-Id` + `X-Hermes-Session-Key`，stream:true**；native `/api/sessions/{id}/chat/stream` 为备选）；Direct LLM 延后可选 | 严格 bounded I/O、终态互斥、不映射 Agent 语义 |
 | STT | 远程 HTTPS provider（faster-whisper 适配）或本地服务 | 版本化契约、显式 consent、token 独立 secure storage |
 | TTS | provider-neutral port；Piper/GSV 本地或远程 | 预热/分段/取消；失败降级字幕 |
 
@@ -80,10 +80,11 @@ services/node            冻结（归档）——不作为 v0.1.0 实现基线
 - core 保持依赖无关：AssistantProfile、ProviderProfile、conversation、
   request、message 终态、确认快照、SignalCore 状态机；记忆规则只描述
   "客户端展示缓存"与"Hermes 权威"边界，不在本地复制长期记忆权威；
-- adapters 只做协议翻译：Hermes 对话 adapter（主链路）按 Hermes 实际 API
-  协商（chat/completions 或等价，契约以 S0 spike 结论为准），不假设能力
-  存在；Direct LLM adapter（延后可选）沿用 OpenAI-compatible chat 严格
-  bounded、版本化；禁止把聊天流伪造成 Agent 工具/审批/执行事实；
+- adapters 只做协议翻译：Hermes 对话 adapter（主链路）按 **S0 定案契约**
+  实现（Chat Completions streaming + Session-Id/Key，native session stream
+  为备选），不假设能力存在；Direct LLM adapter（延后可选）沿用
+  OpenAI-compatible chat 严格 bounded、版本化；禁止把聊天流伪造成 Agent
+  工具/审批/执行事实；
 - 旧 Hermes adapter/Gateway 翻译代码归档冻结，不进入 v0.1.0 生产路径。
 
 ### 3.3 交互模式组件（Call/Command）
