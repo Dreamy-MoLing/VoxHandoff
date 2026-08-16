@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../domain/sentence_segmenter.dart';
 import '../domain/speech.dart';
 import '../domain/voice.dart';
 import 'voice_provider_settings_controller.dart';
@@ -35,6 +36,19 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
     implements SpeechStopPort {
   int _generation = 0;
   StreamSubscription<double>? _levelSubscription;
+  final SentenceSegmenter _streamingSegmenter = SentenceSegmenter();
+  final List<_StreamingSpeechJob> _streamingQueue = [];
+  Future<void>? _streamingDrainFuture;
+  Future<void>? _streamingReady;
+  int? _streamingGeneration;
+  int _streamingSegmentIndex = 0;
+  bool _streamingTurnActive = false;
+  bool _streamingFinishing = false;
+  String _streamingConversationId = 'streaming';
+  String _streamingRequestId = 'streaming';
+  BigInt _streamingMessageRevision = BigInt.zero;
+  String _streamingText = '';
+  VoiceStageFailure? _streamingFailure;
 
   @override
   SpeechPlaybackState build() {
@@ -42,6 +56,7 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
     final tts = ref.read(ttsPortProvider);
     ref.onDispose(() {
       _generation += 1;
+      _clearStreamingTurn();
       unawaited(_levelSubscription?.cancel());
       unawaited(_disposeResources(playback, tts));
     });
@@ -60,6 +75,114 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
         failure: _safeSpeechFailure(error, VoiceFailureStage.tts),
       );
     }
+  }
+
+  /// Starts a new Call Mode speech turn without taking ownership of chat
+  /// transport or the complete assistant reply.
+  ///
+  /// Identity arguments are optional for callers that already have them. The
+  /// no-argument form remains useful for the coordinator's initial wiring and
+  /// still binds every segment to this controller generation.
+  Future<void> beginStreamingTurn({
+    String? conversationId,
+    String? requestId,
+    BigInt? messageRevision,
+  }) async {
+    if (!ref.read(speechEnabledProvider)) return;
+
+    final generation = ++_generation;
+    _clearStreamingTurn();
+    _streamingGeneration = generation;
+    _streamingSegmentIndex = 0;
+    _streamingTurnActive = true;
+    _streamingConversationId = conversationId ?? 'streaming';
+    _streamingRequestId = requestId ?? 'streaming-$generation';
+    _streamingMessageRevision = messageRevision ?? BigInt.from(generation);
+    _streamingText = '';
+    _streamingFailure = null;
+    state = SpeechPlaybackState(
+      phase: SpeechPhase.speakingStreaming,
+      generation: generation,
+    );
+
+    final reset = _cancelSpeechResources().timeout(
+      const Duration(milliseconds: 300),
+    );
+    _streamingReady = reset.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {
+        _recordStreamingFailure(error, VoiceFailureStage.playback);
+      },
+    );
+    await _streamingReady;
+    if (generation != _generation || !_streamingTurnActive) return;
+    _publishStreamingState();
+  }
+
+  /// Feeds only assistant text deltas. Tool progress and reasoning events
+  /// must be filtered by the caller before reaching this method.
+  void feedStreamingDelta(String delta) {
+    if (!ref.read(speechEnabledProvider) ||
+        !_streamingTurnActive ||
+        delta.isEmpty) {
+      return;
+    }
+    final generation = _streamingGeneration;
+    if (generation == null || generation != _generation) return;
+
+    _streamingText += delta;
+    final stableSentences = _streamingSegmenter.feed(delta);
+    for (final sentence in stableSentences) {
+      _enqueueStreamingSentence(sentence, generation);
+    }
+    _publishStreamingState();
+    _ensureStreamingDrain();
+  }
+
+  /// Flushes the last incomplete sentence and waits for this turn's queue.
+  Future<void> finishStreamingTurn() async {
+    if (!ref.read(speechEnabledProvider)) return;
+    final generation = _streamingGeneration;
+    if (generation == null) return;
+
+    if (_streamingTurnActive) {
+      _streamingFinishing = true;
+      for (final sentence in _streamingSegmenter.flush()) {
+        _enqueueStreamingSentence(sentence, generation, allowFinishing: true);
+      }
+      _streamingTurnActive = false;
+      _publishStreamingState();
+      _ensureStreamingDrain();
+    }
+
+    final drain = _streamingDrainFuture;
+    if (drain != null) await drain;
+    if (generation != _generation) return;
+
+    // A drain can finish between the first read and the await above. Ensure
+    // that a queued current-generation item is never left behind.
+    if (_streamingQueue.isNotEmpty) {
+      _ensureStreamingDrain();
+      final retry = _streamingDrainFuture;
+      if (retry != null) await retry;
+    }
+    if (generation != _generation || _streamingQueue.isNotEmpty) return;
+
+    _streamingFinishing = false;
+    state = SpeechPlaybackState(
+      phase: SpeechPhase.idle,
+      segment: state.segment,
+      spokenText: _streamingText.isEmpty ? null : _streamingText,
+      generation: generation,
+      failure: _streamingFailure,
+    );
+  }
+
+  /// Barge-in entry point. It is intentionally not wired to the M2 voice
+  /// controller in this branch; the coordinator will call it when recording
+  /// starts.
+  Future<void> interruptSpeech() async {
+    await stopSpeech();
   }
 
   /// Accepts only a durable final reply whose request terminal is completed.
@@ -85,6 +208,7 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
         ),
     ];
     final generation = ++_generation;
+    _clearStreamingTurn();
     try {
       await _cancelSpeechResources();
     } on Object catch (error) {
@@ -165,9 +289,177 @@ class SpeechPlaybackController extends Notifier<SpeechPlaybackState>
     }
   }
 
+  void _enqueueStreamingSentence(
+    String text,
+    int generation, {
+    bool allowFinishing = false,
+  }) {
+    if (generation != _generation ||
+        (!_streamingTurnActive && (!allowFinishing || !_streamingFinishing))) {
+      return;
+    }
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    _streamingQueue.add(
+      _StreamingSpeechJob(
+        generation: generation,
+        segment: SpeechSegment(
+          conversationId: _streamingConversationId,
+          requestId: _streamingRequestId,
+          messageRevision: _streamingMessageRevision,
+          index: _streamingSegmentIndex++,
+          text: trimmed,
+        ),
+      ),
+    );
+  }
+
+  void _ensureStreamingDrain() {
+    final generation = _streamingGeneration;
+    if (_streamingDrainFuture != null || generation == null) return;
+    final ready = _streamingReady ?? Future<void>.value();
+    final future = _drainStreaming(generation, ready);
+    _streamingDrainFuture = future;
+    unawaited(
+      future.then<void>(
+        (_) => _onStreamingDrainComplete(future),
+        onError: (Object error, StackTrace stackTrace) {
+          if (generation == _generation) {
+            _recordStreamingFailure(error, VoiceFailureStage.tts);
+          }
+          _onStreamingDrainComplete(future);
+        },
+      ),
+    );
+  }
+
+  void _onStreamingDrainComplete(Future<void> future) {
+    if (identical(_streamingDrainFuture, future)) {
+      _streamingDrainFuture = null;
+    }
+    if (_streamingGeneration == _generation && _streamingQueue.isNotEmpty) {
+      _ensureStreamingDrain();
+    }
+  }
+
+  Future<void> _drainStreaming(int generation, Future<void> ready) async {
+    try {
+      await ready;
+      if (generation != _generation) return;
+      while (_streamingQueue.isNotEmpty) {
+        if (generation != _generation) return;
+        final job = _streamingQueue.removeAt(0);
+        if (job.generation != generation ||
+            (!_streamingTurnActive && !_streamingFinishing)) {
+          continue;
+        }
+
+        final tts = ref.read(ttsPortProvider);
+        final playback = ref.read(audioPlaybackPortProvider);
+        var phase = SpeechPhase.speakingStreaming;
+        _publishStreamingState(phase: phase, segment: job.segment);
+        try {
+          final audio = await tts.synthesize(job.segment);
+          if (generation != _generation) return;
+
+          phase = SpeechPhase.playing;
+          _publishStreamingState(phase: phase, segment: audio.segment);
+          await _levelSubscription?.cancel();
+          _levelSubscription = playback.levels.listen((level) {
+            if (generation != _generation ||
+                state.phase != SpeechPhase.playing ||
+                state.segment?.identity != audio.segment.identity) {
+              return;
+            }
+            _publishStreamingState(
+              phase: SpeechPhase.playing,
+              segment: audio.segment,
+              playbackLevel: level.clamp(0, 1),
+            );
+          });
+          await playback.play(audio);
+          if (generation != _generation) return;
+        } on Object catch (error) {
+          if (generation != _generation) return;
+          _recordStreamingFailure(
+            error,
+            phase == SpeechPhase.playing
+                ? VoiceFailureStage.playback
+                : VoiceFailureStage.tts,
+          );
+          // The failed sentence is deliberately discarded. The remaining
+          // queue belongs to the same text stream and must continue.
+        } finally {
+          await _levelSubscription?.cancel();
+          _levelSubscription = null;
+        }
+      }
+
+      if (generation != _generation) return;
+      if (_streamingFinishing) {
+        _streamingFinishing = false;
+        state = SpeechPlaybackState(
+          phase: SpeechPhase.idle,
+          segment: state.segment,
+          spokenText: _streamingText.isEmpty ? null : _streamingText,
+          generation: generation,
+          failure: _streamingFailure,
+        );
+      } else if (_streamingTurnActive) {
+        _publishStreamingState();
+      }
+    } on Object catch (error) {
+      if (generation == _generation) {
+        _recordStreamingFailure(error, VoiceFailureStage.tts);
+      }
+    }
+  }
+
+  void _publishStreamingState({
+    SpeechPhase phase = SpeechPhase.speakingStreaming,
+    SpeechSegment? segment,
+    double playbackLevel = 0,
+  }) {
+    final generation = _streamingGeneration;
+    if (generation == null || generation != _generation) return;
+    state = SpeechPlaybackState(
+      phase: phase,
+      segment: segment ?? state.segment,
+      spokenText: _streamingText.isEmpty ? null : _streamingText,
+      pendingSentence: _streamingSegmenter.pending,
+      generation: generation,
+      playbackLevel: playbackLevel,
+      failure: _streamingFailure,
+    );
+  }
+
+  void _recordStreamingFailure(Object error, VoiceFailureStage fallback) {
+    _streamingFailure = _safeSpeechFailure(error, fallback);
+    if (_streamingGeneration == _generation &&
+        (_streamingTurnActive || _streamingFinishing)) {
+      _publishStreamingState();
+    }
+  }
+
+  void _clearStreamingTurn() {
+    _streamingSegmenter.flush();
+    _streamingQueue.clear();
+    _streamingReady = null;
+    _streamingGeneration = null;
+    _streamingSegmentIndex = 0;
+    _streamingTurnActive = false;
+    _streamingFinishing = false;
+    _streamingConversationId = 'streaming';
+    _streamingRequestId = 'streaming';
+    _streamingMessageRevision = BigInt.zero;
+    _streamingText = '';
+    _streamingFailure = null;
+  }
+
   @override
   Future<void> stopSpeech() async {
     _generation += 1;
+    _clearStreamingTurn();
     final stopwatch = Stopwatch()..start();
     VoiceStageFailure? failure;
     try {
@@ -244,6 +536,13 @@ List<String> splitSpeechSegments(String summary, {int maxCharacters = 48}) {
     if (result.length >= 3) break;
   }
   return List.unmodifiable(result.take(3));
+}
+
+class _StreamingSpeechJob {
+  const _StreamingSpeechJob({required this.generation, required this.segment});
+
+  final int generation;
+  final SpeechSegment segment;
 }
 
 VoiceStageFailure _safeSpeechFailure(

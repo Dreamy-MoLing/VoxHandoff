@@ -148,7 +148,144 @@ void main() {
       expect(tts.segments, isEmpty);
     },
   );
+
+  test(
+    'streaming queue speaks stable sentences in order and flushes the tail',
+    () async {
+      final tts = _FakeTts();
+      final playback = _ImmediatePlayback();
+      final container = _speechContainer(tts, playback);
+      addTearDown(container.dispose);
+      final controller = container.read(speechPlaybackProvider.notifier);
+
+      await controller.beginStreamingTurn(
+        conversationId: 'conversation-stream',
+        requestId: 'request-stream',
+        messageRevision: BigInt.from(11),
+      );
+      controller.feedStreamingDelta('第一句。第二');
+      controller.feedStreamingDelta('句尚未结束');
+      expect(container.read(speechPlaybackProvider).pendingSentence, '第二句尚未结束');
+      await controller.finishStreamingTurn();
+
+      expect(tts.segments.map((segment) => segment.text), ['第一句。', '第二句尚未结束']);
+      expect(playback.played.map((speech) => speech.segment.text), [
+        '第一句。',
+        '第二句尚未结束',
+      ]);
+      expect(container.read(speechPlaybackProvider).phase, SpeechPhase.idle);
+      expect(container.read(speechPlaybackProvider).spokenText, '第一句。第二句尚未结束');
+    },
+  );
+
+  test(
+    'streaming TTS failure skips one sentence and keeps the queue alive',
+    () async {
+      final tts = _FailingStreamingTts();
+      final playback = _ImmediatePlayback();
+      final container = _speechContainer(tts, playback);
+      addTearDown(container.dispose);
+      final controller = container.read(speechPlaybackProvider.notifier);
+
+      await controller.beginStreamingTurn();
+      controller.feedStreamingDelta('失败句。成功句。');
+      await controller.finishStreamingTurn();
+
+      expect(tts.segments.map((segment) => segment.text), ['失败句。', '成功句。']);
+      expect(playback.played.map((speech) => speech.segment.text), ['成功句。']);
+      expect(container.read(speechPlaybackProvider).phase, SpeechPhase.idle);
+      expect(
+        container.read(speechPlaybackProvider).failure?.code,
+        'fixture_streaming_tts_failed',
+      );
+      expect(container.read(speechPlaybackProvider).spokenText, '失败句。成功句。');
+    },
+  );
+
+  test(
+    'interruptSpeech stops playback and clears queued streaming sentences',
+    () async {
+      final tts = _FakeTts();
+      final playback = _BlockingPlayback();
+      final container = _speechContainer(tts, playback);
+      addTearDown(container.dispose);
+      final controller = container.read(speechPlaybackProvider.notifier);
+
+      await controller.beginStreamingTurn();
+      controller.feedStreamingDelta('正在播放。排队句子。');
+      await _eventually(() => playback.played.isNotEmpty);
+
+      await controller.interruptSpeech();
+
+      expect(playback.played.map((speech) => speech.segment.text), ['正在播放。']);
+      expect(container.read(speechPlaybackProvider).phase, SpeechPhase.stopped);
+      expect(
+        container.read(speechPlaybackProvider).stopDuration,
+        lessThanOrEqualTo(const Duration(milliseconds: 300)),
+      );
+      expect(playback.stops, greaterThan(0));
+    },
+  );
+
+  test(
+    'disabled TTS keeps streaming methods as subtitle-only no-ops',
+    () async {
+      final tts = _FakeTts();
+      final playback = _ImmediatePlayback();
+      final container = ProviderContainer(
+        overrides: [
+          ttsPortProvider.overrideWithValue(tts),
+          audioPlaybackPortProvider.overrideWithValue(playback),
+          speechEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+      final controller = container.read(speechPlaybackProvider.notifier);
+
+      await controller.beginStreamingTurn();
+      controller.feedStreamingDelta('字幕继续显示。');
+      await controller.finishStreamingTurn();
+
+      expect(tts.segments, isEmpty);
+      expect(playback.played, isEmpty);
+      expect(container.read(speechPlaybackProvider).phase, SpeechPhase.idle);
+    },
+  );
+
+  test(
+    'a new streaming turn invalidates stale synthesis before playback',
+    () async {
+      final tts = _BlockingTts();
+      final playback = _ImmediatePlayback();
+      final container = _speechContainer(tts, playback);
+      addTearDown(container.dispose);
+      final controller = container.read(speechPlaybackProvider.notifier);
+
+      await controller.beginStreamingTurn(requestId: 'old-turn');
+      controller.feedStreamingDelta('旧句不应播放。');
+      await _eventually(() => tts.active != null);
+
+      await controller.beginStreamingTurn(requestId: 'new-turn');
+      final newSynthesis = tts.syntheses + 1;
+      controller.feedStreamingDelta('新句可以播放。');
+      await _eventually(() => tts.syntheses >= newSynthesis);
+      tts.release();
+      await controller.finishStreamingTurn();
+
+      expect(playback.played.map((speech) => speech.segment.text), ['新句可以播放。']);
+      expect(playback.played.single.segment.requestId, 'new-turn');
+    },
+  );
 }
+
+ProviderContainer _speechContainer(TtsPort tts, AudioPlaybackPort playback) =>
+    ProviderContainer(
+      overrides: [
+        ttsPortProvider.overrideWithValue(tts),
+        audioPlaybackPortProvider.overrideWithValue(playback),
+        speechEnabledProvider.overrideWithValue(true),
+      ],
+    );
 
 class _FakeTts implements TtsPort {
   final List<SpeechSegment> segments = [];
@@ -213,8 +350,51 @@ class _BlockingPlayback implements AudioPlaybackPort {
   Future<void> close() async {}
 }
 
+class _ImmediatePlayback implements AudioPlaybackPort {
+  final List<SynthesizedSpeech> played = [];
+
+  @override
+  Stream<double> get levels => const Stream.empty();
+
+  @override
+  Future<void> play(SynthesizedSpeech speech) async {
+    played.add(speech);
+  }
+
+  @override
+  Future<void> stopSpeech() async {}
+
+  @override
+  Future<void> close() async {}
+}
+
+class _FailingStreamingTts extends _FakeTts {
+  @override
+  Future<SynthesizedSpeech> synthesize(SpeechSegment segment) async {
+    segments.add(segment);
+    if (segments.length == 1) {
+      throw const VoicePortException(
+        VoiceStageFailure(
+          stage: VoiceFailureStage.tts,
+          code: 'fixture_streaming_tts_failed',
+          safeMessage: 'Synthetic streaming TTS failure.',
+          retryable: true,
+        ),
+      );
+    }
+    return SynthesizedSpeech(
+      segment: segment,
+      bytes: Uint8List.fromList([82, 73, 70, 70]),
+      mimeType: 'audio/wav',
+      synthesisDuration: const Duration(milliseconds: 10),
+    );
+  }
+}
+
 class _BlockingTts implements TtsPort {
   Completer<SynthesizedSpeech>? active;
+  SpeechSegment? activeSegment;
+  int syntheses = 0;
   int cancellations = 0;
 
   @override
@@ -237,8 +417,24 @@ class _BlockingTts implements TtsPort {
 
   @override
   Future<SynthesizedSpeech> synthesize(SpeechSegment segment) {
+    syntheses += 1;
+    activeSegment = segment;
     active = Completer<SynthesizedSpeech>();
     return active!.future;
+  }
+
+  void release() {
+    final request = active;
+    final segment = activeSegment;
+    if (request == null || request.isCompleted || segment == null) return;
+    request.complete(
+      SynthesizedSpeech(
+        segment: segment,
+        bytes: Uint8List.fromList([82, 73, 70, 70]),
+        mimeType: 'audio/wav',
+        synthesisDuration: const Duration(milliseconds: 10),
+      ),
+    );
   }
 
   @override

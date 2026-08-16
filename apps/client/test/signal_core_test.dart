@@ -135,6 +135,15 @@ void main() {
     expect(snapshot.playbackLevel, 0.63);
   });
 
+  test('maps a streaming speech segment to the speaking core state', () {
+    final snapshot = _resolveWithEvents([
+      _event(ClientEventKind.requestCompleted),
+    ], speech: _playingSpeech(phase: SpeechPhase.speakingStreaming));
+
+    expect(snapshot.state, SignalCoreState.speaking);
+    expect(snapshot.playbackLevel, 0.63);
+  });
+
   test('resolved interactions no longer retain visual priority', () {
     final required = _event(ClientEventKind.approvalRequired);
     final resolved = _event(ClientEventKind.approvalResolved, sequence: 2);
@@ -236,17 +245,18 @@ SignalCoreSnapshot _resolveWithEvents(
   speech: speech,
 );
 
-SpeechPlaybackState _playingSpeech() => SpeechPlaybackState(
-  phase: SpeechPhase.playing,
-  playbackLevel: 0.63,
-  segment: SpeechSegment(
-    conversationId: 'conversation-1',
-    requestId: 'request-1',
-    messageRevision: BigInt.one,
-    index: 0,
-    text: 'Safe test speech.',
-  ),
-);
+SpeechPlaybackState _playingSpeech({SpeechPhase phase = SpeechPhase.playing}) =>
+    SpeechPlaybackState(
+      phase: phase,
+      playbackLevel: 0.63,
+      segment: SpeechSegment(
+        conversationId: 'conversation-1',
+        requestId: 'request-1',
+        messageRevision: BigInt.one,
+        index: 0,
+        text: 'Safe test speech.',
+      ),
+    );
 
 ClientEventRecord _event(ClientEventKind kind, {int sequence = 1}) {
   final content = switch (kind) {
