@@ -1,12 +1,12 @@
-# VoxHandoff 开发与交付规范（v2.1：Hermes 人格化语音移动伴侣）
+# VoxHandoff 开发与交付规范（Hermes 人格化语音移动伴侣）
 
-> 基线日期：2026-08-16（v2.1 修订）。本文件是 v2.1 重新定位后的交付基线；
+> 基线日期：2026-08-16（定稿基线）。本文件是重新定位后的交付基线；
 > 旧版"完整 Agent 控制面"的 DELIVERY 与验收证据归档至
 > `spec/archive/2026-08-16-full-agent/DELIVERY.md`。
 
-## 0. v2.1 执行顺序（Android-first 语音移动伴侣）
+## 0. 执行顺序（Android-first 语音移动伴侣）
 
-0. **M0：authority cutover**（无争议，先行）——提交 v2.1 四份 spec；重写根
+0. **M0：authority cutover**（无争议，先行）——提交四份 spec；重写根
    `AGENTS.md`、根 `README.md`；修改 workspace/build/test 使旧
    Gateway/Node 退出默认开发路径；确认 `npm run check/test` 与
    `flutter:check` 在新的默认路径上全绿。
@@ -26,7 +26,7 @@
 
 每个阶段都必须有可复现检查和独立结果；失败、阻塞和未验证不能写成完成。
 
-## 1. 当前资产（v2.1 复用）
+## 1. 当前资产（复用）
 
 - 移动端 SignalCore 视觉基线（待机/文字/录音/连接四态 + 设置页）已冻结，
   桌面 golden 保持零变化；
@@ -39,11 +39,11 @@
   200`）。
 - 旧 Gateway/Node/PostgreSQL 实现已归档冻结，作为未来升级路径。
 
-## 2. 里程碑（v2.1）
+## 2. 里程碑
 
 | 里程碑 | 内容 | 门 |
 | --- | --- | --- |
-| M0 authority cutover | v2.1 spec 提交、AGENTS.md/README 重写、旧模块退出默认路径 | `flutter:check`、`npm run check/test` 新路径全绿 |
+| M0 authority cutover | spec 提交、AGENTS.md/README 重写、旧模块退出默认路径 | `flutter:check`、`npm run check/test` 新路径全绿 |
 | S0 integration spike | Hermes 0.20.1 API 能力审计，确定 v0.1.0 主链路契约 | 输出契约结论并回写 spec |
 | M1 Hermes 对话主链路 | 按 S0 契约接通 Hermes 对话；文本真机闭环 | 配置→测试→聊天→终态→重启恢复 |
 | M2 语音输入 | 录音→STT→草稿→确认（复用已打通资产） | 真机 readiness + 真实录音 200 |

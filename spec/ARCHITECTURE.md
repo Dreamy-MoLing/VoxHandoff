@@ -1,6 +1,6 @@
-# VoxHandoff 技术架构（v2.1：Hermes 人格化语音移动伴侣）
+# VoxHandoff 技术架构（Hermes 人格化语音移动伴侣）
 
-> 基线日期：2026-08-16（v2.1 修订）。旧版"完整 Agent 控制面"架构已归档至
+> 基线日期：2026-08-16（定稿基线）。旧版"完整 Agent 控制面"架构已归档至
 > `spec/archive/2026-08-16-full-agent/ARCHITECTURE.md`，不再作为当前
 > 实现基线。
 
@@ -8,7 +8,7 @@
 
 ### 1.0 当前执行变体：Android-first 语音移动伴侣
 
-VoxHandoff v2.1 是 Hermes 的**第三方 voice-first mobile companion**：手机
+VoxHandoff 是 Hermes 的**第三方 voice-first mobile companion**：手机
 负责录音、转写确认、聊天、播放、记忆呈现、人格与 SignalCore 视觉；Agent
 能力（工具/任务/审批）属于 Hermes。Hermes 对话接口是 v0.1.0 主后端；
 Direct LLM 延后为可选。Hermes 语音能力（streaming TTS/barge-in/唤醒词）是
