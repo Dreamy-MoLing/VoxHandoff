@@ -104,7 +104,7 @@ class VoiceProviderSettingsController
     RemoteSttProviderConfiguration configuration,
     String token,
   ) async {
-    if (!configuration.isSafe || token.trim().isEmpty) {
+    if (!configuration.isSafe) {
       state = state.copyWith(
         sttTest: const VoiceProviderTestStatus(
           phase: VoiceProviderTestPhase.failed,

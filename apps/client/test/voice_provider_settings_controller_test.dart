@@ -188,6 +188,50 @@ void main() {
     },
   );
 
+  test(
+    'remote STT reuses the stored token when the form leaves it blank',
+    () async {
+      final store = _MemorySecureStore();
+      final container = ProviderContainer(
+        overrides: [
+          voiceProviderSettingsStoreProvider.overrideWithValue(
+            VoiceProviderSettingsStore(store),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(voiceProviderSettingsProvider);
+      await Future<void>.delayed(Duration.zero);
+
+      final disclosure = RemoteSttProviderConfiguration(
+        providerId: 'mobile-stt',
+        origin: Uri.parse('https://stt.example.test'),
+        tlsPolicy: 'system-roots-hostname-verified',
+        retentionPolicy: 'fixture-no-retention',
+        streaming: false,
+        revision: 'v1',
+        consentedAt: DateTime.utc(2026, 8, 13),
+      );
+      final controller = container.read(voiceProviderSettingsProvider.notifier);
+      await controller.saveRemoteStt(disclosure, 'remote-token');
+
+      final updated = disclosure.copyWith(
+        origin: Uri.parse('https://updated-stt.example.test'),
+        consentedAt: DateTime.utc(2026, 8, 14),
+      );
+      await controller.saveRemoteStt(updated, '');
+
+      expect(
+        container.read(voiceProviderSettingsProvider).settings.stt.remote,
+        updated,
+      );
+      expect(
+        await RemoteSttSecretStore(store).read('mobile-stt'),
+        'remote-token',
+      );
+    },
+  );
+
   test('remote STT cannot be saved without explicit consent', () async {
     final store = _MemorySecureStore();
     final container = ProviderContainer(
