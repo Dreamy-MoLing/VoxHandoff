@@ -1,5 +1,8 @@
+import 'package:agent_talk_client/application/hermes_conversation_controller.dart';
 import 'package:agent_talk_client/domain/client_event.dart';
 import 'package:agent_talk_client/domain/client_session.dart';
+import 'package:agent_talk_client/domain/direct_chat.dart';
+import 'package:agent_talk_client/domain/hermes_conversation.dart';
 import 'package:agent_talk_client/domain/gateway_workspace.dart';
 import 'package:agent_talk_client/domain/signal_core.dart';
 import 'package:agent_talk_client/domain/speech.dart';
@@ -100,6 +103,115 @@ void main() {
       ).state,
       SignalCoreState.uncertain,
     );
+  });
+
+  test('maps Hermes sending and connection phases to working', () {
+    final sending = resolveSignalCore(
+      workspace: const GatewayWorkspaceState(),
+      session: const ClientSessionState(),
+      voice: idleVoice,
+      speech: idleSpeech,
+      hermesConversation: _hermesState(
+        HermesConversationPhase.sending,
+        messages: [_hermesReply(terminal: DirectMessageTerminal.streaming)],
+      ),
+    );
+    expect(sending.state, SignalCoreState.working);
+    expect(sending.label, '助手工作中');
+    expect(sending.requestId, 'hermes-reply-1');
+
+    for (final phase in [
+      HermesConversationPhase.testing,
+      HermesConversationPhase.bootstrapping,
+      HermesConversationPhase.restoring,
+    ]) {
+      final snapshot = resolveSignalCore(
+        workspace: const GatewayWorkspaceState(),
+        session: const ClientSessionState(),
+        voice: idleVoice,
+        speech: idleSpeech,
+        hermesConversation: _hermesState(phase),
+      );
+      expect(snapshot.state, SignalCoreState.working);
+      expect(
+        snapshot.label,
+        phase == HermesConversationPhase.testing ? '正在测试连接' : '正在连接 Hermes',
+      );
+    }
+  });
+
+  test('maps Hermes failure and ready terminal states', () {
+    final failed = resolveSignalCore(
+      workspace: const GatewayWorkspaceState(),
+      session: const ClientSessionState(),
+      voice: idleVoice,
+      speech: idleSpeech,
+      hermesConversation: _hermesState(
+        HermesConversationPhase.failed,
+        failure: const HermesConversationFailure(
+          code: 'hermes_test_failure',
+          message: 'Safe failure.',
+        ),
+        messages: [_hermesReply(terminal: DirectMessageTerminal.failed)],
+      ),
+    );
+    expect(failed.state, SignalCoreState.failed);
+    expect(failed.label, 'Hermes 请求失败');
+    expect(failed.requestId, 'hermes-reply-1');
+
+    final completed = resolveSignalCore(
+      workspace: const GatewayWorkspaceState(),
+      session: const ClientSessionState(),
+      voice: idleVoice,
+      speech: idleSpeech,
+      hermesConversation: _hermesState(
+        HermesConversationPhase.ready,
+        messages: [_hermesReply()],
+      ),
+    );
+    expect(completed.state, SignalCoreState.completed);
+    expect(completed.requestId, 'hermes-reply-1');
+
+    final idle = resolveSignalCore(
+      workspace: const GatewayWorkspaceState(),
+      session: const ClientSessionState(),
+      voice: idleVoice,
+      speech: idleSpeech,
+      hermesConversation: _hermesState(HermesConversationPhase.ready),
+    );
+    expect(idle.state, SignalCoreState.idle);
+  });
+
+  test('maps Hermes speech and keeps voice input ahead of Hermes phases', () {
+    final speaking = resolveSignalCore(
+      workspace: const GatewayWorkspaceState(),
+      session: const ClientSessionState(),
+      voice: idleVoice,
+      speech: _playingSpeech(
+        conversationId: 'hermes-conversation-1',
+        requestId: 'hermes-reply-1',
+      ),
+      hermesConversation: _hermesState(
+        HermesConversationPhase.ready,
+        messages: [_hermesReply()],
+      ),
+    );
+    expect(speaking.state, SignalCoreState.speaking);
+    expect(speaking.playbackLevel, 0.63);
+
+    final recording = resolveSignalCore(
+      workspace: const GatewayWorkspaceState(),
+      session: const ClientSessionState(),
+      voice: const VoiceSessionState(
+        phase: VoiceInputPhase.recording,
+        sessionId: 'hermes-voice-1',
+        audioLevel: 0.72,
+      ),
+      speech: idleSpeech,
+      hermesConversation: _hermesState(HermesConversationPhase.sending),
+    );
+    expect(recording.state, SignalCoreState.recording);
+    expect(recording.audioLevel, 0.72);
   });
 
   test('uses safety priority and never turns uncertain into completed', () {
@@ -245,18 +357,52 @@ SignalCoreSnapshot _resolveWithEvents(
   speech: speech,
 );
 
-SpeechPlaybackState _playingSpeech({SpeechPhase phase = SpeechPhase.playing}) =>
-    SpeechPlaybackState(
-      phase: phase,
-      playbackLevel: 0.63,
-      segment: SpeechSegment(
-        conversationId: 'conversation-1',
-        requestId: 'request-1',
-        messageRevision: BigInt.one,
-        index: 0,
-        text: 'Safe test speech.',
-      ),
-    );
+SpeechPlaybackState _playingSpeech({
+  SpeechPhase phase = SpeechPhase.playing,
+  String conversationId = 'conversation-1',
+  String requestId = 'request-1',
+}) => SpeechPlaybackState(
+  phase: phase,
+  playbackLevel: 0.63,
+  segment: SpeechSegment(
+    conversationId: conversationId,
+    requestId: requestId,
+    messageRevision: BigInt.one,
+    index: 0,
+    text: 'Safe test speech.',
+  ),
+);
+
+HermesConversationState _hermesState(
+  HermesConversationPhase phase, {
+  List<DirectChatMessage> messages = const [],
+  HermesConversationFailure? failure,
+}) => HermesConversationState(
+  phase: phase,
+  configuration: HermesConversationConfiguration(
+    providerProfileId: 'hermes-provider-1',
+    origin: Uri.parse('https://hermes.example.test'),
+    model: 'hermes-model',
+    conversationId: 'hermes-conversation-1',
+    sessionId: 'hermes-session-1',
+    sessionKey: 'hermes-session-key',
+  ),
+  messages: messages,
+  failure: failure,
+  credentialAvailable: true,
+);
+
+DirectChatMessage _hermesReply({
+  DirectMessageTerminal terminal = DirectMessageTerminal.completed,
+  int revision = 1,
+}) => DirectChatMessage(
+  id: 'hermes-reply-1',
+  role: DirectChatRole.assistant,
+  text: 'Safe Hermes reply.',
+  createdAt: DateTime.utc(2030),
+  terminal: terminal,
+  revision: revision,
+);
 
 ClientEventRecord _event(ClientEventKind kind, {int sequence = 1}) {
   final content = switch (kind) {
