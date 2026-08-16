@@ -10,9 +10,9 @@
   ],
   "scripts": {
     "check:repo": "node scripts/check-repository.mjs",
-    "build": "npm run build -w @agent-talk/protocol && npm run build -w @agent-talk/core && npm run build -w @agent-talk/adapters && npm run build -w @agent-talk/gateway && npm run build -w @agent-talk/node && npm run build -w @agent-talk/poc-cli",
-    "check": "npm run check:repo && npm run protocol:check && npm run build -w @agent-talk/protocol && npm run check -w @agent-talk/core && npm run build -w @agent-talk/core && npm run check -w @agent-talk/adapters && npm run build -w @agent-talk/adapters && npm run check -w @agent-talk/gateway && npm run build -w @agent-talk/gateway && npm run check -w @agent-talk/node && npm run check -w @agent-talk/poc-cli",
-    "test": "npm run test -w @agent-talk/protocol && npm run test -w @agent-talk/core && npm run test -w @agent-talk/adapters && npm run test -w @agent-talk/gateway && npm run test -w @agent-talk/node && npm run test -w @agent-talk/poc-cli && npm run test:stt && npm run test:m4-benchmark && npm run test:mvp-benchmark",
+    "build": "npm run build -w @agent-talk/protocol && npm run build -w @agent-talk/core && npm run build -w @agent-talk/adapters && npm run build -w @agent-talk/poc-cli",
+    "check": "npm run check:repo && npm run protocol:check && npm run build -w @agent-talk/protocol && npm run check -w @agent-talk/core && npm run build -w @agent-talk/core && npm run check -w @agent-talk/adapters && npm run build -w @agent-talk/adapters && npm run check -w @agent-talk/poc-cli",
+    "test": "npm run test -w @agent-talk/protocol && npm run test -w @agent-talk/core && npm run test -w @agent-talk/adapters && npm run test -w @agent-talk/poc-cli && npm run test:stt && npm run test:m4-benchmark && npm run test:mvp-benchmark",
     "test:m4-benchmark": "node --test scripts/summarize-m4-frame-benchmark.test.mjs",
     "test:mvp-benchmark": "node --test scripts/summarize-mvp-home-benchmark.test.mjs",
     "test:stt": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=services/stt python3 -m unittest discover -s services/stt/tests -v",
