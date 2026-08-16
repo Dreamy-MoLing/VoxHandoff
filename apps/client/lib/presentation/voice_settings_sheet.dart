@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/voice_session_controller.dart';
+import '../application/chat_source_controller.dart';
 import '../application/voice_provider_settings_controller.dart';
 import '../domain/voice_provider_settings.dart';
 import '../domain/voice.dart';
@@ -14,6 +15,7 @@ import '../infrastructure/security/remote_stt_trusted_root_certificate_store.dar
 import '../infrastructure/security/secure_pairing_stores.dart';
 import '../infrastructure/stt/remote_stt_port.dart';
 import 'direct_llm_settings_sheet.dart';
+import 'hermes_conversation_settings_sheet.dart';
 
 part 'voice_settings_sheet_operations.dart';
 
@@ -217,6 +219,12 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
               const SizedBox(height: 4),
               const Text(
                 'Hermes uses the paired Gateway workspace. Connect or disconnect it from the workspace; direct LLM settings never alter its permissions or uncertain-submission recovery.',
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => unawaited(_openHermesConversation()),
+                icon: const Icon(Icons.forum_outlined),
+                label: const Text('Use Hermes conversation (Chat Completions)'),
               ),
               const SizedBox(height: 8),
               OutlinedButton.icon(
@@ -637,5 +645,15 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
         ),
       ),
     );
+  }
+
+  Future<void> _openHermesConversation() async {
+    await ref
+        .read(chatSourceProvider.notifier)
+        .select(ChatSource.hermesConversation);
+    if (!mounted) return;
+    final navigator = Navigator.of(context);
+    navigator.pop();
+    await showHermesConversationSettingsSheet(navigator.context);
   }
 }

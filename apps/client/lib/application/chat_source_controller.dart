@@ -13,7 +13,7 @@ final chatSourceProvider = NotifierProvider<ChatSourceController, ChatSource>(
 
 class ChatSourceController extends Notifier<ChatSource> {
   @override
-  ChatSource build() => ChatSource.hermesConversation;
+  ChatSource build() => ChatSource.hermes;
   Future<void> select(ChatSource source) async {
     if (state != source) {
       ref.read(clientSessionProvider.notifier).invalidateConfirmation();
