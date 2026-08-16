@@ -1,4 +1,5 @@
 import 'package:agent_talk_client/application/voice_provider_settings_controller.dart';
+import 'package:agent_talk_client/domain/interaction_mode.dart';
 import 'package:agent_talk_client/domain/speech.dart';
 import 'package:agent_talk_client/domain/voice.dart';
 import 'package:agent_talk_client/domain/voice_provider_settings.dart';
@@ -278,6 +279,53 @@ void main() {
       expect(() => piperLengthScaleForSpeechRate(2.01), throwsArgumentError);
     },
   );
+
+  test('interaction mode default persists and restores', () async {
+    final store = _MemorySecureStore();
+    final container = ProviderContainer(
+      overrides: [
+        voiceProviderSettingsStoreProvider.overrideWithValue(
+          VoiceProviderSettingsStore(store),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(voiceProviderSettingsProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      container.read(voiceProviderSettingsProvider).settings.interactionMode,
+      InteractionMode.command,
+    );
+
+    await container
+        .read(voiceProviderSettingsProvider.notifier)
+        .saveInteractionMode(InteractionMode.call);
+
+    expect(
+      container.read(voiceProviderSettingsProvider).settings.interactionMode,
+      InteractionMode.call,
+    );
+    final restored = await VoiceProviderSettingsStore(store).read();
+    expect(restored?.interactionMode, InteractionMode.call);
+    expect(
+      store.values.values.single,
+      contains('"interaction_mode":"call"'),
+    );
+  });
+
+  test('missing interaction mode in a legacy record defaults to command', () async {
+    final store = _MemorySecureStore();
+    await store.write(
+      'voxhandoff.v1.voice-provider-settings',
+      '{"version":3,"assistant_id":"unbound-assistant",'
+      '"assistant_revision":1,'
+      '"stt":{"kind":"disabled","language":"zh"},'
+      '"tts":{"kind":"disabled"}}',
+    );
+    final restored = await VoiceProviderSettingsStore(store).read();
+    expect(restored?.interactionMode, InteractionMode.command);
+  });
 }
 
 class _MemorySecureStore implements SecureValueStore {

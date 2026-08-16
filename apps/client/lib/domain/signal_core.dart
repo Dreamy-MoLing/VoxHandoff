@@ -102,10 +102,13 @@ SignalCoreSnapshot resolveSignalCore({
     );
   }
   if (voice.phase == VoiceInputPhase.awaitingConfirmation ||
+      voice.phase == VoiceInputPhase.awaitingCallConfirm ||
       session.draftPhase == DraftPhase.confirmed) {
     return _snapshot(
       SignalCoreState.awaitingConfirmation,
-      'Waiting for text confirmation',
+      voice.phase == VoiceInputPhase.awaitingCallConfirm
+          ? 'Call preview'
+          : 'Waiting for text confirmation',
       conversationId: conversationId,
       sourceIdentity: voice.sessionId,
     );

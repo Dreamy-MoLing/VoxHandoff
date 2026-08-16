@@ -1,3 +1,4 @@
+import 'interaction_mode.dart';
 import 'speech.dart';
 import 'voice.dart';
 
@@ -289,6 +290,7 @@ class VoiceProviderSettings {
     this.stt = const SttProviderConfiguration(kind: SttProviderKind.disabled),
     this.tts = const TtsProviderConfiguration.disabled(),
     this.microphoneId,
+    this.interactionMode = defaultInteractionMode,
   });
 
   final String assistantId;
@@ -296,6 +298,7 @@ class VoiceProviderSettings {
   final SttProviderConfiguration stt;
   final TtsProviderConfiguration tts;
   final String? microphoneId;
+  final InteractionMode interactionMode;
 
   VoiceProviderSettings copyWith({
     String? assistantId,
@@ -303,6 +306,7 @@ class VoiceProviderSettings {
     SttProviderConfiguration? stt,
     TtsProviderConfiguration? tts,
     String? microphoneId,
+    InteractionMode? interactionMode,
     bool clearMicrophoneId = false,
   }) => VoiceProviderSettings(
     assistantId: assistantId ?? this.assistantId,
@@ -310,6 +314,7 @@ class VoiceProviderSettings {
     stt: stt ?? this.stt,
     tts: tts ?? this.tts,
     microphoneId: clearMicrophoneId ? null : microphoneId ?? this.microphoneId,
+    interactionMode: interactionMode ?? this.interactionMode,
   );
 
   @override
@@ -319,11 +324,18 @@ class VoiceProviderSettings {
       other.assistantRevision == assistantRevision &&
       other.stt == stt &&
       other.tts == tts &&
-      other.microphoneId == microphoneId;
+      other.microphoneId == microphoneId &&
+      other.interactionMode == interactionMode;
 
   @override
-  int get hashCode =>
-      Object.hash(assistantId, assistantRevision, stt, tts, microphoneId);
+  int get hashCode => Object.hash(
+    assistantId,
+    assistantRevision,
+    stt,
+    tts,
+    microphoneId,
+    interactionMode,
+  );
 }
 
 enum VoiceProviderTestPhase { unknown, testing, ready, failed }

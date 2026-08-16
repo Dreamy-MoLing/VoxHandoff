@@ -60,6 +60,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     _composer = TextEditingController();
     _ownedVisualPreferences = MobileVisualPreferences();
+    ref.read(voiceCallSendHandlerProvider.notifier).register(
+      _sendConfirmedVoiceCall,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(devicePairingProvider.notifier).restore();
       unawaited(
@@ -86,6 +89,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    ref.read(voiceCallSendHandlerProvider.notifier).clear();
     _composer.dispose();
     if (widget.visualPreferences == null) _ownedVisualPreferences.dispose();
     super.dispose();
@@ -202,6 +206,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } else if (voice.canStart) {
       await _startVoice();
     }
+  }
+
+  /// Presentation-owned Call-mode send: binds a confirmation snapshot through
+  /// the existing ChatSource abstraction and dispatches it. Hermes transport
+  /// is M1's scope; failures surface to the voice controller, which keeps the
+  /// editable transcript for a manual Command-mode confirm.
+  Future<void> _sendConfirmedVoiceCall(String confirmedText) async {
+    final session = ref.read(clientSessionProvider);
+    if (session.canEditDraft && session.draftText.trim() != confirmedText) {
+      ref.read(clientSessionProvider.notifier).editDraft(confirmedText);
+    }
+    _confirmDraft();
+    await _send();
   }
 
   @override
@@ -405,6 +422,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               onStopVoice: _stopVoice,
               onCancelVoice: _cancelVoice,
               onDiscardVoice: _discardVoice,
+              onConfirmCallSend: () =>
+                  ref.read(voiceSessionProvider.notifier).confirmCallSend(),
             );
             if (!showNavigation || isDirect) {
               return Column(

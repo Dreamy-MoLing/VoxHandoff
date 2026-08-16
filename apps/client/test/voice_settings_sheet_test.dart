@@ -1,3 +1,5 @@
+import 'package:agent_talk_client/application/voice_provider_settings_controller.dart';
+import 'package:agent_talk_client/domain/interaction_mode.dart';
 import 'package:agent_talk_client/presentation/voice_settings_sheet.dart';
 import 'package:agent_talk_client/domain/voice.dart';
 import 'package:agent_talk_client/infrastructure/stt/remote_stt_port.dart';
@@ -153,6 +155,45 @@ void main() {
       expect(tester.widget<OutlinedButton>(testButton).onPressed, isNotNull);
     },
   );
+
+  testWidgets('interaction mode selector updates the persisted default', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: FilledButton(
+                onPressed: () => showVoiceSettingsSheet(context),
+                child: const Text('Open settings'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open settings'));
+    await tester.pumpAndSettle();
+
+    final selector = find.byKey(const Key('voice-interaction-mode'));
+    expect(selector, findsOneWidget);
+    await tester.ensureVisible(selector);
+    await tester.tap(selector);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Call (preview then send)').last);
+    await tester.pumpAndSettle();
+
+    final mode = ProviderScope.containerOf(
+      tester.element(selector),
+      listen: false,
+    )
+        .read(voiceProviderSettingsProvider)
+        .settings
+        .interactionMode;
+    expect(mode, InteractionMode.call);
+  });
 }
 
 class _FakeDisclosureTransport implements RemoteSttTransport {

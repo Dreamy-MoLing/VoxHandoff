@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/speech.dart';
 import '../domain/voice.dart';
 import '../domain/voice_provider_settings.dart';
+import '../domain/interaction_mode.dart';
 import '../infrastructure/security/device_key_vault.dart';
 import '../infrastructure/security/voice_provider_settings_store.dart';
 
@@ -178,6 +179,13 @@ class VoiceProviderSettingsController
       microphoneId: normalized,
       clearMicrophoneId: normalized == null,
     );
+    await ref.read(voiceProviderSettingsStoreProvider).save(settings);
+    state = state.copyWith(settings: settings, restored: true);
+  }
+
+  Future<void> saveInteractionMode(InteractionMode mode) async {
+    if (state.settings.interactionMode == mode) return;
+    final settings = state.settings.copyWith(interactionMode: mode);
     await ref.read(voiceProviderSettingsStoreProvider).save(settings);
     state = state.copyWith(settings: settings, restored: true);
   }

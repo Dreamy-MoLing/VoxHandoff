@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/voice_session_controller.dart';
 import '../domain/client_session.dart';
+import '../domain/interaction_mode.dart';
 import '../domain/voice.dart';
 
 class MessageComposer extends StatelessWidget {
@@ -22,6 +23,7 @@ class MessageComposer extends StatelessWidget {
     required this.onStopVoice,
     required this.onCancelVoice,
     required this.onDiscardVoice,
+    required this.onConfirmCallSend,
     this.sendLabel = 'Handoff to Hermes',
     this.requiresGatewayConnection = true,
     super.key,
@@ -40,6 +42,7 @@ class MessageComposer extends StatelessWidget {
   final Future<void> Function() onStopVoice;
   final Future<void> Function() onCancelVoice;
   final Future<void> Function() onDiscardVoice;
+  final Future<void> Function() onConfirmCallSend;
   final String sendLabel;
   final bool requiresGatewayConnection;
 
@@ -81,6 +84,7 @@ class MessageComposer extends StatelessWidget {
                   onStop: onStopVoice,
                   onCancel: onCancelVoice,
                   onDiscard: onDiscardVoice,
+                  onConfirmCallSend: onConfirmCallSend,
                 );
                 final editorWithVoice = Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -171,6 +175,7 @@ class _VoiceAction extends StatelessWidget {
     required this.onStop,
     required this.onCancel,
     required this.onDiscard,
+    required this.onConfirmCallSend,
   });
 
   final VoiceSessionState voice;
@@ -179,6 +184,7 @@ class _VoiceAction extends StatelessWidget {
   final Future<void> Function() onStop;
   final Future<void> Function() onCancel;
   final Future<void> Function() onDiscard;
+  final Future<void> Function() onConfirmCallSend;
 
   @override
   Widget build(BuildContext context) {
@@ -206,6 +212,23 @@ class _VoiceAction extends StatelessWidget {
         icon: const Icon(Icons.close),
       );
     }
+    if (voice.phase == VoiceInputPhase.awaitingCallConfirm) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton.filledTonal(
+            onPressed: onConfirmCallSend,
+            tooltip: 'Send call preview',
+            icon: const Icon(Icons.send_rounded),
+          ),
+          IconButton(
+            onPressed: onDiscard,
+            tooltip: 'Discard call preview',
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      );
+    }
     if (voice.phase == VoiceInputPhase.awaitingConfirmation) {
       return IconButton(
         onPressed: onDiscard,
@@ -230,13 +253,18 @@ class _VoiceStatus extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final label = switch (voice.phase) {
       VoiceInputPhase.requestingPermission => 'Requesting microphone access',
-      VoiceInputPhase.recording =>
-        voice.provisionalTranscript.isEmpty
-            ? 'Recording · speech remains editable before send'
-            : 'Live transcript: ${voice.provisionalTranscript}',
+      VoiceInputPhase.recording => voice.interactionMode == InteractionMode.call
+          ? voice.provisionalTranscript.isEmpty
+                ? 'Recording · release to send (Call mode)'
+                : 'Live transcript (Call): ${voice.provisionalTranscript}'
+          : voice.provisionalTranscript.isEmpty
+          ? 'Recording · speech remains editable before send'
+          : 'Live transcript: ${voice.provisionalTranscript}',
       VoiceInputPhase.transcribing => 'Finalizing transcript',
       VoiceInputPhase.awaitingConfirmation =>
         'Transcript inserted · review and confirm before send',
+      VoiceInputPhase.awaitingCallConfirm =>
+        'Call preview · ${voice.finalTranscript ?? ''}',
       VoiceInputPhase.cancelled => 'Voice input cancelled',
       VoiceInputPhase.failed =>
         voice.failure?.safeMessage ?? 'Voice input failed',
