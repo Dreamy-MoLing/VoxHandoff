@@ -2,7 +2,15 @@ import 'dart:typed_data';
 
 import 'voice.dart';
 
-enum SpeechPhase { idle, warming, synthesizing, playing, stopped, failed }
+enum SpeechPhase {
+  idle,
+  warming,
+  synthesizing,
+  speakingStreaming,
+  playing,
+  stopped,
+  failed,
+}
 
 class SpeechSegment {
   const SpeechSegment({
@@ -41,6 +49,8 @@ class SpeechPlaybackState {
     this.phase = SpeechPhase.idle,
     this.segment,
     this.spokenText,
+    this.pendingSentence,
+    this.generation = 0,
     this.playbackLevel = 0,
     this.failure,
     this.stopDuration,
@@ -49,6 +59,8 @@ class SpeechPlaybackState {
   final SpeechPhase phase;
   final SpeechSegment? segment;
   final String? spokenText;
+  final String? pendingSentence;
+  final int generation;
   final double playbackLevel;
   final VoiceStageFailure? failure;
   final Duration? stopDuration;

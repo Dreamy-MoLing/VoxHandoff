@@ -145,7 +145,8 @@ SignalCoreSnapshot resolveSignalCore({
   }
 
   final segment = speech.segment;
-  if (speech.phase == SpeechPhase.playing &&
+  if ((speech.phase == SpeechPhase.playing ||
+          speech.phase == SpeechPhase.speakingStreaming) &&
       segment != null &&
       segment.conversationId == conversationId &&
       (latestRequestId == null || segment.requestId == latestRequestId)) {
