@@ -7,7 +7,13 @@ import '../../domain/direct_chat.dart';
 import '../../domain/hermes_conversation.dart';
 import 'openai_compatible_chat_client.dart';
 
-enum HermesChatFailureStage { configuration, connection, protocol, terminal }
+enum HermesChatFailureStage {
+  configuration,
+  confirmation,
+  connection,
+  protocol,
+  terminal,
+}
 
 class HermesChatTransportException implements Exception {
   const HermesChatTransportException(

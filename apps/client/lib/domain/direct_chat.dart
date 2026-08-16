@@ -153,6 +153,15 @@ class AssistantCapabilityProjection {
     capabilities: {AssistantCapability.chat},
   );
 
+  static const hermesConversation = AssistantCapabilityProjection(
+    source: ChatSource.hermesConversation,
+    capabilities: {
+      AssistantCapability.chat,
+      AssistantCapability.agent,
+      AssistantCapability.tools,
+    },
+  );
+
   static const hermes = AssistantCapabilityProjection(
     source: ChatSource.hermes,
     capabilities: {

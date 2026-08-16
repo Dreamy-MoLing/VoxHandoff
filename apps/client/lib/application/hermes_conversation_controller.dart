@@ -402,9 +402,21 @@ class HermesConversationController extends Notifier<HermesConversationState> {
     final configuration = state.configuration;
     if (configuration == null ||
         !configuration.isSafe ||
-        state.phase == HermesConversationPhase.sending ||
-        draft.chatSource != ChatSource.hermesConversation ||
+        state.phase == HermesConversationPhase.sending) {
+      return;
+    }
+    if (draft.chatSource != ChatSource.hermesConversation ||
         !_draftMatchesConfiguration(draft, configuration)) {
+      ref.read(clientSessionProvider.notifier).invalidateConfirmation();
+      state = state.copyWith(
+        phase: HermesConversationPhase.failed,
+        failure: const HermesConversationFailure(
+          code: 'hermes_confirmation_stale',
+          message:
+              'The confirmed Hermes target changed. Confirm the draft again.',
+          stage: HermesChatFailureStage.confirmation,
+        ),
+      );
       return;
     }
     final key = await ref

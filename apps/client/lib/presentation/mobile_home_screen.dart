@@ -11,6 +11,7 @@ import '../application/chat_source_controller.dart';
 import '../application/client_session_controller.dart';
 import '../application/direct_chat_controller.dart';
 import '../application/gateway_workspace_controller.dart';
+import '../application/hermes_conversation_controller.dart';
 import '../application/speech_playback_controller.dart';
 import '../application/voice_session_controller.dart';
 import '../domain/client_session.dart';
@@ -21,6 +22,7 @@ import '../domain/voice.dart';
 import 'conversation_view.dart';
 import 'design/agent_talk_theme.dart';
 import 'direct_chat_view.dart';
+import 'hermes_conversation_view.dart';
 import 'mobile_visual_preferences.dart';
 import 'mobile_visual_settings_sheet.dart';
 import 'signal_core_view.dart';
@@ -41,6 +43,8 @@ class MobileHomeScreen extends ConsumerStatefulWidget {
     required this.onCancelVoice,
     required this.onDiscardVoice,
     required this.onOpenVoiceSettings,
+    required this.onOpenHermesConversationSettings,
+    required this.hermesConversation,
     super.key,
   });
 
@@ -58,6 +62,8 @@ class MobileHomeScreen extends ConsumerStatefulWidget {
   final Future<void> Function() onCancelVoice;
   final Future<void> Function() onDiscardVoice;
   final Future<void> Function(BuildContext) onOpenVoiceSettings;
+  final Future<void> Function(BuildContext) onOpenHermesConversationSettings;
+  final HermesConversationState hermesConversation;
 
   @override
   ConsumerState<MobileHomeScreen> createState() => _MobileHomeScreenState();
@@ -101,6 +107,7 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
     final source = ref.watch(chatSourceProvider);
     final direct = ref.watch(directChatProvider);
     final workspace = ref.watch(gatewayWorkspaceProvider);
+    final hermesConversation = ref.watch(hermesConversationProvider);
     final voice = ref.watch(voiceSessionProvider);
     final speech = ref.watch(speechPlaybackProvider);
     final speechEnabled = ref.watch(speechEnabledProvider);
@@ -182,6 +189,7 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
                             source: source,
                             direct: direct,
                             workspace: workspace,
+                            hermesConversation: hermesConversation,
                             session: session,
                             voice: voice,
                             snapshot: snapshot,
@@ -198,6 +206,8 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
                             onStopVoice: _stopVoice,
                             onCancelVoice: widget.onCancelVoice,
                             onDiscardVoice: widget.onDiscardVoice,
+                            onOpenHermesConversationSettings:
+                                widget.onOpenHermesConversationSettings,
                             onChanged: ref
                                 .read(clientSessionProvider.notifier)
                                 .editDraft,
@@ -503,6 +513,7 @@ class _MobileTextMode extends StatelessWidget {
     required this.source,
     required this.direct,
     required this.workspace,
+    required this.hermesConversation,
     required this.session,
     required this.voice,
     required this.snapshot,
@@ -519,12 +530,14 @@ class _MobileTextMode extends StatelessWidget {
     required this.onStopVoice,
     required this.onCancelVoice,
     required this.onDiscardVoice,
+    required this.onOpenHermesConversationSettings,
     required this.onChanged,
   });
 
   final ChatSource source;
   final DirectChatState direct;
   final GatewayWorkspaceState workspace;
+  final HermesConversationState hermesConversation;
   final ClientSessionState session;
   final VoiceSessionState voice;
   final SignalCoreSnapshot snapshot;
@@ -541,6 +554,7 @@ class _MobileTextMode extends StatelessWidget {
   final Future<void> Function() onStopVoice;
   final Future<void> Function() onCancelVoice;
   final Future<void> Function() onDiscardVoice;
+  final Future<void> Function(BuildContext) onOpenHermesConversationSettings;
   final ValueChanged<String> onChanged;
 
   @override
@@ -562,6 +576,17 @@ class _MobileTextMode extends StatelessWidget {
             ).read(directChatProvider.notifier).speakMessage,
             speechEnabled: speechEnabled,
             mobileVisual: true,
+          )
+        : source == ChatSource.hermesConversation
+        ? HermesConversationView(
+            state: hermesConversation,
+            mobileVisual: true,
+            onCancel: ProviderScope.containerOf(
+              context,
+              listen: false,
+            ).read(hermesConversationProvider.notifier).cancel,
+            onConfigure: () =>
+                unawaited(onOpenHermesConversationSettings(context)),
           )
         : workspace.selectedConversation == null
         ? const _MobileEmptyText()
@@ -621,9 +646,17 @@ class _MobileTextMode extends StatelessWidget {
               sendEnabled: source == ChatSource.directLlm
                   ? direct.isConfigured &&
                         direct.phase != DirectChatPhase.sending
+                  : source == ChatSource.hermesConversation
+                  ? hermesConversation.isConfigured &&
+                        hermesConversation.phase !=
+                            HermesConversationPhase.sending
                   : ownsLease,
-              requiresGatewayConnection: source != ChatSource.directLlm,
-              sendLabel: source == ChatSource.directLlm ? '发送' : '交给 Hermes',
+              requiresGatewayConnection: source == ChatSource.hermes,
+              sendLabel: source == ChatSource.directLlm
+                  ? '发送'
+                  : source == ChatSource.hermesConversation
+                  ? '发送到 Hermes'
+                  : '交给 Hermes',
               onChanged: onChanged,
               onConfirm: onConfirm,
               onReopen: onReopen,

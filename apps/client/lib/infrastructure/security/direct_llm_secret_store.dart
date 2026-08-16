@@ -231,5 +231,7 @@ AssistantSpeechPolicy _assistantSpeechPolicy(Object? value) => switch (value) {
 
 ChatSource _assistantChatSource(Object? value) => switch (value) {
   'hermes' => ChatSource.hermes,
+  'hermesConversation' ||
+  'hermes_conversation' => ChatSource.hermesConversation,
   _ => ChatSource.directLlm,
 };

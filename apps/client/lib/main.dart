@@ -9,6 +9,7 @@ import 'package:media_kit/media_kit.dart';
 import 'app/agent_talk_app.dart';
 import 'application/desktop_integration_controller.dart';
 import 'application/direct_chat_controller.dart';
+import 'application/hermes_conversation_controller.dart';
 import 'application/speech_playback_controller.dart';
 import 'application/voice_provider_settings_controller.dart';
 import 'application/voice_session_controller.dart';
@@ -85,6 +86,9 @@ Future<void> main() async {
         localTranscriptStoreProvider.overrideWithValue(transcriptStore),
         directChatHistoryStoreProvider.overrideWithValue(directChatStore),
         directContextStoreProvider.overrideWithValue(directChatStore),
+        hermesConversationHistoryStoreProvider.overrideWithValue(
+          directChatStore,
+        ),
         audioPlaybackPortProvider.overrideWithValue(playback),
         if (isDesktop)
           desktopIntegrationPortProvider.overrideWithValue(
