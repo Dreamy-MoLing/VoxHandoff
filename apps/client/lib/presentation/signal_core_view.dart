@@ -153,8 +153,8 @@ class _SignalCoreViewState extends State<SignalCoreView>
     };
     return Semantics(
       liveRegion: widget.snapshot.state != SignalCoreState.idle,
-      label: widget.snapshot.label,
-      value: widget.snapshot.state.name,
+      label: _localizedSignalLabel(widget.snapshot.label),
+      value: _localizedSignalState(widget.snapshot.state),
       image: true,
       child: RepaintBoundary(
         child: SizedBox.square(
@@ -854,15 +854,47 @@ class SignalCorePainter extends CustomPainter {
 }
 
 String _displayLabel(SignalCoreState state) => switch (state) {
-  SignalCoreState.idle => 'HERMES READY',
-  SignalCoreState.recording => 'LISTENING',
-  SignalCoreState.transcribing => 'TRANSCRIBING',
-  SignalCoreState.awaitingConfirmation => 'REVIEW',
-  SignalCoreState.submitting => 'HANDOFF',
-  SignalCoreState.working => 'HERMES ACTIVE',
-  SignalCoreState.speaking => 'VOICE',
-  SignalCoreState.approval => 'DECISION',
-  SignalCoreState.completed => 'COMPLETE',
-  SignalCoreState.failed => 'FAULT',
-  SignalCoreState.uncertain => 'VERIFY',
+  SignalCoreState.idle => 'HERMES 就绪',
+  SignalCoreState.recording => '正在聆听',
+  SignalCoreState.transcribing => '正在转写',
+  SignalCoreState.awaitingConfirmation => '等待确认',
+  SignalCoreState.submitting => '正在交接',
+  SignalCoreState.working => 'HERMES 工作中',
+  SignalCoreState.speaking => '正在播报',
+  SignalCoreState.approval => '需要决策',
+  SignalCoreState.completed => '已完成',
+  SignalCoreState.failed => '故障',
+  SignalCoreState.uncertain => '请核验',
+};
+
+String _localizedSignalLabel(String label) => switch (label) {
+  'Approval required' => '需要审批',
+  'Clarification required' => '需要澄清',
+  'Request outcome uncertain' => '请求结果不确定',
+  'Recording voice' => '正在录音',
+  'Preparing microphone' => '正在准备麦克风',
+  'Transcribing voice' => '正在转写语音',
+  'Call preview' => '通话预览',
+  'Waiting for text confirmation' => '等待文字确认',
+  'Submitting confirmed text' => '正在提交已确认文本',
+  'Request or voice stage failed' => '请求或语音阶段失败',
+  'Agent working' => '助手工作中',
+  'Playing speech' => '正在播放语音',
+  'Request completed' => '请求已完成',
+  'VoxHandoff idle' => 'VoxHandoff 待命',
+  _ => label,
+};
+
+String _localizedSignalState(SignalCoreState state) => switch (state) {
+  SignalCoreState.idle => '待命',
+  SignalCoreState.recording => '录音中',
+  SignalCoreState.transcribing => '转写中',
+  SignalCoreState.awaitingConfirmation => '等待确认',
+  SignalCoreState.submitting => '提交中',
+  SignalCoreState.working => '工作中',
+  SignalCoreState.speaking => '播报中',
+  SignalCoreState.approval => '需要审批',
+  SignalCoreState.completed => '已完成',
+  SignalCoreState.failed => '失败',
+  SignalCoreState.uncertain => '待核验',
 };

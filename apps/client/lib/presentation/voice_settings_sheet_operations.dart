@@ -54,10 +54,7 @@ extension _VoiceSettingsSheetOperations on _VoiceSettingsSheetState {
           .read(gatewayTrustedRootCertificateImporterProvider)
           .import();
       if (mounted && imported) {
-        setState(
-          () => _gatewayTrustMessage =
-              'Trusted CA imported. Test STT readiness again.',
-        );
+        setState(() => _gatewayTrustMessage = '已导入受信任的 CA。请再次测试 STT 就绪状态。');
       }
     } on PrivateCaCertificatePickerException catch (error) {
       if (mounted) setState(() => _gatewayTrustMessage = error.message);
@@ -65,17 +62,11 @@ extension _VoiceSettingsSheetOperations on _VoiceSettingsSheetState {
       if (mounted) setState(() => _gatewayTrustMessage = error.message);
     } on FormatException {
       if (mounted) {
-        setState(
-          () => _gatewayTrustMessage =
-              'Certificate file is not valid UTF-8 PEM. Choose a CA certificate.',
-        );
+        setState(() => _gatewayTrustMessage = '证书文件不是有效的 UTF-8 PEM。请选择 CA 证书。');
       }
     } on Object {
       if (mounted) {
-        setState(
-          () => _gatewayTrustMessage =
-              'The Gateway trust certificate could not be updated. The existing profile was kept.',
-        );
+        setState(() => _gatewayTrustMessage = '无法更新 Gateway 信任证书。已保留现有配置。');
       }
     } finally {
       if (mounted) setState(() => _gatewayTrustImportPending = false);
@@ -116,17 +107,11 @@ extension _VoiceSettingsSheetOperations on _VoiceSettingsSheetState {
     final origin = Uri.tryParse(_remoteSttOrigin.text.trim());
     final providerId = _remoteSttProviderId.text.trim();
     if (origin == null || !RemoteSttDisclosure.isSecureOriginUri(origin)) {
-      setState(
-        () => _remoteSttDisclosureError =
-            'Enter an exact HTTPS origin before fetching disclosure.',
-      );
+      setState(() => _remoteSttDisclosureError = '获取披露前，请输入精确的 HTTPS 地址。');
       return;
     }
     if (providerId.isEmpty) {
-      setState(
-        () => _remoteSttDisclosureError =
-            'Enter the remote provider ID before fetching disclosure.',
-      );
+      setState(() => _remoteSttDisclosureError = '获取披露前，请输入远程来源 ID。');
       return;
     }
 
@@ -173,17 +158,11 @@ extension _VoiceSettingsSheetOperations on _VoiceSettingsSheetState {
       }
     } on FormatException {
       if (mounted) {
-        setState(
-          () => _remoteSttDisclosureError =
-              'The remote STT disclosure is invalid or too large.',
-        );
+        setState(() => _remoteSttDisclosureError = '远程 STT 披露无效或过大。');
       }
     } on Object {
       if (mounted) {
-        setState(
-          () => _remoteSttDisclosureError =
-              'The remote STT disclosure could not be fetched. Check the origin and token.',
-        );
+        setState(() => _remoteSttDisclosureError = '无法获取远程 STT 披露。请检查地址和令牌。');
       }
     } finally {
       await transport?.close();
@@ -207,8 +186,7 @@ extension _VoiceSettingsSheetOperations on _VoiceSettingsSheetState {
     setState(() {
       _microphones = microphones;
       if (microphones.isEmpty) {
-        _microphoneLoadMessage =
-            'Microphone: system default (enumeration unavailable or no devices reported).';
+        _microphoneLoadMessage = '麦克风：系统默认（无法枚举设备或未报告任何设备）。';
       }
     });
   }
@@ -232,11 +210,11 @@ class _TestRow extends StatelessWidget {
       OutlinedButton(
         onPressed: onTest,
         child: Text(
-          status.phase == VoiceProviderTestPhase.testing ? 'Testing…' : label,
+          status.phase == VoiceProviderTestPhase.testing ? '测试中…' : label,
         ),
       ),
       if (status.phase == VoiceProviderTestPhase.ready)
-        const Text('Ready', style: TextStyle(color: Colors.green)),
+        const Text('已就绪', style: TextStyle(color: Colors.green)),
       if (status.safeMessage != null)
         Text(
           status.safeMessage!,

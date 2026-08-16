@@ -370,7 +370,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           actions: [
             PopupMenuButton<ChatSource>(
-              tooltip: 'Choose chat source',
+              tooltip: '选择聊天来源',
               initialValue: source,
               onSelected: (value) => unawaited(
                 ref.read(chatSourceProvider.notifier).select(value),
@@ -378,15 +378,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               itemBuilder: (context) => const [
                 PopupMenuItem(
                   value: ChatSource.hermesConversation,
-                  child: Text('Hermes conversation'),
+                  child: Text('Hermes 对话'),
                 ),
                 PopupMenuItem(
                   value: ChatSource.hermes,
-                  child: Text('Hermes via Gateway'),
+                  child: Text('通过 Gateway 使用 Hermes'),
                 ),
                 PopupMenuItem(
                   value: ChatSource.directLlm,
-                  child: Text('Direct LLM API'),
+                  child: Text('Direct LLM 接口'),
                 ),
               ],
               child: IconButton(
@@ -399,7 +399,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
             IconButton(
-              tooltip: 'Source settings',
+              tooltip: '来源设置',
               onPressed: () => showVoiceSettingsSheet(context),
               icon: const Icon(Icons.tune_outlined),
             ),
@@ -482,10 +482,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   : ownsLease,
               requiresGatewayConnection: source == ChatSource.hermes,
               sendLabel: isDirect
-                  ? 'Send to LLM'
+                  ? '发送给 LLM'
                   : isHermesConversation
-                  ? 'Send to Hermes'
-                  : 'Handoff to Hermes',
+                  ? '发送给 Hermes'
+                  : '交给 Hermes',
               onStartVoice: _startVoice,
               onStopVoice: _stopVoice,
               onCancelVoice: _cancelVoice,

@@ -21,14 +21,13 @@ class HermesConversationBanner extends StatelessWidget {
     final status =
         state.failure?.message ??
         (state.sessionBootstrapFallback
-            ? 'Session bootstrap was unavailable. A stable generated session ID will be used.'
+            ? '会话引导不可用，将使用稳定生成的 session ID。'
             : configured
-            ? 'Confirmed text is sent to Hermes Chat Completions. Agent work approvals remain Hermes-owned.'
-            : 'Configure the HTTPS Hermes endpoint and store its API key in OS secure storage.');
+            ? '已确认文本会发送到 Hermes Chat Completions。Agent 工作审批仍由 Hermes 负责。'
+            : '请配置 HTTPS Hermes 地址，并将 API key 保存在操作系统安全存储中。');
     return Semantics(
       container: true,
-      label:
-          'Hermes conversation; model ${configuration?.model ?? 'not configured'}',
+      label: 'Hermes 对话；模型 ${configuration?.model ?? '未配置'}',
       child: ColoredBox(
         color: Color.alphaBlend(
           context.visualTokens.signal.withValues(alpha: 0.08),
@@ -55,7 +54,7 @@ class HermesConversationBanner extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          configuration?.model ?? 'Hermes conversation',
+                          configuration?.model ?? 'Hermes 对话',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 3),
@@ -67,7 +66,7 @@ class HermesConversationBanner extends StatelessWidget {
               );
               final button = OutlinedButton(
                 onPressed: onConfigure,
-                child: Text(configured ? 'Configure' : 'Configure Hermes'),
+                child: Text(configured ? '配置' : '配置 Hermes'),
               );
               if (constraints.maxWidth < 560) {
                 return Column(
@@ -118,8 +117,8 @@ class HermesConversationView extends StatelessWidget {
             ? Center(
                 child: Text(
                   state.isConfigured
-                      ? 'Confirm text to start the Hermes conversation.'
-                      : 'Configure Hermes conversation before sending confirmed text.',
+                      ? '确认文本，开始 Hermes 对话。'
+                      : '发送已确认文本前，请先配置 Hermes 对话。',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: context.visualTokens.textMuted),
                 ),
@@ -156,14 +155,14 @@ class _HermesConversationHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final configuration = state.configuration;
     final status = switch (state.phase) {
-      HermesConversationPhase.unconfigured => 'Not configured',
-      HermesConversationPhase.restoring => 'Restoring session history',
-      HermesConversationPhase.bootstrapping => 'Creating Hermes session',
-      HermesConversationPhase.ready => 'Ready',
-      HermesConversationPhase.testing => 'Testing endpoint',
-      HermesConversationPhase.sending => 'Streaming reply',
-      HermesConversationPhase.cancelled => 'Last reply cancelled',
-      HermesConversationPhase.failed => 'Request needs attention',
+      HermesConversationPhase.unconfigured => '未配置',
+      HermesConversationPhase.restoring => '正在恢复会话历史',
+      HermesConversationPhase.bootstrapping => '正在创建 Hermes 会话',
+      HermesConversationPhase.ready => '已就绪',
+      HermesConversationPhase.testing => '正在测试地址',
+      HermesConversationPhase.sending => '正在流式回复',
+      HermesConversationPhase.cancelled => '上一条回复已取消',
+      HermesConversationPhase.failed => '请求需要处理',
     };
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -179,7 +178,7 @@ class _HermesConversationHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  configuration?.model ?? 'Hermes conversation',
+                  configuration?.model ?? 'Hermes 对话',
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 Text(
@@ -197,7 +196,7 @@ class _HermesConversationHeader extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Configure Hermes conversation',
+            tooltip: '配置 Hermes 对话',
             onPressed: onConfigure,
             icon: const Icon(Icons.tune_outlined),
           ),
@@ -205,7 +204,7 @@ class _HermesConversationHeader extends StatelessWidget {
             TextButton.icon(
               onPressed: () => onCancel(),
               icon: const Icon(Icons.stop_circle_outlined),
-              label: const Text('Stop'),
+              label: const Text('停止'),
             ),
         ],
       ),
@@ -265,7 +264,7 @@ class _HermesMessageBubble extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
                       child: Text(
-                        message.terminal.name,
+                        _directMessageTerminalLabel(message.terminal),
                         style: TextStyle(
                           color: context.visualTokens.textMuted,
                           fontSize: 12,
@@ -290,3 +289,13 @@ class _HermesMessageBubble extends StatelessWidget {
     );
   }
 }
+
+String _directMessageTerminalLabel(DirectMessageTerminal terminal) =>
+    switch (terminal) {
+      DirectMessageTerminal.streaming => '流式回复中',
+      DirectMessageTerminal.completed => '已完成',
+      DirectMessageTerminal.cancelled => '已取消',
+      DirectMessageTerminal.failed => '失败',
+      DirectMessageTerminal.incomplete => '不完整',
+      DirectMessageTerminal.truncated => '已截断',
+    };

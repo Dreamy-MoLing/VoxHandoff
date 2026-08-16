@@ -166,7 +166,7 @@ void main() {
 
     expect(harness.voice.starts, 1);
     _expectCoreSize(tester, 436.8);
-    expect(find.bySemanticsLabel(RegExp(r'^Recording voice')), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp(r'^正在录音')), findsOneWidget);
     await gesture.up();
     await tester.pump();
     expect(harness.voice.starts, 1);
@@ -246,7 +246,7 @@ void main() {
     await tester.pump();
 
     expect(harness.voice.starts, 1);
-    expect(find.bySemanticsLabel(RegExp(r'^Recording voice')), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp(r'^正在录音')), findsOneWidget);
     await gesture.up();
   });
 
@@ -298,7 +298,7 @@ void main() {
     await _pumpPhone(tester, reducedMotion: true);
     await _enterTextMode(tester);
 
-    expect(find.bySemanticsLabel('VoxHandoff idle'), findsOneWidget);
+    expect(find.bySemanticsLabel('VoxHandoff 待命'), findsOneWidget);
     expect(tester.takeException(), isNull);
     semantics.dispose();
   });

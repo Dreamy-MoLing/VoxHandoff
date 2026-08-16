@@ -60,8 +60,8 @@ SignalCoreSnapshot resolveSignalCore({
     return _snapshot(
       SignalCoreState.approval,
       pendingInteraction.kind == ClientEventKind.approvalRequired
-          ? 'Approval required'
-          : 'Clarification required',
+          ? '需要审批'
+          : '需要澄清',
       conversationId: conversationId,
       requestId: pendingInteraction.requestId,
       sourceIdentity: pendingInteraction.eventId,
@@ -74,7 +74,7 @@ SignalCoreSnapshot resolveSignalCore({
   if (uncertainRequestId != null) {
     return _snapshot(
       SignalCoreState.uncertain,
-      'Request outcome uncertain',
+      '请求结果不确定',
       conversationId: conversationId,
       requestId: uncertainRequestId,
       sourceIdentity: uncertainRequestId,
@@ -84,7 +84,7 @@ SignalCoreSnapshot resolveSignalCore({
   if (voice.phase == VoiceInputPhase.recording) {
     return _snapshot(
       SignalCoreState.recording,
-      'Recording voice',
+      '正在录音',
       conversationId: conversationId,
       audioLevel: voice.audioLevel,
       sourceIdentity: voice.sessionId,
@@ -95,8 +95,8 @@ SignalCoreSnapshot resolveSignalCore({
     return _snapshot(
       SignalCoreState.transcribing,
       voice.phase == VoiceInputPhase.requestingPermission
-          ? 'Preparing microphone'
-          : 'Transcribing voice',
+          ? '正在准备麦克风'
+          : '正在转写语音',
       conversationId: conversationId,
       sourceIdentity: voice.sessionId,
     );
@@ -106,9 +106,7 @@ SignalCoreSnapshot resolveSignalCore({
       session.draftPhase == DraftPhase.confirmed) {
     return _snapshot(
       SignalCoreState.awaitingConfirmation,
-      voice.phase == VoiceInputPhase.awaitingCallConfirm
-          ? 'Call preview'
-          : 'Waiting for text confirmation',
+      voice.phase == VoiceInputPhase.awaitingCallConfirm ? '通话预览' : '等待文字确认',
       conversationId: conversationId,
       sourceIdentity: voice.sessionId,
     );
@@ -116,7 +114,7 @@ SignalCoreSnapshot resolveSignalCore({
   if (session.draftPhase == DraftPhase.submitting) {
     return _snapshot(
       SignalCoreState.submitting,
-      'Submitting confirmed text',
+      '正在提交已确认文本',
       conversationId: conversationId,
       requestId: session.requestId,
       sourceIdentity: session.requestId,
@@ -128,7 +126,7 @@ SignalCoreSnapshot resolveSignalCore({
       latestTurn?.isFailed == true) {
     return _snapshot(
       SignalCoreState.failed,
-      'Request or voice stage failed',
+      '请求或语音阶段失败',
       conversationId: conversationId,
       requestId: latestRequestId,
       sourceIdentity:
@@ -140,7 +138,7 @@ SignalCoreSnapshot resolveSignalCore({
   if (activeTurn != null) {
     return _snapshot(
       SignalCoreState.working,
-      'Agent working',
+      '助手工作中',
       conversationId: conversationId,
       requestId: activeTurn.requestId,
       sourceIdentity: activeTurn.latestEvent.eventId,
@@ -155,7 +153,7 @@ SignalCoreSnapshot resolveSignalCore({
       (latestRequestId == null || segment.requestId == latestRequestId)) {
     return _snapshot(
       SignalCoreState.speaking,
-      'Playing speech',
+      '正在播放语音',
       conversationId: conversationId,
       requestId: segment.requestId,
       playbackLevel: speech.playbackLevel,
@@ -166,7 +164,7 @@ SignalCoreSnapshot resolveSignalCore({
   if (latestTurn?.terminalEvent?.kind == ClientEventKind.requestCompleted) {
     return _snapshot(
       SignalCoreState.completed,
-      'Request completed',
+      '请求已完成',
       conversationId: conversationId,
       requestId: latestTurn!.requestId,
       sourceIdentity: latestTurn.terminalEvent!.eventId,
@@ -175,7 +173,7 @@ SignalCoreSnapshot resolveSignalCore({
 
   return _snapshot(
     SignalCoreState.idle,
-    'VoxHandoff idle',
+    'VoxHandoff 待命',
     conversationId: conversationId,
   );
 }

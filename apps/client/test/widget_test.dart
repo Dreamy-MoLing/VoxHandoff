@@ -9,25 +9,22 @@ void main() {
   ) async {
     await tester.pumpWidget(const ProviderScope(child: AgentTalkApp()));
 
-    expect(find.text('Not paired'), findsOneWidget);
-    expect(
-      find.textContaining('Draft text stays on this device'),
-      findsOneWidget,
-    );
-    expect(find.text('Send unavailable'), findsOneWidget);
-    expect(find.byTooltip('Record voice draft'), findsOneWidget);
+    expect(find.text('未配对'), findsOneWidget);
+    expect(find.textContaining('草稿文本保留在此设备上'), findsOneWidget);
+    expect(find.text('暂不可发送'), findsOneWidget);
+    expect(find.byTooltip('录制语音草稿'), findsOneWidget);
     final sendButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Send unavailable'),
+      find.widgetWithText(FilledButton, '暂不可发送'),
     );
     expect(sendButton.onPressed, isNull);
 
     await tester.enterText(find.byType(TextField), '  review this first  ');
     await tester.pump();
-    await tester.tap(find.widgetWithText(FilledButton, 'Confirm'));
+    await tester.tap(find.widgetWithText(FilledButton, '确认'));
     await tester.pump();
 
-    expect(find.text('Confirmed locally'), findsOneWidget);
-    expect(find.text('Edit'), findsOneWidget);
+    expect(find.text('已在本地确认'), findsOneWidget);
+    expect(find.text('编辑'), findsOneWidget);
     expect(find.textContaining('review this first'), findsOneWidget);
   });
 

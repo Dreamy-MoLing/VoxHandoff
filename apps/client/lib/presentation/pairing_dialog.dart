@@ -46,7 +46,7 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
   void initState() {
     super.initState();
     _gateway = TextEditingController();
-    _deviceName = TextEditingController(text: 'This device');
+    _deviceName = TextEditingController(text: '此设备');
     _certificate = TextEditingController();
     if (widget.restoreOnOpen) {
       Future<void>.microtask(
@@ -74,8 +74,7 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
     } on StateError {
       if (mounted) {
         setState(() {
-          _localError =
-              'That action is no longer valid for the current pairing state.';
+          _localError = '此操作已不适用于当前配对状态。';
         });
       }
     } finally {
@@ -120,10 +119,7 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
       if (mounted) setState(() => _localError = error.message);
     } on FormatException {
       if (mounted) {
-        setState(
-          () => _localError =
-              'Certificate file is not valid UTF-8 PEM. Choose a CA certificate.',
-        );
+        setState(() => _localError = '证书文件不是有效的 UTF-8 PEM。请选择 CA 证书。');
       }
     } finally {
       if (mounted) setState(() => _actionPending = false);
@@ -205,11 +201,11 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _PhaseTitle(
-          eyebrow: '01 / ESTABLISH',
-          title: 'Name both ends of the relay',
+          eyebrow: '01 / 建立连接',
+          title: '为中继两端命名',
           body:
-              'Only confirmed text crosses this boundary. Pairing creates a '
-              'revocable device key; it does not approve future Agent actions.',
+              '只有已确认文本会跨过这条边界。配对会创建可撤销的设备密钥；'
+              '不会批准未来的 Agent 操作。',
         ),
         const SizedBox(height: 24),
         TextField(
@@ -218,9 +214,9 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
           keyboardType: TextInputType.url,
           autocorrect: false,
           decoration: const InputDecoration(
-            labelText: 'Gateway HTTPS origin',
+            labelText: 'Gateway HTTPS 地址',
             hintText: 'https://gateway.example',
-            helperText: 'No path, query, embedded user, or TLS bypass.',
+            helperText: '不允许路径、查询参数、嵌入式用户或绕过 TLS。',
           ),
         ),
         const SizedBox(height: 16),
@@ -228,38 +224,36 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
           key: const Key('pairing-device-name-field'),
           controller: _deviceName,
           maxLength: 128,
-          decoration: const InputDecoration(labelText: 'Device display name'),
+          decoration: const InputDecoration(labelText: '设备显示名称'),
         ),
         const SizedBox(height: 8),
-        Text('REQUESTED CAPABILITIES', style: _sectionLabel(context)),
+        Text('请求的能力', style: _sectionLabel(context)),
         const SizedBox(height: 8),
         const CheckboxListTile(
           value: true,
           onChanged: null,
           controlAffinity: ListTileControlAffinity.leading,
-          title: Text('Observe complete replies'),
-          subtitle: Text('Required; does not grant control.'),
+          title: Text('查看完整回复'),
+          subtitle: Text('必需；不会授予控制权。'),
         ),
         CheckboxListTile(
           value: _send,
           onChanged: (value) => setState(() => _send = value ?? false),
           controlAffinity: ListTileControlAffinity.leading,
-          title: const Text('Send confirmed text'),
+          title: const Text('发送已确认文本'),
         ),
         CheckboxListTile(
           value: _interrupt,
           onChanged: (value) => setState(() => _interrupt = value ?? false),
           controlAffinity: ListTileControlAffinity.leading,
-          title: const Text('Interrupt an active request'),
+          title: const Text('中断活动请求'),
         ),
         CheckboxListTile(
           value: _approve,
           onChanged: (value) => setState(() => _approve = value ?? false),
           controlAffinity: ListTileControlAffinity.leading,
-          title: const Text('Respond to Agent approvals'),
-          subtitle: const Text(
-            'Every approval still requires an explicit choice.',
-          ),
+          title: const Text('响应 Agent 审批'),
+          subtitle: const Text('每次审批仍需明确选择。'),
         ),
         const SizedBox(height: 12),
         Align(
@@ -268,14 +262,14 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
             key: const Key('pairing-import-ca-button'),
             onPressed: _actionPending ? null : _importPrivateCaCertificate,
             icon: const Icon(Icons.file_open_outlined),
-            label: const Text('Import PEM from file'),
+            label: const Text('从文件导入 PEM'),
           ),
         ),
         const SizedBox(height: 4),
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
-          title: const Text('Private CA certificate'),
-          subtitle: const Text('Optional PEM for a self-hosted Gateway'),
+          title: const Text('私有 CA 证书'),
+          subtitle: const Text('自托管 Gateway 可选的 PEM'),
           children: [
             TextField(
               key: const Key('pairing-certificate-field'),
@@ -294,7 +288,7 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
           key: const Key('pairing-begin-button'),
           onPressed: _actionPending ? null : _begin,
           icon: const Icon(Icons.key_outlined),
-          label: const Text('Create pairing request'),
+          label: const Text('创建配对请求'),
         ),
       ],
     );
@@ -305,38 +299,23 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _PhaseTitle(
-          eyebrow: '02 / VERIFY',
-          title: 'Compare before you authorize',
-          body:
-              'On an existing owner device, open the verification address and '
-              'approve only if every fingerprint and capability matches.',
+          eyebrow: '02 / 验证',
+          title: '授权前进行比对',
+          body: '请在已有的所有者设备上打开验证地址，仅当所有指纹和能力都匹配时才批准。',
         ),
         const SizedBox(height: 24),
         _UserCode(value: state.userCode ?? '—'),
         const SizedBox(height: 20),
-        _Fact(
-          label: 'Verification address',
-          value: state.verificationUri?.toString() ?? '—',
-        ),
+        _Fact(label: '验证地址', value: state.verificationUri?.toString() ?? '—'),
         _Fact(label: 'Gateway', value: state.gatewayAudience ?? '—'),
-        _Fact(
-          label: 'Gateway fingerprint',
-          value: state.gatewayFingerprint ?? '—',
-        ),
-        _Fact(
-          label: 'Device fingerprint',
-          value: state.deviceFingerprint ?? '—',
-        ),
-        _Fact(
-          label: 'Requested capabilities',
-          value: state.requestedScopes.join('  /  '),
-        ),
+        _Fact(label: 'Gateway 指纹', value: state.gatewayFingerprint ?? '—'),
+        _Fact(label: '设备指纹', value: state.deviceFingerprint ?? '—'),
+        _Fact(label: '请求的能力', value: state.requestedScopes.join('  /  ')),
         const SizedBox(height: 16),
         _InlineNotice(
           icon: Icons.front_hand_outlined,
           message:
-              'VoxHandoff will not click Approve for you. This button only asks '
-              'the Gateway whether your separate owner decision is now present.',
+              'VoxHandoff 不会替你点击“批准”。此按钮只会询问 Gateway 是否已经记录了你在另一台所有者设备上的决定。',
           color: context.visualTokens.attention,
         ),
         const SizedBox(height: 20),
@@ -348,14 +327,14 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
                       .read(devicePairingProvider.notifier)
                       .completeAfterOwnerApproval,
                 ),
-          child: const Text('I completed the owner-side review'),
+          child: const Text('我已完成所有者端审核'),
         ),
         const SizedBox(height: 12),
         OutlinedButton(
           onPressed: _actionPending
               ? null
               : () => _run(ref.read(devicePairingProvider.notifier).abandon),
-          child: const Text('Abandon local pairing attempt'),
+          child: const Text('放弃本地配对尝试'),
         ),
       ],
     );
@@ -366,26 +345,21 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _PhaseTitle(
-          eyebrow: '03 / PROVE',
-          title: 'Read back the new credential',
-          body:
-              'The device will sign a second, independent challenge. Pairing is '
-              'not complete until the returned credential is saved locally.',
+          eyebrow: '03 / 证明',
+          title: '回读新凭据',
+          body: '设备将对第二个独立挑战进行签名。只有保存返回的凭据后，配对才算完成。',
         ),
         const SizedBox(height: 24),
-        _Fact(label: 'Device ID', value: state.deviceId ?? 'Pending'),
-        _Fact(label: 'Credential ID', value: state.credentialId ?? 'Pending'),
-        _Fact(
-          label: 'Approved capabilities',
-          value: state.approvedScopes.join('  /  '),
-        ),
+        _Fact(label: '设备 ID', value: state.deviceId ?? '待定'),
+        _Fact(label: '凭据 ID', value: state.credentialId ?? '待定'),
+        _Fact(label: '已批准的能力', value: state.approvedScopes.join('  /  ')),
         const SizedBox(height: 20),
         FilledButton.icon(
           onPressed: _actionPending
               ? null
               : () => _run(ref.read(devicePairingProvider.notifier).confirm),
           icon: const Icon(Icons.verified_user_outlined),
-          label: const Text('Verify and store credential'),
+          label: const Text('验证并保存凭据'),
         ),
       ],
     );
@@ -396,20 +370,18 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _PhaseTitle(
-          eyebrow: 'LINK / SEALED',
-          title: 'This device is paired',
-          body:
-              'The private key and rotating credential are stored by the '
-              'operating system. Live session connection is the next stage.',
+          eyebrow: '连接 / 已封存',
+          title: '此设备已配对',
+          body: '私钥和轮换凭据由操作系统保存。下一步是建立实时会话连接。',
         ),
         const SizedBox(height: 24),
         _Fact(label: 'Gateway', value: state.gatewayAudience ?? '—'),
-        _Fact(label: 'Device ID', value: state.deviceId ?? '—'),
-        _Fact(label: 'Capabilities', value: state.approvedScopes.join('  /  ')),
+        _Fact(label: '设备 ID', value: state.deviceId ?? '—'),
+        _Fact(label: '能力', value: state.approvedScopes.join('  /  ')),
         const SizedBox(height: 24),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Return to relay'),
+          child: const Text('返回中继'),
         ),
       ],
     );
@@ -420,16 +392,14 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _PhaseTitle(
-          eyebrow: 'LINK / STOPPED',
-          title: 'Pairing stopped safely',
-          body:
-              state.safeErrorMessage ??
-              'No credential was accepted. Review the local setup and try again.',
+          eyebrow: '连接 / 已停止',
+          title: '配对已安全停止',
+          body: state.safeErrorMessage ?? '未接受任何凭据。请检查本地设置后重试。',
         ),
         const SizedBox(height: 20),
         _InlineNotice(
           icon: Icons.error_outline,
-          message: 'Code: ${state.safeErrorCode ?? 'pairing_failed'}',
+          message: '代码：${state.safeErrorCode ?? 'pairing_failed'}',
           color: context.visualTokens.danger,
         ),
         const SizedBox(height: 20),
@@ -438,7 +408,7 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
               ? null
               : () =>
                     _run(ref.read(devicePairingProvider.notifier).resetFailure),
-          child: const Text('Clear failed attempt'),
+          child: const Text('清除失败尝试'),
         ),
       ],
     );
@@ -452,18 +422,12 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _PhaseTitle(
-          eyebrow: 'LINK / UNRESOLVED',
-          title: 'The Gateway outcome is unknown',
-          body:
-              state.safeErrorMessage ??
-              'Nothing was retried automatically. Choose a recovery action '
-                  'after checking the owner device and Gateway.',
+          eyebrow: '连接 / 未决',
+          title: 'Gateway 结果未知',
+          body: state.safeErrorMessage ?? '未自动重试。请检查所有者设备和 Gateway 后选择恢复操作。',
         ),
         const SizedBox(height: 20),
-        _Fact(
-          label: 'Interrupted stage',
-          value: state.operation?.name ?? 'unknown',
-        ),
+        _Fact(label: '中断阶段', value: state.operation?.name ?? 'unknown'),
         if (canRetry) ...[
           const SizedBox(height: 16),
           FilledButton(
@@ -472,11 +436,7 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
                 : () => _run(
                     ref.read(devicePairingProvider.notifier).retryUncertain,
                   ),
-            child: Text(
-              mustCommit
-                  ? 'Finish local credential storage'
-                  : 'Retry the exact saved request',
-            ),
+            child: Text(mustCommit ? '完成本地凭据保存' : '重试已保存的原请求'),
           ),
         ],
         if (!mustCommit) ...[
@@ -487,9 +447,7 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
               onChanged: (value) =>
                   setState(() => _acknowledgeRemoteCredential = value ?? false),
               controlAffinity: ListTileControlAffinity.leading,
-              title: const Text(
-                'I understand the Gateway may hold an active credential',
-              ),
+              title: const Text('我了解 Gateway 可能仍持有有效凭据'),
             ),
           ],
           const SizedBox(height: 12),
@@ -506,7 +464,7 @@ class _DevicePairingDialogState extends ConsumerState<DevicePairingDialog> {
                               _acknowledgeRemoteCredential,
                         ),
                   ),
-            child: const Text('Abandon local pairing attempt'),
+            child: const Text('放弃本地配对尝试'),
           ),
         ],
       ],

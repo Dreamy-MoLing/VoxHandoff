@@ -63,7 +63,7 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey('signal-core-view')), findsOneWidget);
-    expect(find.bySemanticsLabel('Request outcome uncertain'), findsOneWidget);
+    expect(find.bySemanticsLabel('请求结果不确定'), findsOneWidget);
     expect(tester.takeException(), isNull);
     semantics.dispose();
   });
@@ -95,7 +95,7 @@ void main() {
     );
     await tester.pump(const Duration(seconds: 1));
 
-    expect(find.bySemanticsLabel('Recording voice'), findsOneWidget);
+    expect(find.bySemanticsLabel('正在录音'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -195,7 +195,7 @@ void main() {
         tester.widget<CustomPaint>(corePaint).painter! as SignalCorePainter;
     expect(painter.mobileVisual, isTrue);
     expect(painter.snapshot.audioLevel, 0.72);
-    expect(find.bySemanticsLabel('Recording voice'), findsOneWidget);
+    expect(find.bySemanticsLabel('正在录音'), findsOneWidget);
     expect(tester.takeException(), isNull);
     semantics.dispose();
   });

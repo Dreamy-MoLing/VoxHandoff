@@ -202,9 +202,9 @@ void main() {
 
     expect(find.text('M2 delivery'), findsWidgets);
     expect(find.textContaining('complete Agent reply'), findsOneWidget);
-    expect(find.text('Approve once'), findsOneWidget);
-    expect(find.text('Deny'), findsOneWidget);
-    expect(find.text('Send unavailable'), findsOneWidget);
+    expect(find.text('仅批准一次'), findsOneWidget);
+    expect(find.text('拒绝'), findsOneWidget);
+    expect(find.text('暂不可发送'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -260,7 +260,7 @@ void main() {
       workspaceController: UncertainWorkspaceController.new,
     );
 
-    expect(find.bySemanticsLabel('Request outcome uncertain'), findsOneWidget);
+    expect(find.bySemanticsLabel('请求结果不确定'), findsOneWidget);
     await expectLater(
       find.byType(Scaffold),
       matchesGoldenFile('goldens/m4_uncertain_phone.png'),

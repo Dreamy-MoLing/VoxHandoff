@@ -613,7 +613,7 @@ class _MobileTextMode extends StatelessWidget {
       explicitChildNodes: true,
       liveRegion: snapshot.state != SignalCoreState.idle,
       label: snapshot.label,
-      value: snapshot.state.name,
+      value: snapshot.label,
       onTap: onTapCore,
       onLongPress: () => unawaited(onLongPressStart()),
       child: Stack(
@@ -1016,7 +1016,7 @@ class _MobileCoreGestureState extends State<_MobileCoreGesture> {
   @override
   Widget build(BuildContext context) => Semantics(
     button: true,
-    label: '${widget.snapshot.label}; tap for text, long-press for voice input',
+    label: '${widget.snapshot.label}；点击进入文字模式，长按进行语音输入',
     onTap: widget.onTap,
     onLongPress: () => unawaited(widget.onLongPressStart()),
     child: Listener(

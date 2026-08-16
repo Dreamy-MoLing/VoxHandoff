@@ -53,7 +53,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('stt-provider-kind')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Consented HTTPS provider (Android)').last);
+    await tester.tap(find.text('已同意的 HTTPS 来源（Android）').last);
     await tester.pumpAndSettle();
 
     expect(
@@ -67,8 +67,7 @@ void main() {
 
     final tokenField = find.byWidgetPredicate(
       (widget) =>
-          widget is TextField &&
-          widget.decoration?.labelText == 'Remote provider token',
+          widget is TextField && widget.decoration?.labelText == '远程来源令牌',
     );
     await tester.ensureVisible(tokenField);
     await tester.enterText(tokenField, 'input-token');
@@ -91,7 +90,7 @@ void main() {
             find.byWidgetPredicate(
               (widget) =>
                   widget is TextField &&
-                  widget.decoration?.labelText == 'Remote provider ID',
+                  widget.decoration?.labelText == '远程来源 ID',
             ),
           )
           .controller!
@@ -104,7 +103,7 @@ void main() {
             find.byWidgetPredicate(
               (widget) =>
                   widget is TextField &&
-                  widget.decoration?.labelText == 'TLS policy disclosure',
+                  widget.decoration?.labelText == 'TLS 策略披露',
             ),
           )
           .controller!
@@ -136,22 +135,19 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Hermes'), findsOneWidget);
-      expect(find.text('Local faster-whisper STT'), findsOneWidget);
-      expect(find.text('Local Piper TTS'), findsOneWidget);
-      expect(find.text('Configure direct LLM API'), findsOneWidget);
+      expect(find.text('本地 faster-whisper STT'), findsOneWidget);
+      expect(find.text('本地 Piper TTS'), findsOneWidget);
+      expect(find.text('配置 Direct LLM 接口'), findsOneWidget);
       expect(find.byKey(const Key('gateway-import-ca-button')), findsOneWidget);
-      expect(find.text('Test STT readiness'), findsOneWidget);
-      final testButton = find.widgetWithText(
-        OutlinedButton,
-        'Test TTS readiness',
-      );
+      expect(find.text('测试 STT 就绪状态'), findsOneWidget);
+      final testButton = find.widgetWithText(OutlinedButton, '测试 TTS 就绪状态');
       expect(tester.widget<OutlinedButton>(testButton).onPressed, isNull);
 
       await tester.ensureVisible(find.byType(Switch).last);
       await tester.tap(find.byType(Switch).last);
       await tester.pumpAndSettle();
 
-      expect(find.text('Piper HTTP origin'), findsOneWidget);
+      expect(find.text('Piper HTTP 地址'), findsOneWidget);
       expect(tester.widget<OutlinedButton>(testButton).onPressed, isNotNull);
     },
   );
@@ -182,7 +178,7 @@ void main() {
     await tester.ensureVisible(selector);
     await tester.tap(selector);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Call (preview then send)').last);
+    await tester.tap(find.text('通话模式（预览后发送）').last);
     await tester.pumpAndSettle();
 
     final mode = ProviderScope.containerOf(

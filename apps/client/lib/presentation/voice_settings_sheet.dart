@@ -144,7 +144,7 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
       text: remote?.tlsPolicy ?? 'system-roots-hostname-verified',
     );
     _remoteSttRetentionPolicy = TextEditingController(
-      text: remote?.retentionPolicy ?? 'Provider retention must be reviewed',
+      text: remote?.retentionPolicy ?? '必须审查来源保留策略',
     );
     _remoteSttRevision = TextEditingController(text: remote?.revision ?? 'v1');
     _remoteSttToken = TextEditingController();
@@ -205,13 +205,11 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'Sources and voice',
+                '语音与来源',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Each source has a separate test. No provider test logs text, audio, or credentials.',
-              ),
+              const Text('每个来源都有独立的测试。来源测试不会记录文本、音频或凭据。'),
               const Divider(height: 28),
               const Text(
                 'Hermes',
@@ -219,13 +217,13 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Hermes uses the paired Gateway workspace. Connect or disconnect it from the workspace; direct LLM settings never alter its permissions or uncertain-submission recovery.',
+                'Hermes 使用已配对的 Gateway 工作区。请在工作区中连接或断开；Direct LLM 设置不会改变 Hermes 的权限或提交结果不确定时的恢复流程。',
               ),
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: () => unawaited(_openHermesConversation()),
                 icon: const Icon(Icons.forum_outlined),
-                label: const Text('Use Hermes conversation (Chat Completions)'),
+                label: const Text('使用 Hermes 对话（Chat Completions）'),
               ),
               const SizedBox(height: 8),
               OutlinedButton.icon(
@@ -235,7 +233,7 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                   showDirectLlmSettingsSheet(navigator.context);
                 },
                 icon: const Icon(Icons.key_outlined),
-                label: const Text('Configure direct LLM API'),
+                label: const Text('配置 Direct LLM 接口'),
               ),
               const SizedBox(height: 8),
               OutlinedButton.icon(
@@ -245,9 +243,7 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                     : _importGatewayTrustCertificate,
                 icon: const Icon(Icons.verified_user_outlined),
                 label: Text(
-                  _gatewayTrustImportPending
-                      ? 'Importing trusted CA…'
-                      : 'Re-import trusted CA',
+                  _gatewayTrustImportPending ? '正在导入受信任的 CA…' : '重新导入受信任的 CA',
                 ),
               ),
               if (_gatewayTrustMessage != null)
@@ -257,7 +253,7 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                     _gatewayTrustMessage!,
                     key: const Key('gateway-import-ca-message'),
                     style: TextStyle(
-                      color: _gatewayTrustMessage!.startsWith('Trusted CA')
+                      color: _gatewayTrustMessage!.startsWith('已导入')
                           ? Colors.green
                           : Theme.of(context).colorScheme.error,
                     ),
@@ -265,26 +261,26 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                 ),
               const Divider(height: 28),
               const Text(
-                'Local faster-whisper STT',
+                '本地 faster-whisper STT',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 4),
               DropdownButtonFormField<SttProviderKind>(
                 key: const Key('stt-provider-kind'),
                 initialValue: selectedSttKind,
-                decoration: const InputDecoration(labelText: 'STT provider'),
+                decoration: const InputDecoration(labelText: 'STT 来源'),
                 items: const [
                   DropdownMenuItem(
                     value: SttProviderKind.disabled,
-                    child: Text('Disabled'),
+                    child: Text('已禁用'),
                   ),
                   DropdownMenuItem(
                     value: SttProviderKind.bundledFasterWhisper,
-                    child: Text('Local faster-whisper STT'),
+                    child: Text('本地 faster-whisper STT'),
                   ),
                   DropdownMenuItem(
                     value: SttProviderKind.remoteHttps,
-                    child: Text('Consented HTTPS provider (Android)'),
+                    child: Text('已同意的 HTTPS 来源（Android）'),
                   ),
                 ],
                 onChanged: (kind) {
@@ -300,23 +296,20 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
               ),
               Text(
                 remoteSttEnabled
-                    ? 'Audio is buffered in memory and uploaded only after you stop recording and accept this exact provider disclosure.'
-                    : 'The local option probes only its versioned bundled-sidecar interface. It never downloads a model or accepts a command from this form.',
+                    ? '音频会暂存在内存中，只有在停止录音并接受此来源的完整披露后才会上传。'
+                    : '本地选项只探测版本化的 sidecar 接口，不会下载模型，也不会接受此表单发出的命令。',
               ),
               const SizedBox(height: 8),
               if (_microphones.isEmpty)
-                Text(
-                  _microphoneLoadMessage ??
-                      'Microphone: system default (this platform did not expose selectable input devices).',
-                )
+                Text(_microphoneLoadMessage ?? '麦克风：系统默认（此平台未提供可选的输入设备）。')
               else
                 DropdownButtonFormField<String?>(
                   initialValue: settings.microphoneId,
-                  decoration: const InputDecoration(labelText: 'Microphone'),
+                  decoration: const InputDecoration(labelText: '麦克风'),
                   items: [
                     const DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('System default'),
+                      child: Text('系统默认'),
                     ),
                     for (final microphone in _microphones)
                       DropdownMenuItem<String?>(
@@ -333,19 +326,18 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                 TextField(
                   controller: _sttLanguage,
                   decoration: InputDecoration(
-                    labelText: 'STT language',
+                    labelText: 'STT 语言',
                     helperText: remoteSttEnabled
-                        ? 'Sent as metadata to the exact HTTPS provider.'
-                        : 'Passed to the local sidecar, for example zh or en.',
+                        ? '会作为元数据发送给指定的 HTTPS 来源。'
+                        : '会传给本地 sidecar，例如 zh 或 en。',
                   ),
                 ),
               if (localSttEnabled)
                 TextField(
                   controller: _sttModelPath,
                   decoration: const InputDecoration(
-                    labelText: 'Local faster-whisper model directory',
-                    helperText:
-                        'Absolute existing directory; no model download is allowed.',
+                    labelText: '本地 faster-whisper 模型目录',
+                    helperText: '必须是已存在的绝对路径；不允许下载模型。',
                   ),
                 ),
               if (remoteSttEnabled) ...[
@@ -354,18 +346,16 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                   onChanged: (_) => _invalidateRemoteSttConsent(),
                   keyboardType: TextInputType.url,
                   decoration: const InputDecoration(
-                    labelText: 'Remote HTTPS origin',
-                    helperText:
-                        'Exact https://host root; redirects, paths, queries, and fragments are rejected.',
+                    labelText: '远程 HTTPS 地址',
+                    helperText: '必须是精确的 https://host 根地址；会拒绝重定向、路径、查询参数和片段。',
                   ),
                 ),
                 TextField(
                   controller: _remoteSttToken,
                   obscureText: true,
                   decoration: const InputDecoration(
-                    labelText: 'Remote provider token',
-                    helperText:
-                        'Stored separately in OS secure storage and never included in settings diagnostics.',
+                    labelText: '远程来源令牌',
+                    helperText: '单独存储在操作系统安全存储中，绝不会包含在设置诊断中。',
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -375,11 +365,7 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                       ? null
                       : _fetchRemoteSttDisclosure,
                   icon: const Icon(Icons.download_outlined),
-                  label: Text(
-                    _remoteSttDisclosurePending
-                        ? 'Fetching disclosure…'
-                        : 'Fetch disclosure',
-                  ),
+                  label: Text(_remoteSttDisclosurePending ? '正在获取披露…' : '获取披露'),
                 ),
                 if (_remoteSttDisclosureError != null)
                   Padding(
@@ -396,38 +382,31 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                   key: const Key('remote-stt-advanced-disclosure'),
                   tilePadding: EdgeInsets.zero,
                   childrenPadding: const EdgeInsets.only(bottom: 8),
-                  title: const Text('Advanced provider disclosure'),
-                  subtitle: const Text('Filled from the provider declaration.'),
+                  title: const Text('高级来源披露'),
+                  subtitle: const Text('由来源声明自动填充。'),
                   children: [
                     TextField(
                       controller: _remoteSttProviderId,
                       onChanged: (_) => _invalidateRemoteSttConsent(),
                       decoration: const InputDecoration(
-                        labelText: 'Remote provider ID',
-                        helperText:
-                            'Opaque ID used only to select its secure token.',
+                        labelText: '远程来源 ID',
+                        helperText: '仅用于选择安全令牌的不透明 ID。',
                       ),
                     ),
                     TextField(
                       controller: _remoteSttTlsPolicy,
                       onChanged: (_) => _invalidateRemoteSttConsent(),
-                      decoration: const InputDecoration(
-                        labelText: 'TLS policy disclosure',
-                      ),
+                      decoration: const InputDecoration(labelText: 'TLS 策略披露'),
                     ),
                     TextField(
                       controller: _remoteSttRetentionPolicy,
                       onChanged: (_) => _invalidateRemoteSttConsent(),
-                      decoration: const InputDecoration(
-                        labelText: 'Retention policy disclosure',
-                      ),
+                      decoration: const InputDecoration(labelText: '保留策略披露'),
                     ),
                     TextField(
                       controller: _remoteSttRevision,
                       onChanged: (_) => _invalidateRemoteSttConsent(),
-                      decoration: const InputDecoration(
-                        labelText: 'Provider contract revision',
-                      ),
+                      decoration: const InputDecoration(labelText: '来源契约版本'),
                     ),
                   ],
                 ),
@@ -436,24 +415,20 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                   value: _remoteSttConsent,
                   onChanged: (value) =>
                       setState(() => _remoteSttConsent = value ?? false),
-                  title: const Text(
-                    'I consent to this exact upload disclosure',
-                  ),
-                  subtitle: const Text(
-                    'Changing origin, TLS, retention, streaming, or revision requires consent again.',
-                  ),
+                  title: const Text('我同意按这份完整披露上传'),
+                  subtitle: const Text('更改地址、TLS、保留策略、流式设置或版本后，需要重新同意。'),
                 ),
               ],
               Align(
                 alignment: Alignment.centerRight,
                 child: FilledButton(
                   onPressed: _saveStt,
-                  child: const Text('Save STT settings'),
+                  child: const Text('保存 STT 设置'),
                 ),
               ),
               const SizedBox(height: 8),
               _TestRow(
-                label: 'Test STT readiness',
+                label: '测试 STT 就绪状态',
                 status: state.sttTest,
                 onTest:
                     sttEnabled &&
@@ -466,19 +441,19 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
               const Divider(height: 28),
               DropdownButtonFormField<TtsProviderKind>(
                 initialValue: selectedTtsKind,
-                decoration: const InputDecoration(labelText: 'TTS provider'),
+                decoration: const InputDecoration(labelText: 'TTS 来源'),
                 items: const [
                   DropdownMenuItem(
                     value: TtsProviderKind.disabled,
-                    child: Text('Disabled'),
+                    child: Text('已禁用'),
                   ),
                   DropdownMenuItem(
                     value: TtsProviderKind.piperHttp,
-                    child: Text('Local Piper HTTP'),
+                    child: Text('本地 Piper HTTP'),
                   ),
                   DropdownMenuItem(
                     value: TtsProviderKind.gptSoVits,
-                    child: Text('Local GPT-SoVITS'),
+                    child: Text('本地 GPT-SoVITS'),
                   ),
                 ],
                 onChanged: (kind) {
@@ -497,8 +472,8 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                   Expanded(
                     child: Text(
                       selectedTtsKind == TtsProviderKind.gptSoVits
-                          ? 'Local GPT-SoVITS TTS'
-                          : 'Local Piper TTS',
+                          ? '本地 GPT-SoVITS TTS'
+                          : '本地 Piper TTS',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
@@ -536,36 +511,28 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
               ),
               Text(
                 piperEnabled
-                    ? 'Piper is a user-installed local service. The standard preset probes /info and synthesizes WAV with /synthesize on an exact loopback origin.'
-                    : 'GPT-SoVITS is a user-installed local service. The adapter sends only the configured reference and language fields to an exact loopback origin.',
+                    ? 'Piper 是用户安装的本地服务。标准预设会在精确的回环地址上探测 /info，并通过 /synthesize 合成 WAV。'
+                    : 'GPT-SoVITS 是用户安装的本地服务。适配器只会向精确的回环地址发送已配置的参考音频和语言字段。',
               ),
               if (piperEnabled) ...[
                 const SizedBox(height: 12),
                 TextField(
                   controller: _piperOrigin,
                   keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'Piper HTTP origin',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Piper HTTP 地址'),
                 ),
                 TextField(
                   controller: _voice,
-                  decoration: const InputDecoration(
-                    labelText: 'Optional voice name',
-                  ),
+                  decoration: const InputDecoration(labelText: '可选的声音名称'),
                 ),
                 TextField(
                   controller: _speaker,
-                  decoration: const InputDecoration(
-                    labelText: 'Optional speaker name',
-                  ),
+                  decoration: const InputDecoration(labelText: '可选的说话人名称'),
                 ),
                 TextField(
                   controller: _speakerId,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Optional speaker ID',
-                  ),
+                  decoration: const InputDecoration(labelText: '可选的说话人 ID'),
                 ),
                 TextField(
                   controller: _speed,
@@ -573,9 +540,8 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                     decimal: true,
                   ),
                   decoration: InputDecoration(
-                    labelText: 'Speech speed (0.5–2.0; 1.0 normal)',
-                    helperText:
-                        'Higher is faster; Piper length_scale is converted internally.',
+                    labelText: '语速（0.5–2.0；1.0 为正常）',
+                    helperText: '数值越大语速越快；Piper length_scale 会在内部转换。',
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -583,7 +549,7 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                   alignment: Alignment.centerRight,
                   child: FilledButton(
                     onPressed: _savePiper,
-                    child: const Text('Save Piper settings'),
+                    child: const Text('保存 Piper 设置'),
                   ),
                 ),
               ],
@@ -593,45 +559,41 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                   controller: _gptOrigin,
                   keyboardType: TextInputType.url,
                   decoration: const InputDecoration(
-                    labelText: 'GPT-SoVITS HTTP origin',
+                    labelText: 'GPT-SoVITS HTTP 地址',
                   ),
                 ),
                 TextField(
                   controller: _gptReferenceAudio,
                   decoration: const InputDecoration(
-                    labelText: 'Reference audio path',
-                    helperText: 'Absolute path owned by the local user.',
+                    labelText: '参考音频路径',
+                    helperText: '必须是本地用户拥有的绝对路径。',
                   ),
                 ),
                 TextField(
                   controller: _gptPromptText,
                   maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: 'Reference prompt text',
-                  ),
+                  decoration: const InputDecoration(labelText: '参考提示词文本'),
                 ),
                 TextField(
                   controller: _gptTextLanguage,
-                  decoration: const InputDecoration(labelText: 'Text language'),
+                  decoration: const InputDecoration(labelText: '文本语言'),
                 ),
                 TextField(
                   controller: _gptPromptLanguage,
-                  decoration: const InputDecoration(
-                    labelText: 'Prompt language',
-                  ),
+                  decoration: const InputDecoration(labelText: '提示词语言'),
                 ),
                 const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerRight,
                   child: FilledButton(
                     onPressed: _saveGptSoVits,
-                    child: const Text('Save GPT-SoVITS settings'),
+                    child: const Text('保存 GPT-SoVITS 设置'),
                   ),
                 ),
               ],
               const SizedBox(height: 8),
               _TestRow(
-                label: 'Test TTS readiness',
+                label: '测试 TTS 就绪状态',
                 status: state.ttsTest,
                 onTest:
                     ttsEnabled &&
@@ -643,7 +605,7 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
               ),
               const Divider(height: 28),
               const Text(
-                'Voice interaction mode',
+                '语音交互模式',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 4),
@@ -651,18 +613,17 @@ class _VoiceSettingsSheetState extends ConsumerState<_VoiceSettingsSheet> {
                 key: const Key('voice-interaction-mode'),
                 initialValue: settings.interactionMode,
                 decoration: const InputDecoration(
-                  labelText: 'Interaction mode',
-                  helperText:
-                      'Call sends after a one-line preview; Command confirms the editable transcript first. Work-type instructions always confirm in Command mode.',
+                  labelText: '交互模式',
+                  helperText: '通话模式在一句话预览后发送；指令模式先确认可编辑的转写文本。工作类指令始终按指令模式确认。',
                 ),
                 items: const [
                   DropdownMenuItem(
                     value: InteractionMode.command,
-                    child: Text('Command (confirm first)'),
+                    child: Text('指令模式（先确认）'),
                   ),
                   DropdownMenuItem(
                     value: InteractionMode.call,
-                    child: Text('Call (preview then send)'),
+                    child: Text('通话模式（预览后发送）'),
                   ),
                 ],
                 onChanged: (mode) {

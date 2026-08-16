@@ -36,7 +36,7 @@ class DirectChatView extends StatelessWidget {
                     )
                   : const Center(
                       child: Text(
-                        'Configure your LLM API, then send confirmed text.\nThis source has no tools or approvals.',
+                        '请先配置 LLM API，再发送已确认文本。\n此来源不提供工具或审批。',
                         textAlign: TextAlign.center,
                       ),
                     )
@@ -83,13 +83,13 @@ class _DirectChatHeader extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    configured == null ? 'Direct LLM chat' : configured.model,
+                    configured == null ? 'Direct LLM 对话' : configured.model,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   Text(
                     state.phase == DirectChatPhase.sending
-                        ? 'Streaming reply locally'
-                        : 'Direct HTTPS chat · no tools or approval',
+                        ? '本地流式回复'
+                        : 'Direct HTTPS 对话 · 无工具或审批',
                     style: TextStyle(color: context.visualTokens.textMuted),
                   ),
                 ],
@@ -99,7 +99,7 @@ class _DirectChatHeader extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onCancel,
                 icon: const Icon(Icons.stop_circle_outlined),
-                label: const Text('Stop'),
+                label: const Text('停止'),
               ),
           ],
         ),
@@ -168,7 +168,7 @@ class _MessageBubble extends StatelessWidget {
                     Align(
                       alignment: Alignment.centerRight,
                       child: IconButton(
-                        tooltip: 'Speak this completed reply',
+                        tooltip: '播报此条已完成回复',
                         onPressed: () => onSpeak(message),
                         icon: const Icon(Icons.volume_up_outlined),
                       ),

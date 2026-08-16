@@ -63,25 +63,25 @@ class _HermesConversationSettingsSheetState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'Hermes conversation',
+                'Hermes 对话',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
               const Text(
-                'Confirmed text uses Hermes /v1/chat/completions. The API key stays in OS secure storage; session history is restored by the configured Hermes session ID.',
+                '已确认文本会通过 Hermes /v1/chat/completions 发送。API key 保存在操作系统安全存储中；会话历史通过已配置的 Hermes session ID 恢复。',
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _origin,
                 keyboardType: TextInputType.url,
                 decoration: const InputDecoration(
-                  labelText: 'HTTPS Hermes base URL',
-                  helperText: 'Optional profile path: https://host/p/profile',
+                  labelText: 'HTTPS Hermes 基础地址',
+                  helperText: '可选 profile 路径：https://host/p/profile',
                 ),
               ),
               TextField(
                 controller: _model,
-                decoration: const InputDecoration(labelText: 'Model'),
+                decoration: const InputDecoration(labelText: '模型'),
               ),
               TextField(
                 controller: _key,
@@ -89,7 +89,7 @@ class _HermesConversationSettingsSheetState
                 enableSuggestions: false,
                 autocorrect: false,
                 decoration: const InputDecoration(
-                  labelText: 'API key (leave empty to keep saved key)',
+                  labelText: 'API key（留空以保留已保存的 key）',
                 ),
               ),
               if (_inputError != null)
@@ -127,12 +127,9 @@ class _HermesConversationSettingsSheetState
                               .read(hermesConversationProvider.notifier)
                               .testConnection()
                         : null,
-                    child: const Text('Test connection'),
+                    child: const Text('测试连接'),
                   ),
-                  FilledButton(
-                    onPressed: _save,
-                    child: const Text('Save securely'),
-                  ),
+                  FilledButton(onPressed: _save, child: const Text('安全保存')),
                 ],
               ),
             ],
@@ -146,7 +143,7 @@ class _HermesConversationSettingsSheetState
     final origin = Uri.tryParse(_origin.text.trim());
     final model = _model.text.trim();
     if (origin == null || model.isEmpty) {
-      setState(() => _inputError = 'Enter an HTTPS origin and model.');
+      setState(() => _inputError = '请输入 HTTPS 地址和模型。');
       return;
     }
     final current = ref.read(hermesConversationProvider).configuration;
@@ -166,9 +163,7 @@ class _HermesConversationSettingsSheetState
           current?.sessionIdPolicy ?? HermesSessionIdPolicy.bootstrapPreferred,
     );
     if (!configuration.isSafe) {
-      setState(
-        () => _inputError = 'Use HTTPS with an optional /p/<profile> path.',
-      );
+      setState(() => _inputError = '请使用 HTTPS，并可附加 /p/<profile> 路径。');
       return;
     }
     setState(() => _inputError = null);

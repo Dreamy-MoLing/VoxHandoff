@@ -24,7 +24,7 @@ class MessageComposer extends StatelessWidget {
     required this.onCancelVoice,
     required this.onDiscardVoice,
     required this.onConfirmCallSend,
-    this.sendLabel = 'Handoff to Hermes',
+    this.sendLabel = '交给 Hermes',
     this.requiresGatewayConnection = true,
     super.key,
   });
@@ -70,11 +70,8 @@ class MessageComposer extends StatelessWidget {
                   maxLines: 6,
                   onChanged: onChanged,
                   decoration: InputDecoration(
-                    labelText: confirmed
-                        ? 'Confirmed locally'
-                        : 'Editable draft',
-                    hintText:
-                        'Type text to review before handing off to Hermes',
+                    labelText: confirmed ? '已在本地确认' : '可编辑草稿',
+                    hintText: '输入文字，检查后再交给 Hermes',
                   ),
                 );
                 final voiceAction = _VoiceAction(
@@ -100,16 +97,16 @@ class MessageComposer extends StatelessWidget {
                 final primaryAction = accepted
                     ? OutlinedButton(
                         onPressed: onNextDraft,
-                        child: const Text('New draft'),
+                        child: const Text('新建草稿'),
                       )
                     : confirmed
                     ? OutlinedButton(
                         onPressed: onReopen,
-                        child: const Text('Edit'),
+                        child: const Text('编辑'),
                       )
                     : FilledButton(
                         onPressed: session.canConfirmDraft ? onConfirm : null,
-                        child: const Text('Confirm'),
+                        child: const Text('确认'),
                       );
                 final canSend =
                     confirmed &&
@@ -122,12 +119,12 @@ class MessageComposer extends StatelessWidget {
                   icon: const Icon(Icons.arrow_upward_rounded),
                   label: Text(
                     uncertain
-                        ? 'Outcome uncertain'
+                        ? '结果不确定'
                         : session.draftPhase == DraftPhase.submitting
-                        ? 'Awaiting acceptance'
+                        ? '等待接受'
                         : canSend
                         ? sendLabel
-                        : 'Send unavailable',
+                        : '暂不可发送',
                   ),
                 );
                 if (constraints.maxWidth < 640) {
@@ -194,12 +191,12 @@ class _VoiceAction extends StatelessWidget {
         children: [
           IconButton.filledTonal(
             onPressed: onStop,
-            tooltip: 'Stop and transcribe',
+            tooltip: '停止并转写',
             icon: const Icon(Icons.stop_rounded),
           ),
           IconButton(
             onPressed: onCancel,
-            tooltip: 'Cancel recording',
+            tooltip: '取消录音',
             icon: const Icon(Icons.close),
           ),
         ],
@@ -208,7 +205,7 @@ class _VoiceAction extends StatelessWidget {
     if (voice.canCancel) {
       return IconButton(
         onPressed: onCancel,
-        tooltip: 'Cancel voice input',
+        tooltip: '取消语音输入',
         icon: const Icon(Icons.close),
       );
     }
@@ -218,12 +215,12 @@ class _VoiceAction extends StatelessWidget {
         children: [
           IconButton.filledTonal(
             onPressed: onConfirmCallSend,
-            tooltip: 'Send call preview',
+            tooltip: '发送通话预览',
             icon: const Icon(Icons.send_rounded),
           ),
           IconButton(
             onPressed: onDiscard,
-            tooltip: 'Discard call preview',
+            tooltip: '丢弃通话预览',
             icon: const Icon(Icons.close),
           ),
         ],
@@ -232,13 +229,13 @@ class _VoiceAction extends StatelessWidget {
     if (voice.phase == VoiceInputPhase.awaitingConfirmation) {
       return IconButton(
         onPressed: onDiscard,
-        tooltip: 'Discard transcript',
+        tooltip: '丢弃转写',
         icon: const Icon(Icons.delete_outline),
       );
     }
     return IconButton.filledTonal(
       onPressed: draftEditable && voice.canStart ? onStart : null,
-      tooltip: 'Record voice draft',
+      tooltip: '录制语音草稿',
       icon: const Icon(Icons.mic_none),
     );
   }
@@ -252,23 +249,21 @@ class _VoiceStatus extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final label = switch (voice.phase) {
-      VoiceInputPhase.requestingPermission => 'Requesting microphone access',
+      VoiceInputPhase.requestingPermission => '正在请求麦克风权限',
       VoiceInputPhase.recording =>
         voice.interactionMode == InteractionMode.call
             ? voice.provisionalTranscript.isEmpty
-                  ? 'Recording · release to send (Call mode)'
-                  : 'Live transcript (Call): ${voice.provisionalTranscript}'
+                  ? '正在录音 · 松开即发送（通话模式）'
+                  : '实时转写（通话模式）：${voice.provisionalTranscript}'
             : voice.provisionalTranscript.isEmpty
-            ? 'Recording · speech remains editable before send'
-            : 'Live transcript: ${voice.provisionalTranscript}',
-      VoiceInputPhase.transcribing => 'Finalizing transcript',
-      VoiceInputPhase.awaitingConfirmation =>
-        'Transcript inserted · review and confirm before send',
+            ? '正在录音 · 发送前仍可编辑语音内容'
+            : '实时转写：${voice.provisionalTranscript}',
+      VoiceInputPhase.transcribing => '正在完成转写',
+      VoiceInputPhase.awaitingConfirmation => '转写已填入 · 请检查并确认后发送',
       VoiceInputPhase.awaitingCallConfirm =>
-        'Call preview · ${voice.finalTranscript ?? ''}',
-      VoiceInputPhase.cancelled => 'Voice input cancelled',
-      VoiceInputPhase.failed =>
-        voice.failure?.safeMessage ?? 'Voice input failed',
+        '通话预览 · ${voice.finalTranscript ?? ''}',
+      VoiceInputPhase.cancelled => '语音输入已取消',
+      VoiceInputPhase.failed => voice.failure?.safeMessage ?? '语音输入失败',
       VoiceInputPhase.idle => '',
     };
     final audioLevel = ref.watch(
@@ -287,7 +282,7 @@ class _VoiceStatus extends ConsumerWidget {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 3,
-              semanticsLabel: 'Microphone level',
+              semanticsLabel: '麦克风音量',
             ),
           ),
           const SizedBox(width: 8),

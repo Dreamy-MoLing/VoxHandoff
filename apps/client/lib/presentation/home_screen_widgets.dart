@@ -1,5 +1,18 @@
 part of 'home_screen.dart';
 
+String _capabilityLabel(AssistantCapability capability) => switch (capability) {
+  AssistantCapability.chat => '聊天',
+  AssistantCapability.agent => '助手工作',
+  AssistantCapability.tools => '工具',
+  AssistantCapability.approvals => '审批',
+  AssistantCapability.leases => '控制租约',
+  AssistantCapability.interrupt => '中断',
+  AssistantCapability.clarifications => '澄清',
+};
+
+String _capabilitiesLabel(Set<AssistantCapability> capabilities) =>
+    capabilities.map(_capabilityLabel).join('、');
+
 class _DesktopCapabilityIcon extends StatelessWidget {
   const _DesktopCapabilityIcon({required this.snapshot});
 
@@ -11,9 +24,7 @@ class _DesktopCapabilityIcon extends StatelessWidget {
     return Tooltip(
       message: snapshot.safeSummary,
       child: Semantics(
-        label: degraded
-            ? 'Desktop integrations are partially available'
-            : 'Desktop integrations are available',
+        label: degraded ? '桌面集成部分可用' : '桌面集成可用',
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6),
           child: Icon(
@@ -38,11 +49,11 @@ class _ConnectionStatusIcon extends StatelessWidget {
     final connected = phase == GatewayConnectionPhase.connected;
     final tokens = context.visualTokens;
     return Tooltip(
-      message: connected ? 'Connected' : 'Not connected',
+      message: connected ? '已连接' : '未连接',
       child: Icon(
         connected ? Icons.verified_user_outlined : Icons.link_off,
         color: connected ? tokens.signal : tokens.textMuted,
-        semanticLabel: connected ? 'Connected' : 'Not connected',
+        semanticLabel: connected ? '已连接' : '未连接',
       ),
     );
   }
@@ -57,12 +68,12 @@ class _ConnectionChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.visualTokens;
     final label = switch (phase) {
-      GatewayConnectionPhase.unpaired => 'Not paired',
-      GatewayConnectionPhase.connecting => 'Connecting',
-      GatewayConnectionPhase.connected => 'Connected',
-      GatewayConnectionPhase.reconnecting => 'Reconnecting',
-      GatewayConnectionPhase.offline => 'Offline',
-      GatewayConnectionPhase.failed => 'Connection failed',
+      GatewayConnectionPhase.unpaired => '未配对',
+      GatewayConnectionPhase.connecting => '连接中',
+      GatewayConnectionPhase.connected => '已连接',
+      GatewayConnectionPhase.reconnecting => '重连中',
+      GatewayConnectionPhase.offline => '离线',
+      GatewayConnectionPhase.failed => '连接失败',
     };
     return Chip(
       avatar: Icon(
@@ -110,7 +121,7 @@ class _NavigationPane extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'AGENTS',
+                  '助手',
                   style: TextStyle(
                     color: context.visualTokens.signal,
                     fontWeight: FontWeight.w700,
@@ -119,7 +130,7 @@ class _NavigationPane extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 if (workspace.directory?.agents.isEmpty ?? true)
-                  const Text('No Agent available')
+                  const Text('暂无可用助手')
                 else
                   for (final agent in workspace.directory!.agents)
                     ListTile(
@@ -131,7 +142,7 @@ class _NavigationPane extends StatelessWidget {
                     ),
                 const SizedBox(height: 28),
                 Text(
-                  'CONVERSATIONS',
+                  '会话',
                   style: TextStyle(
                     color: context.visualTokens.signal,
                     fontWeight: FontWeight.w700,
@@ -147,11 +158,11 @@ class _NavigationPane extends StatelessWidget {
                     child: TextButton.icon(
                       onPressed: onCreate,
                       icon: const Icon(Icons.add),
-                      label: const Text('New conversation'),
+                      label: const Text('新建会话'),
                     ),
                   ),
                 if (workspace.directory?.conversations.isEmpty ?? true)
-                  const Text('No conversation selected')
+                  const Text('未选择会话')
                 else
                   Expanded(
                     child: ListView(
@@ -238,10 +249,10 @@ class _LocalOnlyBanner extends StatelessWidget {
                     workspace.safeErrorMessage ??
                         (workspace.connectionPhase ==
                                 GatewayConnectionPhase.connected
-                            ? 'Authenticated Gateway stream is active. Only explicitly confirmed text can be sent.'
+                            ? '已建立认证 Gateway 流。只有明确确认的文本可以发送。'
                             : paired
-                            ? 'Device credential verified. Connect explicitly to load Agents and conversations.'
-                            : 'Not paired. Draft text stays on this device and cannot be sent.'),
+                            ? '设备凭据已验证。请明确连接以加载助手和会话。'
+                            : '尚未配对。草稿文本保留在此设备上，无法发送。'),
                     maxLines: MediaQuery.textScalerOf(context).scale(1) >= 1.5
                         ? 3
                         : null,
@@ -255,7 +266,7 @@ class _LocalOnlyBanner extends StatelessWidget {
             final accessibleMessage = Semantics(
               container: true,
               label:
-                  'Hermes capabilities: ${capabilities.capabilities.map((capability) => capability.name).join(', ')}; Agent state comes only from the authenticated Gateway',
+                  'Hermes 能力：${_capabilitiesLabel(capabilities.capabilities)}；助手状态只来自已认证的 Gateway',
               child: message,
             );
             final pairButton = FilledButton(
@@ -267,10 +278,10 @@ class _LocalOnlyBanner extends StatelessWidget {
                   : onOpenPairing,
               child: Text(
                 workspace.connectionPhase == GatewayConnectionPhase.connected
-                    ? 'Disconnect'
+                    ? '断开连接'
                     : paired
-                    ? 'Connect Gateway'
-                    : 'Pair Gateway',
+                    ? '连接 Gateway'
+                    : '配对 Gateway',
               ),
             );
             if (constraints.maxWidth < 480) {
@@ -283,10 +294,10 @@ class _LocalOnlyBanner extends StatelessWidget {
                     tooltip:
                         workspace.connectionPhase ==
                             GatewayConnectionPhase.connected
-                        ? 'Disconnect'
+                        ? '断开连接'
                         : paired
-                        ? 'Connect Gateway'
-                        : 'Pair Gateway',
+                        ? '连接 Gateway'
+                        : '配对 Gateway',
                     onPressed:
                         workspace.connectionPhase ==
                             GatewayConnectionPhase.connected
@@ -347,7 +358,7 @@ class _DirectLlmBanner extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     container: true,
     label:
-        '${assistant?.displayName ?? 'VoxHandoff'}; capabilities: ${capabilities.capabilities.map((capability) => capability.name).join(', ')}; Agent tools, approvals, leases, and remote execution are unavailable',
+        '${assistant?.displayName ?? 'VoxHandoff'}；能力：${_capabilitiesLabel(capabilities.capabilities)}；助手工具、审批、控制租约和远程执行不可用',
     child: ColoredBox(
       color: context.visualTokens.panel,
       child: Padding(
@@ -360,14 +371,14 @@ class _DirectLlmBanner extends StatelessWidget {
               child: Text(
                 state.failure?.message ??
                     (state.isConfigured
-                        ? 'Direct LLM chat is local to this device. It has no Agent tools, approvals, or cross-device commands.'
-                        : 'Configure a HTTPS OpenAI-compatible LLM API. Its key is stored only in OS secure storage.'),
+                        ? 'Direct LLM 对话仅在此设备上进行，不提供助手工具、审批或跨设备指令。'
+                        : '请配置 HTTPS OpenAI 兼容的 LLM API。其 key 仅保存在操作系统安全存储中。'),
               ),
             ),
             const SizedBox(width: 12),
             OutlinedButton(
               onPressed: onConfigure,
-              child: Text(state.isConfigured ? 'Configure' : 'Configure LLM'),
+              child: Text(state.isConfigured ? '配置' : '配置 LLM'),
             ),
           ],
         ),
@@ -398,7 +409,7 @@ class _ConversationPicker extends StatelessWidget {
             child: DropdownButtonFormField<String>(
               isExpanded: true,
               initialValue: workspace.selectedConversationId,
-              decoration: const InputDecoration(labelText: 'Conversation'),
+              decoration: const InputDecoration(labelText: '会话'),
               items: [
                 for (final conversation in conversations)
                   DropdownMenuItem(
@@ -413,7 +424,7 @@ class _ConversationPicker extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           IconButton.filledTonal(
-            tooltip: 'New conversation',
+            tooltip: '新建会话',
             onPressed: workspace.directory?.agents.isNotEmpty ?? false
                 ? onCreate
                 : null,
@@ -438,7 +449,7 @@ Future<void> _showCreateConversationDialog(
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
-        title: const Text('New conversation'),
+        title: const Text('新建会话'),
         content: SizedBox(
           width: 420,
           child: Column(
@@ -446,7 +457,7 @@ Future<void> _showCreateConversationDialog(
             children: [
               DropdownButtonFormField<ClientAgentDirectoryEntry>(
                 initialValue: selected,
-                decoration: const InputDecoration(labelText: 'Agent'),
+                decoration: const InputDecoration(labelText: '助手'),
                 items: [
                   for (final agent in agents)
                     DropdownMenuItem(
@@ -463,7 +474,7 @@ Future<void> _showCreateConversationDialog(
                 controller: title,
                 autofocus: true,
                 maxLength: 128,
-                decoration: const InputDecoration(labelText: 'Title'),
+                decoration: const InputDecoration(labelText: '标题'),
               ),
             ],
           ),
@@ -471,11 +482,11 @@ Future<void> _showCreateConversationDialog(
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Create'),
+            child: const Text('创建'),
           ),
         ],
       ),
@@ -521,7 +532,7 @@ class _EmptyConversation extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'LOCAL RELAY  /  STANDBY',
+                    '本地中继  /  待命',
                     style: TextStyle(
                       color: tokens.signal,
                       fontSize: 12,
@@ -541,13 +552,13 @@ class _EmptyConversation extends StatelessWidget {
                   ),
                   const SizedBox(height: 18),
                   const Text(
-                    'Pair a Gateway, then choose an Agent and conversation.',
+                    '请先配对 Gateway，再选择助手和会话。',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Agent replies will remain complete text. Speech and visuals are optional views.',
+                    '助手回复始终保留为完整文本；语音和视觉都是可选呈现。',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: tokens.textMuted),
                   ),

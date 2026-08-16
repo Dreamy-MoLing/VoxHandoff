@@ -75,25 +75,25 @@ class _DirectLlmSettingsSheetState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'Direct LLM API',
+                'Direct LLM 接口',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
               const Text(
-                'Only confirmed text is sent directly to this HTTPS API base. The API key stays in OS secure storage.',
+                '只有确认后的文本会直接发送到这个 HTTPS API 基础地址。API key 保存在操作系统安全存储中。',
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _origin,
                 keyboardType: TextInputType.url,
                 decoration: const InputDecoration(
-                  labelText: 'HTTPS API base URL',
-                  helperText: 'OpenRouter: https://openrouter.ai/api/v1',
+                  labelText: 'HTTPS API 基础地址',
+                  helperText: 'OpenRouter 示例：https://openrouter.ai/api/v1',
                 ),
               ),
               TextField(
                 controller: _model,
-                decoration: const InputDecoration(labelText: 'Model'),
+                decoration: const InputDecoration(labelText: '模型'),
               ),
               TextField(
                 controller: _key,
@@ -101,46 +101,43 @@ class _DirectLlmSettingsSheetState
                 enableSuggestions: false,
                 autocorrect: false,
                 decoration: const InputDecoration(
-                  labelText: 'API key (leave empty to keep saved key)',
+                  labelText: 'API key（留空以保留已保存的 key）',
                 ),
               ),
               TextField(
                 controller: _prompt,
                 maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Optional system prompt',
-                ),
+                decoration: const InputDecoration(labelText: '可选系统提示词'),
               ),
               TextField(
                 controller: _assistantName,
-                decoration: const InputDecoration(labelText: 'Assistant name'),
+                decoration: const InputDecoration(labelText: '助手名称'),
               ),
               TextField(
                 controller: _assistantPersona,
                 maxLines: 2,
                 decoration: const InputDecoration(
-                  labelText: 'Assistant persona (local display context)',
+                  labelText: '助手人格（仅用于本地展示上下文）',
                 ),
               ),
               DropdownButtonFormField<AssistantSpeechPolicy>(
                 initialValue: _speechPolicy,
                 decoration: const InputDecoration(
-                  labelText: 'Automatic speech policy',
-                  helperText:
-                      'Off keeps text only; manual adds a speak action; after completed speaks final replies.',
+                  labelText: '自动播报策略',
+                  helperText: '关闭：仅保留文字；手动：增加播报操作；回复完成后：自动播报最终回复。',
                 ),
                 items: const [
                   DropdownMenuItem(
                     value: AssistantSpeechPolicy.off,
-                    child: Text('Off'),
+                    child: Text('关闭'),
                   ),
                   DropdownMenuItem(
                     value: AssistantSpeechPolicy.manual,
-                    child: Text('Manual'),
+                    child: Text('手动'),
                   ),
                   DropdownMenuItem(
                     value: AssistantSpeechPolicy.afterCompleted,
-                    child: Text('After completed reply'),
+                    child: Text('回复完成后'),
                   ),
                 ],
                 onChanged: (value) {
@@ -167,7 +164,7 @@ class _DirectLlmSettingsSheetState
                     showDirectContextSettingsSheet(navigator.context);
                   },
                   icon: const Icon(Icons.memory_outlined),
-                  label: const Text('Manage conversation memory and summary'),
+                  label: const Text('管理会话记忆和摘要'),
                 ),
               ),
               Wrap(
@@ -183,12 +180,9 @@ class _DirectLlmSettingsSheetState
                               .read(directChatProvider.notifier)
                               .testConnection()
                         : null,
-                    child: const Text('Test connection'),
+                    child: const Text('测试连接'),
                   ),
-                  FilledButton(
-                    onPressed: _save,
-                    child: const Text('Save securely'),
-                  ),
+                  FilledButton(onPressed: _save, child: const Text('安全保存')),
                 ],
               ),
             ],

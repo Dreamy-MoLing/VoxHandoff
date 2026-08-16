@@ -15,12 +15,12 @@ class _PairingHeader extends StatelessWidget {
           const SizedBox(width: 12),
           const Expanded(
             child: Text(
-              'GATEWAY PAIRING / MANUAL LINK',
+              'GATEWAY 配对 / 手动连接',
               style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 1.4),
             ),
           ),
           Text(
-            phase.name.toUpperCase(),
+            _pairingPhaseLabel(phase),
             style: TextStyle(
               color: context.visualTokens.textMuted,
               fontSize: 11,
@@ -28,7 +28,7 @@ class _PairingHeader extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Close pairing panel',
+            tooltip: '关闭配对面板',
             onPressed: () => Navigator.of(context).pop(),
             icon: const Icon(Icons.close),
           ),
@@ -64,15 +64,15 @@ class _PairingProgressRail extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'LINK MAP',
+            '连接流程',
             style: TextStyle(color: tokens.signal, letterSpacing: 1.8),
           ),
           const SizedBox(height: 24),
           for (final step in const [
-            ('01', 'Establish'),
-            ('02', 'Verify'),
-            ('03', 'Prove'),
-            ('04', 'Sealed'),
+            ('01', '建立'),
+            ('02', '验证'),
+            ('03', '证明'),
+            ('04', '已封存'),
           ]) ...[
             _RailStep(
               number: step.$1,
@@ -90,7 +90,7 @@ class _PairingProgressRail extends StatelessWidget {
           ],
           const Spacer(),
           Text(
-            'NO AUTO-APPROVAL\nNO SILENT RETRY',
+            '不自动批准\n不静默重试',
             style: TextStyle(
               color: tokens.attention,
               fontSize: 10,
@@ -196,19 +196,18 @@ class _BusyPairingPhase extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = switch (phase) {
-      PairingPhase.beginning => 'Preparing a local device key',
-      PairingPhase.completing => 'Verifying the owner decision',
-      PairingPhase.confirming => 'Reading back the credential',
-      _ => 'Working',
+      PairingPhase.beginning => '正在准备本地设备密钥',
+      PairingPhase.completing => '正在验证所有者决定',
+      PairingPhase.confirming => '正在读取凭据',
+      _ => '处理中',
     };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _PhaseTitle(
-          eyebrow: 'LINK / IN PROGRESS',
+          eyebrow: '连接 / 进行中',
           title: label,
-          body:
-              'This is one bounded request. A lost response will stop as unresolved.',
+          body: '这是一次有界请求。响应丢失时会停在未决状态。',
         ),
         const SizedBox(height: 28),
         const LinearProgressIndicator(),
@@ -235,7 +234,7 @@ class _UserCode extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'ONE-TIME CODE',
+            '一次性代码',
             style: TextStyle(color: tokens.textMuted, letterSpacing: 1.4),
           ),
           const SizedBox(height: 8),
@@ -252,6 +251,18 @@ class _UserCode extends StatelessWidget {
     );
   }
 }
+
+String _pairingPhaseLabel(PairingPhase phase) => switch (phase) {
+  PairingPhase.idle => '待开始',
+  PairingPhase.beginning => '建立中',
+  PairingPhase.awaitingOwnerApproval => '等待所有者审批',
+  PairingPhase.completing => '完成中',
+  PairingPhase.awaitingConfirmation => '等待确认',
+  PairingPhase.confirming => '确认中',
+  PairingPhase.paired => '已配对',
+  PairingPhase.failed => '失败',
+  PairingPhase.uncertain => '未决',
+};
 
 class _Fact extends StatelessWidget {
   const _Fact({required this.label, required this.value});

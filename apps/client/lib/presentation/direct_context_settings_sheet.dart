@@ -60,9 +60,7 @@ class _DirectContextSettingsSheetState
       return const SafeArea(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text(
-            'Configure a Direct LLM before editing conversation context.',
-          ),
+          child: Text('编辑会话上下文前，请先配置 Direct LLM。'),
         ),
       );
     }
@@ -79,20 +77,18 @@ class _DirectContextSettingsSheetState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'Conversation context',
+                '会话上下文',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Only this conversation\'s local memories, summary, and recent completed turns can enter the Direct request. Failed or partial replies are excluded.',
-              ),
+              const Text('只有此会话的本地记忆、摘要和最近完成的轮次可以进入 Direct 请求。失败或不完整的回复会被排除。'),
               const SizedBox(height: 12),
               TextField(
                 controller: _memory,
                 maxLines: 2,
                 decoration: const InputDecoration(
-                  labelText: 'Add a fixed memory',
-                  helperText: 'Saved locally for this conversation only.',
+                  labelText: '添加固定记忆',
+                  helperText: '仅保存在此会话的本地数据中。',
                 ),
               ),
               Align(
@@ -107,9 +103,7 @@ class _DirectContextSettingsSheetState
                     if (mounted) setState(_reload);
                   },
                   icon: const Icon(Icons.add),
-                  label: Text(
-                    _editingMemoryId == null ? 'Save memory' : 'Update memory',
-                  ),
+                  label: Text(_editingMemoryId == null ? '保存记忆' : '更新记忆'),
                 ),
               ),
               const Divider(height: 28),
@@ -126,13 +120,13 @@ class _DirectContextSettingsSheetState
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const Text(
-                        'Fixed memories',
+                        '固定记忆',
                         style: TextStyle(fontWeight: FontWeight.w700),
                       ),
                       if (data.memories.isEmpty)
                         const Padding(
                           padding: EdgeInsets.only(top: 8),
-                          child: Text('No fixed memories saved.'),
+                          child: Text('尚未保存固定记忆。'),
                         )
                       else
                         for (final memory in data.memories)
@@ -140,10 +134,10 @@ class _DirectContextSettingsSheetState
                             contentPadding: EdgeInsets.zero,
                             title: Text(memory.text),
                             subtitle: Text(
-                              '${memory.scope} · revision ${memory.revision}',
+                              '${memory.scope} · 版本 ${memory.revision}',
                             ),
                             trailing: IconButton(
-                              tooltip: 'Delete memory',
+                              tooltip: '删除记忆',
                               icon: const Icon(Icons.delete_outline),
                               onPressed: () async {
                                 await ref
@@ -162,13 +156,13 @@ class _DirectContextSettingsSheetState
                           ),
                       const Divider(height: 28),
                       const Text(
-                        'Rolling summary',
+                        '滚动摘要',
                         style: TextStyle(fontWeight: FontWeight.w700),
                       ),
                       if (data.summary == null)
                         const Padding(
                           padding: EdgeInsets.only(top: 8),
-                          child: Text('No summary has been rebuilt.'),
+                          child: Text('尚未重新生成摘要。'),
                         )
                       else
                         SelectableText(data.summary!.text),
@@ -183,7 +177,7 @@ class _DirectContextSettingsSheetState
                                   .rebuildSummary();
                               if (mounted) setState(_reload);
                             },
-                            child: const Text('Rebuild locally'),
+                            child: const Text('在本地重建'),
                           ),
                           if (data.summary != null)
                             TextButton(
@@ -193,7 +187,7 @@ class _DirectContextSettingsSheetState
                                     .clearSummary();
                                 if (mounted) setState(_reload);
                               },
-                              child: const Text('Clear summary'),
+                              child: const Text('清除摘要'),
                             ),
                         ],
                       ),

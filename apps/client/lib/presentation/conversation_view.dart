@@ -135,7 +135,7 @@ class ConversationView extends StatelessWidget {
             if (workspace.timeline.isEmpty)
               const SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(child: Text('No durable turns yet')),
+                child: Center(child: Text('暂无持久化轮次')),
               )
             else
               SliverPadding(
@@ -189,15 +189,13 @@ class _MobileConversationHeader extends StatelessWidget {
         ),
         if (ownsLease && activeRequest != null)
           IconButton(
-            tooltip: 'Stop Hermes',
+            tooltip: '停止 Hermes',
             onPressed: () => onInterrupt(activeRequest!),
             icon: const Icon(Icons.stop_circle_outlined),
           )
         else if (!ownsLease)
           IconButton(
-            tooltip: workspace.selectedLease == null
-                ? 'Take control'
-                : 'Take over explicitly',
+            tooltip: workspace.selectedLease == null ? '接管控制' : '明确接管',
             onPressed: onAcquire,
             icon: const Icon(Icons.control_point_duplicate),
           ),
@@ -231,8 +229,8 @@ class _MobileTurnBubbles extends StatelessWidget {
       MobileConversationBubble(
         text: turn.assistantText.isEmpty
             ? turn.isTerminal
-                  ? 'No assistant text was returned.'
-                  : 'Hermes is working…'
+                  ? '没有返回助手文本。'
+                  : 'Hermes 正在工作…'
             : turn.assistantText,
         quiet: turn.assistantText.isEmpty,
       ),
@@ -354,7 +352,7 @@ class _TurnList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (turns.isEmpty) {
-      return const Center(child: Text('No durable turns yet'));
+      return const Center(child: Text('暂无持久化轮次'));
     }
     return ListView.builder(
       key: const ValueKey('conversation-turns'),
@@ -430,10 +428,10 @@ class _ConversationHeader extends StatelessWidget {
                   ),
                   Text(
                     ownsLease
-                        ? 'Control held by this device'
+                        ? '控制权由此设备持有'
                         : workspace.selectedLease == null
-                        ? 'Observe only · no control lease'
-                        : 'Observe only · controlled by another device',
+                        ? '仅可查看 · 没有控制租约'
+                        : '仅可查看 · 由另一台设备控制',
                     style: TextStyle(color: context.visualTokens.textMuted),
                   ),
                 ],
@@ -443,17 +441,13 @@ class _ConversationHeader extends StatelessWidget {
               TextButton.icon(
                 onPressed: () => onInterrupt(activeRequest!),
                 icon: const Icon(Icons.stop_circle_outlined),
-                label: const Text('Stop Hermes'),
+                label: const Text('停止 Hermes'),
               )
             else if (!ownsLease)
               FilledButton.tonalIcon(
                 onPressed: onAcquire,
                 icon: const Icon(Icons.control_point_duplicate),
-                label: Text(
-                  workspace.selectedLease == null
-                      ? 'Take control'
-                      : 'Take over explicitly',
-                ),
+                label: Text(workspace.selectedLease == null ? '接管控制' : '明确接管'),
               ),
           ],
         ),
@@ -482,7 +476,7 @@ class _TurnCard extends StatelessWidget {
     final tokens = context.visualTokens;
     return Semantics(
       container: true,
-      label: 'Conversation turn',
+      label: '会话轮次',
       child: Card(
         key: ValueKey('turn-${turn.requestId}'),
         margin: const EdgeInsets.only(bottom: 14),
@@ -502,7 +496,7 @@ class _TurnCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      turn.userText ?? 'Confirmed user turn',
+                      turn.userText ?? '已确认的用户轮次',
                       maxLines: 5,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w700),
@@ -544,9 +538,7 @@ class _TurnCard extends StatelessWidget {
                   const SizedBox(height: 12),
                   if (turn.assistantText.isEmpty)
                     Text(
-                      turn.isTerminal
-                          ? 'No assistant text was returned.'
-                          : 'Hermes is working…',
+                      turn.isTerminal ? '没有返回助手文本。' : 'Hermes 正在工作…',
                       style: TextStyle(color: tokens.textMuted),
                     )
                   else
@@ -586,20 +578,14 @@ class _TurnStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, icon) = switch (turn.terminalEvent?.kind) {
-      ClientEventKind.requestCompleted => (
-        'Completed',
-        Icons.check_circle_outline,
-      ),
-      ClientEventKind.requestFailed => ('Failed', Icons.error_outline),
-      ClientEventKind.requestCancelled => ('Cancelled', Icons.cancel_outlined),
-      ClientEventKind.requestInterrupted => (
-        'Stopped',
-        Icons.stop_circle_outlined,
-      ),
-      _ => ('Live', Icons.graphic_eq),
+      ClientEventKind.requestCompleted => ('已完成', Icons.check_circle_outline),
+      ClientEventKind.requestFailed => ('失败', Icons.error_outline),
+      ClientEventKind.requestCancelled => ('已取消', Icons.cancel_outlined),
+      ClientEventKind.requestInterrupted => ('已停止', Icons.stop_circle_outlined),
+      _ => ('进行中', Icons.graphic_eq),
     };
     return Semantics(
-      label: 'Hermes turn status: $label',
+      label: 'Hermes 轮次状态：$label',
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -623,7 +609,7 @@ class _ToolTracePanel extends StatelessWidget {
       tilePadding: EdgeInsets.zero,
       childrenPadding: const EdgeInsets.only(bottom: 6),
       leading: const Icon(Icons.account_tree_outlined),
-      title: Text('Tool trace · ${tools.length}'),
+      title: Text('工具轨迹 · ${tools.length}'),
       children: [
         for (final tool in tools)
           ListTile(
@@ -663,7 +649,7 @@ class _InteractionPanel extends StatelessWidget {
     return Semantics(
       container: true,
       liveRegion: true,
-      label: 'User action required',
+      label: '需要用户操作',
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: tokens.attention.withValues(alpha: 0.08),
@@ -677,8 +663,8 @@ class _InteractionPanel extends StatelessWidget {
             children: [
               Text(
                 event.kind == ClientEventKind.approvalRequired
-                    ? 'Explicit approval required'
-                    : 'Hermes needs clarification',
+                    ? '需要明确审批'
+                    : 'Hermes 需要澄清',
                 style: TextStyle(
                   color: tokens.attention,
                   fontWeight: FontWeight.w800,
@@ -688,7 +674,7 @@ class _InteractionPanel extends StatelessWidget {
               SelectableText(switch (content) {
                 ApprovalClientEventContent() => content.safeSummary,
                 ClarificationClientEventContent() => content.safePrompt,
-                _ => 'Review the pending interaction.',
+                _ => '请查看待处理的交互。',
               }),
               const SizedBox(height: 12),
               if (content is ApprovalClientEventContent)
@@ -703,13 +689,13 @@ class _InteractionPanel extends StatelessWidget {
                               ClientApprovalDecision.approve,
                             )
                           : null,
-                      child: const Text('Approve once'),
+                      child: const Text('仅批准一次'),
                     ),
                     OutlinedButton(
                       onPressed: ownsLease
                           ? () => onApproval(event, ClientApprovalDecision.deny)
                           : null,
-                      child: const Text('Deny'),
+                      child: const Text('拒绝'),
                     ),
                   ],
                 )
@@ -718,7 +704,7 @@ class _InteractionPanel extends StatelessWidget {
                   onPressed: ownsLease
                       ? () => _showClarificationDialog(context)
                       : null,
-                  child: const Text('Answer explicitly'),
+                  child: const Text('明确回答'),
                 ),
             ],
           ),
@@ -732,24 +718,22 @@ class _InteractionPanel extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clarification response'),
+        title: const Text('澄清回复'),
         content: TextField(
           controller: answer,
           autofocus: true,
           minLines: 2,
           maxLines: 6,
-          decoration: const InputDecoration(
-            labelText: 'Review this response before sending',
-          ),
+          decoration: const InputDecoration(labelText: '发送前检查此回复'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Confirm and send'),
+            child: const Text('确认并发送'),
           ),
         ],
       ),

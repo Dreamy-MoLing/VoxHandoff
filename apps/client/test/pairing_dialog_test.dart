@@ -179,12 +179,9 @@ void main() {
     await tester.pumpWidget(pairingHarness(factory));
     await tester.pumpAndSettle();
 
-    expect(find.text('Name both ends of the relay'), findsOneWidget);
-    expect(
-      find.textContaining('does not approve future Agent actions'),
-      findsOneWidget,
-    );
-    expect(find.text('NO AUTO-APPROVAL\nNO SILENT RETRY'), findsOneWidget);
+    expect(find.text('为中继两端命名'), findsOneWidget);
+    expect(find.textContaining('不会批准未来的 Agent 操作'), findsOneWidget);
+    expect(find.text('不自动批准\n不静默重试'), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('pairing-gateway-field')),
       'https://gateway.example',
@@ -196,32 +193,23 @@ void main() {
     expect(factory.workflow!.beginCalls, 1);
     expect(factory.workflow!.requestedScopes, ['observe', 'send']);
     expect(find.text('ABCD-EFGH'), findsOneWidget);
-    expect(find.text('Compare before you authorize'), findsOneWidget);
-    expect(
-      find.textContaining('will not click Approve for you'),
-      findsOneWidget,
-    );
+    expect(find.text('授权前进行比对'), findsOneWidget);
+    expect(find.textContaining('不会替你点击“批准”'), findsOneWidget);
 
-    final ownerReview = find.widgetWithText(
-      FilledButton,
-      'I completed the owner-side review',
-    );
+    final ownerReview = find.widgetWithText(FilledButton, '我已完成所有者端审核');
     await tester.ensureVisible(ownerReview);
     await tester.tap(ownerReview);
     await tester.pumpAndSettle();
     expect(factory.workflow!.completeCalls, 1);
-    expect(find.text('Read back the new credential'), findsOneWidget);
+    expect(find.text('回读新凭据'), findsOneWidget);
 
-    final confirmation = find.widgetWithText(
-      FilledButton,
-      'Verify and store credential',
-    );
+    final confirmation = find.widgetWithText(FilledButton, '验证并保存凭据');
     await tester.ensureVisible(confirmation);
     await tester.tap(confirmation);
     await tester.pumpAndSettle();
     expect(factory.workflow!.confirmCalls, 1);
     expect(factory.closeCalls, 1);
-    expect(find.text('This device is paired'), findsOneWidget);
+    expect(find.text('此设备已配对'), findsOneWidget);
   });
 
   testWidgets('requires acknowledgement before abandoning uncertain Confirm', (
@@ -237,34 +225,29 @@ void main() {
     await tester.pumpWidget(pairingHarness(factory));
     await tester.pumpAndSettle();
 
-    expect(find.text('The Gateway outcome is unknown'), findsOneWidget);
-    expect(find.text('Retry the exact saved request'), findsOneWidget);
+    expect(find.text('Gateway 结果未知'), findsOneWidget);
+    expect(find.text('重试已保存的原请求'), findsOneWidget);
     final abandonBefore = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, 'Abandon local pairing attempt'),
+      find.widgetWithText(OutlinedButton, '放弃本地配对尝试'),
     );
     expect(abandonBefore.onPressed, isNull);
 
-    final acknowledgement = find.text(
-      'I understand the Gateway may hold an active credential',
-    );
+    final acknowledgement = find.text('我了解 Gateway 可能仍持有有效凭据');
     await tester.ensureVisible(acknowledgement);
     await tester.tap(acknowledgement);
     await tester.pump();
     final abandonAfter = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, 'Abandon local pairing attempt'),
+      find.widgetWithText(OutlinedButton, '放弃本地配对尝试'),
     );
     expect(abandonAfter.onPressed, isNotNull);
-    final abandon = find.widgetWithText(
-      OutlinedButton,
-      'Abandon local pairing attempt',
-    );
+    final abandon = find.widgetWithText(OutlinedButton, '放弃本地配对尝试');
     await tester.ensureVisible(abandon);
     await tester.tap(abandon);
     await tester.pumpAndSettle();
 
     expect(factory.workflow!.acknowledged, isTrue);
     expect(factory.closeCalls, 1);
-    expect(find.text('Name both ends of the relay'), findsOneWidget);
+    expect(find.text('为中继两端命名'), findsOneWidget);
   });
 
   testWidgets('can abandon a pending owner approval locally', (tester) async {
@@ -280,10 +263,7 @@ void main() {
     await tester.tap(find.byKey(const Key('pairing-begin-button')));
     await tester.pumpAndSettle();
 
-    final abandon = find.widgetWithText(
-      OutlinedButton,
-      'Abandon local pairing attempt',
-    );
+    final abandon = find.widgetWithText(OutlinedButton, '放弃本地配对尝试');
     await tester.ensureVisible(abandon);
     await tester.tap(abandon);
     await tester.pumpAndSettle();
@@ -291,7 +271,7 @@ void main() {
     expect(factory.workflow!.abandonCalls, 1);
     expect(factory.workflow!.acknowledged, isFalse);
     expect(factory.closeCalls, 1);
-    expect(find.text('Name both ends of the relay'), findsOneWidget);
+    expect(find.text('为中继两端命名'), findsOneWidget);
   });
 
   testWidgets('imports a PEM certificate without multiline text injection', (
@@ -313,7 +293,7 @@ ZmFrZS1jZXJ0aWZpY2F0ZQ==
     await tester.pumpAndSettle();
 
     expect(picker.calls, 1);
-    final caSection = find.text('Private CA certificate');
+    final caSection = find.text('私有 CA 证书');
     await tester.ensureVisible(caSection);
     await tester.tap(caSection);
     await tester.pumpAndSettle();
