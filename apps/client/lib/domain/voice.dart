@@ -86,7 +86,8 @@ class VoiceSessionState {
   /// The lightweight call-mode echo is awaiting a one-key send or cancel.
   bool get canConfirmCallSend => phase == VoiceInputPhase.awaitingCallConfirm;
 
-  bool get canDiscardCallConfirm => phase == VoiceInputPhase.awaitingCallConfirm;
+  bool get canDiscardCallConfirm =>
+      phase == VoiceInputPhase.awaitingCallConfirm;
 
   VoiceSessionState copyWith({
     VoiceInputPhase? phase,

@@ -43,7 +43,10 @@ void main() {
         container.read(clientSessionProvider).draftText,
         '检查 packages/core 的测试。',
       );
-      expect(container.read(clientSessionProvider).draftPhase, DraftPhase.editing);
+      expect(
+        container.read(clientSessionProvider).draftPhase,
+        DraftPhase.editing,
+      );
       expect(state.canConfirmCallSend, isTrue);
       expect(state.canDiscardCallConfirm, isTrue);
       await container.read(voiceSessionProvider.notifier).discardTranscript();
@@ -159,55 +162,61 @@ void main() {
     },
   );
 
-  test('call preview without a wired send handler fails safe, keeping text', () async {
-    final capture = _FakeDualCapture();
-    final stt = _FakeDualStt();
-    final container = ProviderContainer(
-      overrides: [
-        audioCapturePortProvider.overrideWithValue(capture),
-        sttPortProvider.overrideWithValue(stt),
-      ],
-    );
-    addTearDown(container.dispose);
-    await enableCallMode(container);
+  test(
+    'call preview without a wired send handler fails safe, keeping text',
+    () async {
+      final capture = _FakeDualCapture();
+      final stt = _FakeDualStt();
+      final container = ProviderContainer(
+        overrides: [
+          audioCapturePortProvider.overrideWithValue(capture),
+          sttPortProvider.overrideWithValue(stt),
+        ],
+      );
+      addTearDown(container.dispose);
+      await enableCallMode(container);
 
-    await container.read(voiceSessionProvider.notifier).startRecording();
-    capture.session.audioController.close();
-    await container.read(voiceSessionProvider.notifier).stopRecording();
-    await container.read(voiceSessionProvider.notifier).confirmCallSend();
+      await container.read(voiceSessionProvider.notifier).startRecording();
+      capture.session.audioController.close();
+      await container.read(voiceSessionProvider.notifier).stopRecording();
+      await container.read(voiceSessionProvider.notifier).confirmCallSend();
 
-    final state = container.read(voiceSessionProvider);
-    expect(state.phase, VoiceInputPhase.failed);
-    expect(state.failure?.code, 'call_send_unavailable');
-    expect(state.finalTranscript, '检查 packages/core 的测试。');
-    expect(
-      container.read(clientSessionProvider).draftText,
-      '检查 packages/core 的测试。',
-    );
-  });
+      final state = container.read(voiceSessionProvider);
+      expect(state.phase, VoiceInputPhase.failed);
+      expect(state.failure?.code, 'call_send_unavailable');
+      expect(state.finalTranscript, '检查 packages/core 的测试。');
+      expect(
+        container.read(clientSessionProvider).draftText,
+        '检查 packages/core 的测试。',
+      );
+    },
+  );
 
-  test('call preview discard removes the editable draft and echoes idle', () async {
-    final capture = _FakeDualCapture();
-    final stt = _FakeDualStt();
-    final container = ProviderContainer(
-      overrides: [
-        audioCapturePortProvider.overrideWithValue(capture),
-        sttPortProvider.overrideWithValue(stt),
-      ],
-    );
-    addTearDown(container.dispose);
-    await enableCallMode(container);
+  test(
+    'call preview discard removes the editable draft and echoes idle',
+    () async {
+      final capture = _FakeDualCapture();
+      final stt = _FakeDualStt();
+      final container = ProviderContainer(
+        overrides: [
+          audioCapturePortProvider.overrideWithValue(capture),
+          sttPortProvider.overrideWithValue(stt),
+        ],
+      );
+      addTearDown(container.dispose);
+      await enableCallMode(container);
 
-    await container.read(voiceSessionProvider.notifier).startRecording();
-    capture.session.audioController.close();
-    await container.read(voiceSessionProvider.notifier).stopRecording();
-    await container.read(voiceSessionProvider.notifier).discardTranscript();
+      await container.read(voiceSessionProvider.notifier).startRecording();
+      capture.session.audioController.close();
+      await container.read(voiceSessionProvider.notifier).stopRecording();
+      await container.read(voiceSessionProvider.notifier).discardTranscript();
 
-    final state = container.read(voiceSessionProvider);
-    expect(state.phase, VoiceInputPhase.idle);
-    expect(state.sessionId, isNull);
-    expect(container.read(clientSessionProvider).draftText, isEmpty);
-  });
+      final state = container.read(voiceSessionProvider);
+      expect(state.phase, VoiceInputPhase.idle);
+      expect(state.sessionId, isNull);
+      expect(container.read(clientSessionProvider).draftText, isEmpty);
+    },
+  );
 
   test('call preview auto-discards after the configured timeout', () async {
     final capture = _FakeDualCapture();
@@ -234,10 +243,7 @@ void main() {
     await _eventually(
       () => container.read(voiceSessionProvider).phase == VoiceInputPhase.idle,
     );
-    expect(
-      container.read(clientSessionProvider).draftText,
-      isEmpty,
-    );
+    expect(container.read(clientSessionProvider).draftText, isEmpty);
   });
 
   test('setting the persisted default seeds the next recording', () async {

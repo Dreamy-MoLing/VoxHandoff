@@ -253,13 +253,14 @@ class _VoiceStatus extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final label = switch (voice.phase) {
       VoiceInputPhase.requestingPermission => 'Requesting microphone access',
-      VoiceInputPhase.recording => voice.interactionMode == InteractionMode.call
-          ? voice.provisionalTranscript.isEmpty
-                ? 'Recording · release to send (Call mode)'
-                : 'Live transcript (Call): ${voice.provisionalTranscript}'
-          : voice.provisionalTranscript.isEmpty
-          ? 'Recording · speech remains editable before send'
-          : 'Live transcript: ${voice.provisionalTranscript}',
+      VoiceInputPhase.recording =>
+        voice.interactionMode == InteractionMode.call
+            ? voice.provisionalTranscript.isEmpty
+                  ? 'Recording · release to send (Call mode)'
+                  : 'Live transcript (Call): ${voice.provisionalTranscript}'
+            : voice.provisionalTranscript.isEmpty
+            ? 'Recording · speech remains editable before send'
+            : 'Live transcript: ${voice.provisionalTranscript}',
       VoiceInputPhase.transcribing => 'Finalizing transcript',
       VoiceInputPhase.awaitingConfirmation =>
         'Transcript inserted · review and confirm before send',

@@ -188,10 +188,7 @@ void main() {
     final mode = ProviderScope.containerOf(
       tester.element(selector),
       listen: false,
-    )
-        .read(voiceProviderSettingsProvider)
-        .settings
-        .interactionMode;
+    ).read(voiceProviderSettingsProvider).settings.interactionMode;
     expect(mode, InteractionMode.call);
   });
 }

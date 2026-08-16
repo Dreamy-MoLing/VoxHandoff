@@ -53,6 +53,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   late final TextEditingController _composer;
   late final MobileVisualPreferences _ownedVisualPreferences;
+  late final VoiceCallSendHandlers _voiceCallSendHandlers;
   var _mobilePreferencesRestoreStarted = false;
 
   MobileVisualPreferences get _visualPreferences =>
@@ -63,10 +64,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     _composer = TextEditingController();
     _ownedVisualPreferences = MobileVisualPreferences();
-    ref.read(voiceCallSendHandlerProvider.notifier).register(
-      _sendConfirmedVoiceCall,
-    );
+    _voiceCallSendHandlers = ref.read(voiceCallSendHandlerProvider.notifier);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _voiceCallSendHandlers.register(_sendConfirmedVoiceCall);
       ref.read(devicePairingProvider.notifier).restore();
       unawaited(
         ref
@@ -92,7 +93,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
-    ref.read(voiceCallSendHandlerProvider.notifier).clear();
+    _voiceCallSendHandlers.clear();
     _composer.dispose();
     if (widget.visualPreferences == null) _ownedVisualPreferences.dispose();
     super.dispose();

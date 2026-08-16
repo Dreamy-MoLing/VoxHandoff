@@ -308,24 +308,24 @@ void main() {
     );
     final restored = await VoiceProviderSettingsStore(store).read();
     expect(restored?.interactionMode, InteractionMode.call);
-    expect(
-      store.values.values.single,
-      contains('"interaction_mode":"call"'),
-    );
+    expect(store.values.values.single, contains('"interaction_mode":"call"'));
   });
 
-  test('missing interaction mode in a legacy record defaults to command', () async {
-    final store = _MemorySecureStore();
-    await store.write(
-      'voxhandoff.v1.voice-provider-settings',
-      '{"version":3,"assistant_id":"unbound-assistant",'
-      '"assistant_revision":1,'
-      '"stt":{"kind":"disabled","language":"zh"},'
-      '"tts":{"kind":"disabled"}}',
-    );
-    final restored = await VoiceProviderSettingsStore(store).read();
-    expect(restored?.interactionMode, InteractionMode.command);
-  });
+  test(
+    'missing interaction mode in a legacy record defaults to command',
+    () async {
+      final store = _MemorySecureStore();
+      await store.write(
+        'voxhandoff.v1.voice-provider-settings',
+        '{"version":3,"assistant_id":"unbound-assistant",'
+            '"assistant_revision":1,'
+            '"stt":{"kind":"disabled","language":"zh"},'
+            '"tts":{"kind":"disabled"}}',
+      );
+      final restored = await VoiceProviderSettingsStore(store).read();
+      expect(restored?.interactionMode, InteractionMode.command);
+    },
+  );
 }
 
 class _MemorySecureStore implements SecureValueStore {
