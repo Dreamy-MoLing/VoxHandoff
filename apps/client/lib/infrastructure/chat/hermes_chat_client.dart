@@ -39,6 +39,7 @@ class HermesChatTerminal {
     this.finishReason,
     this.serverState,
     this.errorCode,
+    this.effectiveSessionId,
   });
 
   final DirectMessageTerminal terminal;
@@ -46,6 +47,7 @@ class HermesChatTerminal {
   final String? finishReason;
   final HermesServerTerminalState? serverState;
   final String? errorCode;
+  final String? effectiveSessionId;
 
   HermesChatTerminal withTextLength(int textLength) {
     if (textLength > 0 || terminal == DirectMessageTerminal.completed) {
@@ -59,6 +61,7 @@ class HermesChatTerminal {
         finishReason: finishReason,
         serverState: serverState,
         errorCode: errorCode ?? 'hermes_empty_response',
+        effectiveSessionId: effectiveSessionId,
       );
     }
     return this;
@@ -119,6 +122,7 @@ class HermesSseParser {
   HermesServerTerminalState? _serverState;
   bool _sawDone = false;
   String? _errorCode;
+  String? _effectiveSessionId;
 
   Iterable<HermesChatStreamEvent> addLine(String line) sync* {
     if (line.startsWith(':')) return;
@@ -220,6 +224,7 @@ class HermesSseParser {
       finishReason: _finishReason,
       serverState: _serverState,
       errorCode: _errorCode,
+      effectiveSessionId: _effectiveSessionId,
     );
   }
 
@@ -258,6 +263,14 @@ class HermesSseParser {
     }
     final topLevelFinish = _string(payload['finish_reason']);
     if (topLevelFinish != null) _finishReason = topLevelFinish;
+    final effectiveSessionId =
+        _string(payload['effective_session_id']) ??
+        _string(payload['resolved_session_id']) ??
+        _string(payload['session_id']);
+    if (effectiveSessionId != null &&
+        _isSessionPathSegment(effectiveSessionId)) {
+      _effectiveSessionId = effectiveSessionId;
+    }
   }
 }
 
@@ -330,7 +343,7 @@ class HermesChatHttpTransport implements HermesChatTransport {
     ).toList();
     final terminal = probeEvents
         .whereType<HermesChatTerminalEvent>()
-        .lastOrNull;
+        .fold<HermesChatTerminalEvent?>(null, (last, event) => event);
     if (terminal == null ||
         terminal.terminal.terminal != DirectMessageTerminal.completed) {
       throw HermesChatTransportException(
@@ -624,6 +637,9 @@ class HermesChatHttpTransport implements HermesChatTransport {
 
 String? _string(Object? value) =>
     value is String && value.isNotEmpty ? value : null;
+
+bool _isSessionPathSegment(String value) =>
+    value.length <= 256 && RegExp(r'^[A-Za-z0-9._~-]+$').hasMatch(value);
 
 bool? _bool(Object? value) => value is bool ? value : null;
 

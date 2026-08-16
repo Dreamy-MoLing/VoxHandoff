@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../domain/direct_context.dart';
 import '../../domain/direct_chat.dart';
+import '../chat/hermes_session_client.dart';
 
 part 'drift_local_direct_chat_store.g.dart';
 
@@ -127,7 +128,10 @@ class _DirectChatDatabase extends _$_DirectChatDatabase {
 }
 
 class DriftLocalDirectChatStore
-    implements DirectChatHistoryStore, DirectContextStore {
+    implements
+        DirectChatHistoryStore,
+        DirectContextStore,
+        HermesConversationHistoryStore {
   DriftLocalDirectChatStore(QueryExecutor executor)
     : _database = _DirectChatDatabase(executor);
   factory DriftLocalDirectChatStore.inMemory() =>
@@ -199,6 +203,21 @@ class DriftLocalDirectChatStore
               contextEligible: message.contextEligible,
             ),
           );
+
+  @override
+  Future<void> replace(
+    String conversationId,
+    List<DirectChatMessage> messages,
+  ) async {
+    await _database.transaction(() async {
+      await (_database.delete(
+        _database.directChatMessages,
+      )..where((row) => row.conversationId.equals(conversationId))).go();
+      for (final message in messages) {
+        await upsert(conversationId, message);
+      }
+    });
+  }
 
   @override
   Future<DirectContextData> read(String conversationId) async {

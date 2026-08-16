@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
 
-enum ChatSource { hermes, directLlm }
+enum ChatSource { hermes, hermesConversation, directLlm }
 
 sealed class ConfirmedTarget {
   const ConfirmedTarget({required this.conversationId});
@@ -87,6 +87,54 @@ class HermesTargetSnapshot extends ConfirmedTarget {
     agentId,
     capabilityRevision,
     sessionId,
+  );
+}
+
+class HermesConversationTargetSnapshot extends ConfirmedTarget {
+  const HermesConversationTargetSnapshot({
+    required super.conversationId,
+    required this.providerProfileId,
+    required this.credentialRevision,
+    required this.configurationRevision,
+    required this.normalizedOrigin,
+    required this.model,
+    required this.sessionId,
+    required this.sessionKey,
+  });
+
+  final String providerProfileId;
+  final int credentialRevision;
+  final int configurationRevision;
+  final String normalizedOrigin;
+  final String model;
+  final String sessionId;
+  final String sessionKey;
+
+  @override
+  ChatSource get source => ChatSource.hermesConversation;
+
+  @override
+  bool operator ==(Object other) =>
+      other is HermesConversationTargetSnapshot &&
+      conversationId == other.conversationId &&
+      providerProfileId == other.providerProfileId &&
+      credentialRevision == other.credentialRevision &&
+      configurationRevision == other.configurationRevision &&
+      normalizedOrigin == other.normalizedOrigin &&
+      model == other.model &&
+      sessionId == other.sessionId &&
+      sessionKey == other.sessionKey;
+
+  @override
+  int get hashCode => Object.hash(
+    conversationId,
+    providerProfileId,
+    credentialRevision,
+    configurationRevision,
+    normalizedOrigin,
+    model,
+    sessionId,
+    sessionKey,
   );
 }
 

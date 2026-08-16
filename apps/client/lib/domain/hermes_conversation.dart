@@ -16,6 +16,8 @@ class HermesConversationConfiguration {
     required this.sessionKey,
     this.credentialRevision = 1,
     this.configurationRevision = 1,
+    this.contextSnapshotRevision = 0,
+    this.contextSnapshotHash = '',
     this.sessionIdPolicy = HermesSessionIdPolicy.bootstrapPreferred,
   });
 
@@ -30,6 +32,8 @@ class HermesConversationConfiguration {
   final String sessionKey;
   final int credentialRevision;
   final int configurationRevision;
+  final int contextSnapshotRevision;
+  final String contextSnapshotHash;
   final HermesSessionIdPolicy sessionIdPolicy;
 
   String get profileName {
@@ -53,10 +57,12 @@ class HermesConversationConfiguration {
       model.trim().isNotEmpty &&
       model.length <= 256 &&
       _isOpaque(conversationId, 256) &&
-      _isOpaque(sessionId, 256) &&
+      _isPathSegmentSafe(sessionId) &&
       _isOpaque(sessionKey, 256) &&
       credentialRevision > 0 &&
       configurationRevision > 0 &&
+      contextSnapshotRevision >= 0 &&
+      contextSnapshotHash.length <= 128 &&
       origin.scheme.toLowerCase() == 'https' &&
       origin.host.isNotEmpty &&
       origin.userInfo.isEmpty &&
@@ -72,6 +78,8 @@ class HermesConversationConfiguration {
     String? sessionKey,
     int? credentialRevision,
     int? configurationRevision,
+    int? contextSnapshotRevision,
+    String? contextSnapshotHash,
     HermesSessionIdPolicy? sessionIdPolicy,
   }) => HermesConversationConfiguration(
     providerProfileId: providerProfileId,
@@ -82,6 +90,9 @@ class HermesConversationConfiguration {
     sessionKey: sessionKey ?? this.sessionKey,
     credentialRevision: credentialRevision ?? this.credentialRevision,
     configurationRevision: configurationRevision ?? this.configurationRevision,
+    contextSnapshotRevision:
+        contextSnapshotRevision ?? this.contextSnapshotRevision,
+    contextSnapshotHash: contextSnapshotHash ?? this.contextSnapshotHash,
     sessionIdPolicy: sessionIdPolicy ?? this.sessionIdPolicy,
   );
 
@@ -95,6 +106,8 @@ class HermesConversationConfiguration {
     'session_key': sessionKey,
     'credential_revision': credentialRevision,
     'configuration_revision': configurationRevision,
+    'context_snapshot_revision': contextSnapshotRevision,
+    'context_snapshot_hash': contextSnapshotHash,
     'session_id_policy': sessionIdPolicy.name,
   };
 
@@ -108,6 +121,8 @@ class HermesConversationConfiguration {
     final sessionKey = raw['session_key'];
     final credentialRevision = raw['credential_revision'];
     final configurationRevision = raw['configuration_revision'];
+    final contextSnapshotRevision = raw['context_snapshot_revision'];
+    final contextSnapshotHash = raw['context_snapshot_hash'];
     final policyValue = raw['session_id_policy'];
     if (providerProfileId is! String ||
         originValue is! String ||
@@ -117,6 +132,8 @@ class HermesConversationConfiguration {
         sessionKey is! String ||
         credentialRevision is! int ||
         configurationRevision is! int ||
+        contextSnapshotRevision is! int ||
+        contextSnapshotHash is! String ||
         policyValue is! String) {
       return null;
     }
@@ -135,6 +152,8 @@ class HermesConversationConfiguration {
       sessionKey: sessionKey,
       credentialRevision: credentialRevision,
       configurationRevision: configurationRevision,
+      contextSnapshotRevision: contextSnapshotRevision,
+      contextSnapshotHash: contextSnapshotHash,
       sessionIdPolicy: policy,
     );
     return configuration.isSafe ? configuration : null;
@@ -151,6 +170,8 @@ class HermesConversationConfiguration {
       sessionKey == other.sessionKey &&
       credentialRevision == other.credentialRevision &&
       configurationRevision == other.configurationRevision &&
+      contextSnapshotRevision == other.contextSnapshotRevision &&
+      contextSnapshotHash == other.contextSnapshotHash &&
       sessionIdPolicy == other.sessionIdPolicy;
 
   @override
@@ -163,6 +184,8 @@ class HermesConversationConfiguration {
     sessionKey,
     credentialRevision,
     configurationRevision,
+    contextSnapshotRevision,
+    contextSnapshotHash,
     sessionIdPolicy,
   );
 }
