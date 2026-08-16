@@ -222,6 +222,39 @@ CA，release/base 仍只信 system roots。服务使用本地
   `-DVOXHANDOFF_STT_EXECUTABLE`）、release signing（仍 debug signing）、
   Hermes 真实纵向链路（上游能力阻断，非本仓库可解）。
 
+### 0.1.4 2026-08-16 STT token 回读修复与 H1 能力审计（第七/八轮）
+
+- **D-037 STT token 回读链路修复（会话 A，Codex 提交 `d2b0a22`）**：根因是
+  `VoiceProviderSettingsController.saveRemoteStt` 原先在 `token.trim().isEmpty`
+  时立即失败返回，导致后置的"同 provider ID 从安全存储回读已有 token"分支不可达；
+  而 Voice settings 每次创建 `_remoteSttToken` 默认为空，因此保存已有 provider 的
+  更新配置时永远无法复用已存 token，手机端实际发出的 Authorization 恒为空
+  （D-031 三轮重输后依然 401 的根因）。修复只移除该错误早退（1 行），保留
+  "空 token 回读、回读仍空才拒绝保存"的既有安全逻辑；保存/读取均使用
+  `voxhandoff.v1.remote-stt-token.` 前缀及规范化 provider ID，未发现 key/
+  命名空间/Authorization 格式不一致。新增定向测试
+  `remote STT reuses the stored token when the form leaves it blank`。
+  独立复验：客户端定向 21/21、`npm run test:stt` 15/15、`npm run check` 通过、
+  pinned Flutter 3.44.6 `flutter:check` 259 passed + 2 live smoke skip。
+  服务端 curl 对照：health 200 / 无 token POST 401 / 带 env token malformed
+  body 400。真机待验：adb 无设备，未验证真实录音后的手机 `POST /v1/transcribe
+  200`；设备上线后需部署本提交保存/更新远程 STT 配置并完成一次真实录音。
+  已合并回 main，未 push。
+- **H1 上游能力审计（会话 C，无代码改动）**：Hermes Agent v0.20.0 (2026.8.3)
+  核对结论——run 幂等**缺失**（`/v1/runs` 生成随机 run ID，不消费
+  `Idempotency-Key`，仅按已知 run_id 查询 status，`api_server.py:6255-6356`）；
+  不可变 approval ID / 按 ID resolve **缺失**（approval API 仅收 `choice`，
+  `resolve_gateway_approval` 按 session 队首 FIFO，`tools/approval.py:2338-2371`）；
+  capability negotiation **部分**（Hermes 有 `/v1/capabilities` 框架，VoxHandoff
+  adapter 缺失字段归 false，Connector 要求 `eventStream && idempotency` 才注册，
+  approval 要求 `exact` 模式）。完整 H1（真实 Flutter → Gateway/PostgreSQL →
+  Connector → Hermes、accepted 后不确定结果恢复、真实 10 轮、approval
+  deny/approve、非优雅断线、重启与 session resume）仍被上游阻断，非本仓库可解；
+  补齐 run 幂等后可单独评估无 approval 子集。当前实例 capability JSON 未验证
+  （API server 默认关闭、8642 未认证 GET 连接失败，未伪造）。上游补齐后的
+  VoxHandoff 最小工作与验收依赖清单见报告
+  `/tmp/voxhandoff-c-report.md`（不随仓库提交，属临时审计产物）。
+
 ## 0.2 2026-08-11 验收修复（历史维护）
 
 验收报告记录的 VH-ACC-001 已有可复现根因：生产 Node 的 `ConnectNode`
