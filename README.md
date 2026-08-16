@@ -1,19 +1,29 @@
 # VoxHandoff
 
-> **当前开发方向：Android-first 手机 MVP：2026-08-13**
+> **当前定位：第三方 Hermes voice-first mobile companion；Android-first v0.1.0：2026-08-16**
 
-VoxHandoff 曾是面向 Hermes 用户的本地优先、GUI 优先个人语音助手。项目
-组合了 Flutter 客户端、Gateway/PostgreSQL 耐久控制面、Hermes Node
-Connector、可配置 STT/TTS 端口，以及独立的 OpenAI-compatible 纯聊天路径。
+VoxHandoff 是 Hermes 的第三方 voice-first mobile companion：让 Hermes
+拥有更人格化、更接近电话交流的 Android 手机体验。手机负责录音、转写确认、
+聊天、播放、记忆呈现、人格和 SignalCore 视觉；Agent 能力属于 Hermes。
 
-项目当前重新进入开发，但范围只收敛到 Android 手机端 MVP。Hermes Agent [v0.20.0](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.8.3) 已提供部分核心 GUI 语音能力，因此本项目继续保持 Hermes-only Agent 后端边界，重点补齐手机端配对、远程 Gateway、确认发送、状态恢复和个人助手体验，不重新实现 Hermes 的 Agent 或实时语音框架。
+v0.1.0 的主后端是 Hermes 对话接口，具体契约以 S0 integration spike 结论为
+准；STT/TTS 适配层由本项目自研保留。Direct LLM 只作为延后的可选纯聊天路径，
+不模拟 Hermes 的 Agent 工具、审批、执行主机或工作状态。
 
-本仓库仍保留完整历史工程记录。当前批次不同时推进 iOS、桌面新功能、后台
-监听、唤醒词、全双工语音、本地手机 sidecar 或新 Agent 后端；这些范围只有
-在 Android MVP 的实体设备验收通过后才重新评估。未实测的 Hermes、STT/TTS、
-GUI、实体设备和发布门仍不能写成通过。
+当前只实现 Android 前台能力；iOS、桌面新功能、后台监听、唤醒词、全双工语音、
+本地手机 sidecar 和新 Agent 后端不属于 v0.1.0。Hermes 深度 Agent 集成及旧
+Gateway/Node/PostgreSQL 控制面已冻结，保留在代码库和
+[`spec/archive/2026-08-16-full-agent/`](spec/archive/2026-08-16-full-agent/)
+作为升级路径参考。
 
-## 已完成的工作
+当前状态、验收证据和未关闭的发布门以 [`spec/README.md`](spec/README.md)、
+[`spec/PRODUCT.md`](spec/PRODUCT.md)、[`spec/ARCHITECTURE.md`](spec/ARCHITECTURE.md)
+和 [`spec/DELIVERY.md`](spec/DELIVERY.md) 为准。未实测的 Hermes、STT/TTS、GUI、
+实体设备和发布门不能写成通过。
+
+## 历史工程阶段（归档记录）
+
+下表记录旧版完整 Agent 控制面阶段，不代表 v0.1.0 的默认构建路径或当前发布通过。
 
 | 阶段 | 归档时状态 | 主要成果 |
 | --- | --- | --- |
@@ -26,13 +36,14 @@ GUI、实体设备和发布门仍不能写成通过。
 | H1 | 未关闭 | 真实 Flutter → Gateway/PostgreSQL → Connector → Hermes 链路仍对历史 Hermes 0.19 合约保持 fail closed；幂等 run submission 与精确 approval identity/resolution 没有完成兼容验证。 |
 
 详细证据、验收边界和已知缺口保留在[交付记录](spec/DELIVERY.md)。
-产品与架构文档保留在 [`spec/`](spec/README.md)，用于理解历史设计和实现。
+产品与架构文档的当前入口是 [`spec/README.md`](spec/README.md)；旧版完整 Agent
+控制面仅用于理解归档设计和升级路径。
 
 ## 代码保留的关键边界
 
-- Hermes 是本项目唯一具有 Agent/work 语义的后端。
+- Hermes 是本项目唯一具有 Agent/work 语义的后端，也是 v0.1.0 对话主链路的后端。
 - Direct LLM 只提供纯聊天，不模拟 Agent 工具、审批、执行主机、lease 或 Hermes 状态。
-- 确认发送绑定不可变文本、上下文、backend 和 target 快照。
+- 确认发送绑定不可变文本、上下文、backend 和 target 快照；工作型授权仍在 Hermes 端处理。
 - STT、TTS、摘要生成或播放失败时，完整文字回复仍可用。
 - 远端接受结果不确定时进入 `uncertain`，提交不会静默重试。
 - 秘密和原始录音默认留在本地；过期 identity、sequence 或 capability 会在协议边界 fail closed。
@@ -40,13 +51,14 @@ GUI、实体设备和发布门仍不能写成通过。
 ## 目录索引
 
 - [`packages/core`](packages/core)：领域类型、生命周期、脱敏和确定性语音摘要规则。
-- [`packages/adapters`](packages/adapters)：Hermes transport 和历史回归 adapter。
+- [`packages/protocol`](packages/protocol)：保留的版本化协议资产，服务冻结升级路径。
+- [`packages/adapters`](packages/adapters)：Hermes 对话 adapter 主链路、延后可选 Direct LLM 和历史回归 adapter。
 - [`apps/poc-cli`](apps/poc-cli)：协议与故障注入验收 harness。
-- [`apps/client`](apps/client)：共享 Flutter 客户端。
-- [`services/gateway`](services/gateway)：认证控制面和 PostgreSQL ledger。
-- [`services/node`](services/node)：出站 Hermes Connector。
-- [`services/stt`](services/stt)：可选的版本化本地 STT sidecar。
-- [`spec/`](spec)：当前 Android-first 产品、架构和交付基线，以及历史阶段证据。
+- [`apps/client`](apps/client)：Android-first Flutter 客户端。
+- [`services/stt`](services/stt)：版本化 STT 适配/服务边界；手机不启动本地 sidecar。
+- [`services/gateway`](services/gateway)：冻结归档的旧控制面和 PostgreSQL ledger，不进入 v0.1.0 默认路径。
+- [`services/node`](services/node)：冻结归档的旧 Hermes Connector，不进入 v0.1.0 默认路径。
+- [`spec/`](spec)：当前产品、架构和交付基线；权威入口为 [`spec/README.md`](spec/README.md)。
 
 ## 分支收敛
 
@@ -56,14 +68,20 @@ GUI、实体设备和发布门仍不能写成通过。
 
 ## 本地验证
 
-验证可能需要固定工具链和可选本地服务。原有质量入口为：
+验证可能需要固定工具链和可选本地服务。默认质量入口为：
 
 ```bash
 npm install
 npm run check
 npm test
-AGENT_TALK_LOOPBACK_INTEGRATION=1 npm run test:transport
 npm run poc -- doctor
+```
+
+冻结旧模块的 PostgreSQL/transport 门仍可显式 opt-in，默认入口不会调用它们：
+
+```bash
+npm run test:postgres
+AGENT_TALK_LOOPBACK_INTEGRATION=1 npm run test:transport
 ```
 
 固定 Flutter 门：
@@ -73,8 +91,8 @@ AGENT_TALK_FLUTTER_ROOT=/home/roco/develop/flutter-3.44.6 npm run flutter:check
 ```
 
 离线检查不能证明尚未完成的实体麦克风 GUI 流程、第三方服务行为、签名
-安装包或 Hermes 0.20.0 兼容性。v0.20.0 发布说明证明的是上游能力，不是
-本仓库历史 Connector 协议的兼容测试。
+安装包或 Hermes 对话接口兼容性。上游发布说明证明的是上游能力，不是本仓库
+冻结 Connector 协议的兼容测试。
 
 ## License 状态
 
