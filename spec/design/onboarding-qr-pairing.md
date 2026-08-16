@@ -1,121 +1,183 @@
-# VoxHandoff 配对式首次配置（Onboarding）设计基线
+# VoxHandoff 配对式首次配置（Onboarding）实施基线
 
-> 状态：**设计基线（待决策）**。本文件定义 v0.1.x 的首次配置体验升级方向：
-> 以「配对」取代「配置」，解决当前首次使用流程对普通用户门槛过高的问题。
-> 待与外部方案（ChatGPT）最终商讨后，作为 M6 onboarding 里程碑的实施依据；
+> 状态：**实施基线（已定稿，2026-08-16）**。本文件是 M6 onboarding 里程碑的
+> 实现依据，取代 2026-08-16 初版草案。安全模型经外部评审（RFC 8628 / RFC 9449 /
+> Android Keystore / Network Security Config 交叉验证）。
 > 未实施前不改变当前 spec/PRODUCT.md 4.1 的配置式流程。
 
-## 1. 问题
-
-当前首次配置模型像"开发者控制台"：
-- Hermes 设置页要求用户理解并填写：HTTPS 地址、model、API key、profile path、测试连接；
-- 语音设置页同时暴露 Hermes、Direct LLM、CA 导入、STT 类型/地址/Token、TLS policy、
-  retention、Piper、GPT-SoVITS、speaker、reference audio 等大量内部概念；
-- 对高级用户是合理的高级设置，对普通用户的首次使用流程不合理；
-- 证书/HTTPS 信任（CA 安装 / Tailscale）对小白用户门槛高。
-
-产品理念（spec 定义的"低摩擦、接近电话交流体验"）与 onboarding 之间缺一层收口。
-
-## 2. 目标体验
+## 1. 目标体验
 
 普通用户第一次打开 VoxHandoff：
 
 ```
 电脑端（Hermes / VoxHandoff）：
-  → "连接手机" → 显示二维码
+  → 启动 Companion Bridge → 选择 Hermes Profile →「连接手机」→ 显示二维码
 
 手机端：
-  → 扫二维码 → "正在连接你的 Hermes" → 成功
+  → 扫码 → 校验 SPKI pin → 生成 Android Keystore 设备密钥
+  → 兑换一次性 pairing token
 
-随后：
-  → 选择声音 → 完成
+电脑端：
+  →「vivo V2359A 请求连接 · 482731」→ 确认
+
+Bridge：
+  → 登记设备公钥 → 签发该设备凭据 → 返回 capability manifest
+
+手机端：
+  → Hermes ✓ / 语音识别 ✓ / 声音 Bronya ✓ → 开始通话
 ```
 
 URL、端口、model、Session ID/Key、证书、API key、STT 地址**都不出现在默认路径**。
-只有进入"高级 → 手动连接"才显示完整表单。
+只有「高级 → 手动连接」才显示完整表单。
 
-## 3. 技术方案：主机侧 bootstrap + QR 配对包 + 证书固定 + secure storage
+## 2. QR 安全模型（定稿）
 
-### 3.1 二维码载荷（一次性配对包）
+### 2.1 Pairing token
 
-```
-协议版本
-Hermes endpoint（默认 https://<host>:8642）
-profile
-证书指纹（pin）
-一次性 pairing token
-过期时间（如 10 分钟）
-```
+| 项目 | 定稿 |
+| --- | --- |
+| 生成 | 256-bit 随机、一次性 |
+| TTL | **3 分钟，最长不超过 5 分钟** |
+| 服务端保存 | **只存 token hash**；状态 `pending / consumed / expired / cancelled` |
+| 消耗 | **原子一次性消费**；成功、超时、取消、重新生成 QR 都立即作废 |
+| 用途 | **只能换取设备身份**，绝不能随后直接充当 API token |
 
-手机扫码获得**预期证书指纹**，首次连接直接验证该证书——比"连上未知自签证书再问用户
-是否信任"的裸 TOFU 更好：首次身份也有"主机屏幕 → 手机摄像头"这一条独立信任通道。
+### 2.2 防 QR 重放 / 抢先兑换
 
-### 3.2 连接建立后
+- 单靠 token 不够；扫码后手机**生成设备密钥对**，配对绑定该**公钥**；
+- **主机端最后一次确认设备**：显示设备名 + 短验证码（如 6 位数字），确认后才签发长期设备凭据；
+- 长期凭据：**每台手机独立、可撤销**；绝不复用 Hermes API key。
 
-- 长期凭据进入 Android secure storage；
-- certificate pin 与 Hermes/设备身份绑定；
+### 2.3 设备密钥与长期凭据
+
+- 私钥由**手机生成并保存于 Android Keystore**（优先硬件保护 / StrongBox，不可导出）；
+- 长期凭据进 Android secure storage；
 - 证书突然变化 → **fail closed**，提示"服务器身份发生变化，需要重新配对"；
-- model、capabilities、session 等**自动发现**；
-- 原 URL / Key / model 表单全部移进「高级 → 手动连接」。
+- model、capabilities、session 等自动发现。
 
-### 3.3 连接方式定位（按用户类型）
+### 2.4 Certificate pin
+
+- 类型：**SHA-256 SPKI pin**（`SubjectPublicKeyInfo`），不保存整个 leaf certificate fingerprint；
+- 数量：当前 pin + 一个预生成 **backup pin**（Android Network Security Config 官方建议）；
+- 失效：**不设置"到期后自动关闭 pinning"**；密钥异常变化 fail closed；
+- 换代：旧 pinned TLS 通道下下发新的 backup pin；两个都丢失才重新配对。
+
+### 2.5 QR 本体（定稿载荷）
+
+```text
+protocol_version
+bridge_endpoint
+server_id
+pairing_session_id
+spki_pin
+pairing_token
+expires_at
+```
+
+**删除直接 Hermes endpoint 和 profile。** profile 在主机生成 QR 时就绑定到
+`pairing_session_id`，手机不需要知道。二维码只是"找到并认证这台 VoxHandoff
+Bridge"的启动凭据。
+
+### 2.6 术语修正
+
+默认 QR 流程通过"主机屏幕 → 手机摄像头"**带外传递 pin**，严格说**不是裸 TOFU**。
+只有手动输入地址后首次接受未知指纹的 fallback 才叫 TOFU。
+
+## 3. Companion Bridge（定稿：长期薄组件）
+
+**选择长期运行的极薄 `VoxHandoff Companion Bridge`**（一次性 bootstrap 工具不选——
+一次性工具最终仍得留下 nginx/socat/TLS terminator 等长期组件，复杂度只是转移）。
+
+### 3.1 职责（严格限定）
+
+```text
+TLS termination
+QR pairing
+设备凭据签发 / 撤销
+certificate pin rotation
+capability discovery
+Hermes / STT / TTS reverse proxy
+health/readiness
+```
+
+### 3.2 明确禁止（防 Gateway 复辟）
+
+```text
+Agent 状态机
+conversation 权威
+Hermes memory
+tool orchestration
+approval
+任务调度
+消息数据库
+长期聊天历史
+Node/Gateway 语义
+```
+
+它是**安全接入层 + 服务路由器**，不能继续长成第二个 Hermes Gateway。
+
+### 3.3 关键收益
+
+**Hermes API key 永远只存在 Fedora 主机上。** 手机只拿 Companion Bridge 的
+per-device credential。手机丢失只 revoke 这一台设备，不需要轮换 Hermes 总密钥。
+
+## 4. 连接方式定位（按用户类型）
 
 | 方式 | 定位 |
 | --- | --- |
 | 二维码 + certificate pin | **默认推荐路径** |
 | Tailscale | 已在用 Tailscale 的用户可选"快捷路径" |
 | 公网 HTTPS / Cloudflare Tunnel | 高级远程部署 |
-| URL + API Key + CA | 专家手动配置 |
-| 裸 TOFU（看到指纹点信任） | 手动连接时的 fallback |
+| URL + API Key + CA | 专家手动配置（= 手动连接 fallback，此路径才有裸 TOFU） |
 
 产品不绑定 Tailscale，也不强迫用户学证书。
 
-### 3.4 主机端 bootstrap 职责（克制）
+## 5. Capability Manifest（配对后下发，不塞进 QR）
 
-- 只做：安装/配置 TLS terminator 的一次性工具，或长期极薄的 pairing proxy；
-- **禁止**把冻结的 Gateway/Node 控制面重新造一遍；
-- 主机侧仅暴露配对接口（签发 QR 载荷）+ 转发 Hermes 对话/STT/TTS 流量。
+扫码成功后，由 Bridge 通过**已认证的连接**返回：
 
-## 4. Companion Connection Bundle（数据模型方向）
-
-一次配对后由主机告诉手机：
-
-```
-Hermes
- ├─ Chat endpoint
- ├─ STT endpoint
- ├─ TTS endpoint
- ├─ 能力
- ├─ 推荐模型/声音
- └─ 安全身份
+```json
+{
+  "chat": { "available": true },
+  "stt": { "available": true, "capabilities": { } },
+  "tts": { "available": true, "voices": [ ], "recommended_voice": "Bronya" },
+  "hermes": { "profile": "...", "model": "...", "capabilities": { } }
+}
 ```
 
-手机 UI 只呈现：
-- Hermes：已连接
-- 语音识别：可用
-- 声音：Bronya
-- 通话模式：开启
+手机默认只连接**一个 Bridge origin + 一套 pin + 一个设备身份**：
 
-点「高级」后才看到 provider、URL、TLS、retention 等。
+```text
+Phone ──(pinned HTTPS)──► VoxHandoff Companion Bridge
+                              ├── Hermes
+                              ├── STT
+                              └── TTS
+```
 
-## 5. 现有代码的对接点（已核实）
+STT/TTS provider token、CA、真实内部 URL、GPT-SoVITS reference path 等全部留在主机。
+用户要手机直接连 Cloud STT/TTS → 「高级 → 自定义语音服务」作为第二个独立 trust domain。
+
+**配对成功不必强制 STT/TTS 全部存在**：
+- Hermes Chat：必须可用
+- STT 缺失：显示"语音输入未配置"
+- TTS 缺失：文字正常工作
+- 有 STT/TTS：自动启用电话式完整体验
+
+## 6. 现有代码对接点（已核实）
 
 - `HermesChatHttpTransport` 允许注入 HttpClient → 可注入 pinning 逻辑；
 - 凭据与配置已分离存储（`hermes_conversation_secret_store.dart`）；
 - `isSafe` 已把 HTTPS/路径/origin 限制封装在 domain 层；
-- Android release 已关闭 cleartext、只信任系统根 → 底线可保留；
+- Android release 已关闭 cleartext、只信任系统根 → 底线保留；
 - 视觉状态机对齐 Hermes 主链路（M5-SIG）是前置。
 
-## 6. 待决策点
+## 7. 待实施项（M6 范围）
 
-1. 主机端 bootstrap 做到多重：一次性工具 vs 长期薄 pairing proxy（倾向后者但必须克制）；
-2. STT/TTS endpoint 是否纳入首次配对包（倾向纳入，避免用户二次撞配置墙）；
-3. QR 扫描库选型（mobile_scanner / zxing 等）与最小权限；
-4. 是否保留"手动连接"作为第一屏的高级入口（倾向保留）。
-
-## 7. 影响
-
-- spec/PRODUCT.md 4.1 首次配置章节需重写为配对流程；
-- 新增主机侧 bootstrap 组件（命名避免与冻结 Gateway 混淆）；
-- 安全边界增加 certificate pinning 语义（TOFU + pin）；
-- 视觉/语音设置页重构为「状态总览 + 高级折叠」。
+1. 主机侧 Companion Bridge 组件（命名避免与冻结 Gateway 混淆）；
+2. QR 扫描（mobile_scanner / zxing 等）+ 最小权限；
+3. Android Keystore 设备密钥生成 + secure storage 凭据；
+4. SPKI pin 校验 + backup pin 轮换；
+5. Capability Manifest 解析与 UI（状态总览 + 高级折叠）；
+6. 「高级 → 手动连接」fallback（保留现有表单 + 裸 TOFU）；
+7. spec/PRODUCT.md 4.1 首次配置章节重写为配对流程；
+8. 安全测试：token 重放/过期/取消、pin 更换 fail-closed、设备撤销。
