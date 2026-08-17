@@ -81,6 +81,14 @@ export class CompanionBridgeApplication {
         ));
         return;
       }
+      const requestStatus = path.match(/^\/v1\/pairing\/requests\/([^/]+)\/status$/u);
+      if (this.#pairing !== undefined && method === "GET" && requestStatus?.[1] !== undefined) {
+        writeJson(response, 200, await this.#pairing.requestStatus(
+          decodePathPart(requestStatus[1]),
+          pairingTokenFromRequest(request),
+        ));
+        return;
+      }
       if (this.#pairing !== undefined && method === "GET" && path === "/v1/pairing/requests") {
         authorizeHost(request, this.#config);
         writeJson(response, 200, { requests: await this.#pairing.pendingRequests() });
@@ -88,8 +96,13 @@ export class CompanionBridgeApplication {
       }
       const sessionCancel = path.match(/^\/v1\/pairing\/sessions\/([^/]+)\/cancel$/u);
       if (this.#pairing !== undefined && method === "POST" && sessionCancel?.[1] !== undefined) {
-        authorizeHost(request, this.#config);
-        await this.#pairing.cancelSession(decodePathPart(sessionCancel[1]));
+        const pairingToken = pairingTokenFromOptionalRequest(request);
+        if (pairingToken === undefined) {
+          authorizeHost(request, this.#config);
+          await this.#pairing.cancelSession(decodePathPart(sessionCancel[1]));
+        } else {
+          await this.#pairing.cancelSessionWithPairingToken(decodePathPart(sessionCancel[1]), pairingToken);
+        }
         writeJson(response, 200, { cancelled: true });
         return;
       }
@@ -137,6 +150,12 @@ export class CompanionBridgeApplication {
           presentedPin: stringField(body, "presented_pin") ?? "",
           nextBackupPin: stringField(body, "next_backup_pin") ?? "",
         }));
+        return;
+      }
+      if (this.#credentials !== undefined && method === "POST" && path === "/v1/devices/me/revoke") {
+        const principal = await this.#credentials.authenticateAuthorization(request.headers.authorization);
+        const revoked = await this.#credentials.revokeAuthenticatedDevice(principal);
+        writeJson(response, 200, { revoked });
         return;
       }
       if (this.#proxy !== undefined) {
@@ -192,6 +211,18 @@ function authorizeHost(request: IncomingMessage, config: BridgeConfig): void {
   if (remoteAddress !== undefined && !isLoopback(remoteAddress)) {
     throw new HttpRequestError(403, "host_access_denied", "Host control endpoints are local-only.");
   }
+}
+
+function pairingTokenFromRequest(request: IncomingMessage): string {
+  return pairingTokenFromOptionalRequest(request) ?? "";
+}
+
+function pairingTokenFromOptionalRequest(request: IncomingMessage): string | undefined {
+  const header = request.headers["x-bridge-pairing-authorization"];
+  if (header === undefined) return undefined;
+  if (typeof header !== "string") return "";
+  const match = header.match(/^Bearer (.+)$/u);
+  return match?.[1] ?? "";
 }
 
 function constantTimeHeaderEqual(left: string, right: string): boolean {

@@ -5,6 +5,11 @@ import 'dart:io';
 import '../../domain/onboarding_credential.dart';
 import '../security/spki_pin_validator.dart';
 
+/// Revokes the active phone credential through the Bridge self-revoke route.
+///
+/// The credential is sent only as a device Bearer header. Local secure storage
+/// is deleted by the credential controller only after `{revoked:true}`
+/// has been received from the pinned Bridge connection.
 class BridgeCredentialRevoker implements OnboardingCredentialRevocationPort {
   BridgeCredentialRevoker({
     HttpClient? client,
@@ -19,20 +24,13 @@ class BridgeCredentialRevoker implements OnboardingCredentialRevocationPort {
     HttpClientRequest? request;
     try {
       request = await _client
-          .postUrl(_appendPath(material.bridgeEndpoint, 'v1/devices/revoke'))
+          .postUrl(_appendPath(material.bridgeEndpoint, 'v1/devices/me/revoke'))
           .timeout(timeout);
       request.followRedirects = false;
-      request.headers.contentType = ContentType.json;
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.add(
-        utf8.encode(
-          jsonEncode({
-            'credential_id': material.credentialId,
-            'credential': material.credential,
-            'server_id': material.serverId,
-            'device_key_reference': material.deviceKeyReference,
-          }),
-        ),
+      request.headers.set(
+        HttpHeaders.authorizationHeader,
+        'Bearer ${material.credential}',
       );
       final response = await request.close().timeout(timeout);
       try {
@@ -47,11 +45,18 @@ class BridgeCredentialRevoker implements OnboardingCredentialRevocationPort {
           error.safeMessage,
         );
       }
-      await response
+      final bytes = await response
           .transform(const _ResponseLimitTransformer(64 * 1024))
           .timeout(timeout)
-          .drain<void>();
+          .fold<List<int>>(<int>[], (all, chunk) => [...all, ...chunk]);
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw const OnboardingCredentialException(
+          'revoke_rejected',
+          '主机没有确认撤销这台设备。',
+        );
+      }
+      final decoded = jsonDecode(utf8.decode(bytes));
+      if (decoded is! Map || decoded['revoked'] != true) {
         throw const OnboardingCredentialException(
           'revoke_rejected',
           '主机没有确认撤销这台设备。',

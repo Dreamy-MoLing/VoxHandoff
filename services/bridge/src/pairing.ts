@@ -17,6 +17,7 @@ import type {
   BridgeStateStore,
   DeviceRecord,
   PairingRequestRecord,
+  PairingSessionRecord,
   DeviceScope,
 } from "./state.js";
 import { deviceScopes } from "./state.js";
@@ -79,6 +80,12 @@ export interface PendingPairingRequest {
   deviceFingerprint: string;
   confirmationCode: string;
   status: PairingRequestRecord["status"];
+  expiresAt: string;
+}
+
+export interface PairingRequestStatusResult {
+  pairingRequestId: string;
+  status: "awaiting_confirmation" | "confirmed" | "expired" | "cancelled";
   expiresAt: string;
 }
 
@@ -222,6 +229,23 @@ export class PairingService {
     });
   }
 
+  async requestStatus(requestId: string, pairingToken: string): Promise<PairingRequestStatusResult> {
+    if (!opaque(requestId)) throw new PairingError("pairing_request_not_found", "The pairing request was not found.", 404);
+    const now = this.#now();
+    return this.#store.mutate((state) => {
+      expireState(state, now);
+      const request = state.pairingRequests.find((candidate) => candidate.requestId === requestId);
+      if (request === undefined) throw new PairingError("pairing_request_not_found", "The pairing request was not found.", 404);
+      const session = state.pairings.find((candidate) => candidate.sessionId === request.sessionId);
+      assertPairingToken(session, pairingToken);
+      return {
+        pairingRequestId: request.requestId,
+        status: request.status === "completed" ? "confirmed" : request.status,
+        expiresAt: request.expiresAt,
+      };
+    });
+  }
+
   async confirm(requestId: string, deviceName: string, confirmationCode: string): Promise<ConfirmedPairingRequest> {
     if (!opaque(requestId)) throw new PairingError("pairing_request_not_found", "The pairing request was not found.", 404);
     const normalizedName = displayName(deviceName);
@@ -292,10 +316,16 @@ export class PairingService {
     await this.#store.mutate((state) => {
       const session = state.pairings.find((candidate) => candidate.sessionId === sessionId);
       if (session === undefined) throw new PairingError("pairing_not_found", "The pairing session was not found.", 404);
-      if (session.status === "pending") session.status = "cancelled";
-      for (const request of state.pairingRequests) {
-        if (request.sessionId === sessionId && (request.status === "awaiting_confirmation" || request.status === "confirmed")) request.status = "cancelled";
-      }
+      cancelSessionState(state, session);
+    });
+  }
+
+  async cancelSessionWithPairingToken(sessionId: string, pairingToken: string): Promise<void> {
+    if (!opaque(sessionId)) throw new PairingError("pairing_not_found", "The pairing session was not found.", 404);
+    await this.#store.mutate((state) => {
+      const session = state.pairings.find((candidate) => candidate.sessionId === sessionId);
+      assertPairingToken(session, pairingToken);
+      cancelSessionState(state, session);
     });
   }
 
@@ -329,6 +359,19 @@ function publicRequest(request: PairingRequestRecord): PendingPairingRequest {
     status: request.status,
     expiresAt: request.expiresAt,
   };
+}
+
+function assertPairingToken(session: PairingSessionRecord | undefined, pairingToken: string): asserts session is PairingSessionRecord {
+  if (session === undefined || !isPairingToken(pairingToken) || !constantTimeEqual(session.tokenHash, hashSecret(pairingToken))) {
+    throw new PairingError("pairing_token_invalid", "The pairing token is invalid.", 401);
+  }
+}
+
+function cancelSessionState(state: BridgeStateDocument, session: PairingSessionRecord): void {
+  if (session.status === "pending") session.status = "cancelled";
+  for (const request of state.pairingRequests) {
+    if (request.sessionId === session.sessionId && (request.status === "awaiting_confirmation" || request.status === "confirmed")) request.status = "cancelled";
+  }
 }
 
 function opaque(value: string): boolean {

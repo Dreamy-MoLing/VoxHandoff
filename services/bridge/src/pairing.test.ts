@@ -118,3 +118,33 @@ test("host confirmation requires the displayed device name and six-digit code", 
   const confirmed = await service.confirm(exchange.pairingRequestId, "Phone", pending[0]?.confirmationCode ?? "000000");
   assert.equal(confirmed.status, "confirmed");
 });
+
+test("phone status and cancellation are authenticated by the consumed pairing token", async () => {
+  const store = createMemoryBridgeStateStore();
+  const service = new PairingService(config, store);
+  const qr = await service.createQr();
+  const exchange = await service.exchange({
+    serverId: qr.server_id,
+    pairingSessionId: qr.pairing_session_id,
+    pairingToken: qr.pairing_token,
+    deviceName: "Phone",
+    devicePublicKeySpki: publicKey(),
+  });
+
+  assert.deepEqual(await service.requestStatus(exchange.pairingRequestId, qr.pairing_token), {
+    pairingRequestId: exchange.pairingRequestId,
+    status: "awaiting_confirmation",
+    expiresAt: exchange.expiresAt,
+  });
+  await assert.rejects(
+    () => service.requestStatus(exchange.pairingRequestId, "invalid-token"),
+    (error: unknown) => error instanceof PairingError && error.code === "pairing_token_invalid" && error.status === 401,
+  );
+
+  await service.cancelSessionWithPairingToken(qr.pairing_session_id, qr.pairing_token);
+  assert.deepEqual(await service.requestStatus(exchange.pairingRequestId, qr.pairing_token), {
+    pairingRequestId: exchange.pairingRequestId,
+    status: "cancelled",
+    expiresAt: exchange.expiresAt,
+  });
+});

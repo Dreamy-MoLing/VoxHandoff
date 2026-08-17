@@ -120,6 +120,17 @@ test("host controls and authenticated pin reads are separated from device auth",
     });
     assert.equal(rotation.status, 200);
     assert.deepEqual(await rotation.json(), { currentSpkiPin: backup, backupSpkiPin: next, generation: 2 });
+
+    const selfRevoke = await fetch(`${base}/v1/devices/me/revoke`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${deviceToken}` },
+    });
+    assert.equal(selfRevoke.status, 200);
+    assert.deepEqual(await selfRevoke.json(), { revoked: true });
+    const revokedDevicePins = await fetch(`${base}/v1/pinning`, {
+      headers: { Authorization: `Bearer ${deviceToken}` },
+    });
+    assert.equal(revokedDevicePins.status, 401);
   } finally {
     await closeBridgeServer(server);
   }

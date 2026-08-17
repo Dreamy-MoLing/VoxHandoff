@@ -2,13 +2,14 @@ import 'dart:convert';
 
 import 'package:agent_talk_client/application/onboarding_pairing_controller.dart';
 import 'package:agent_talk_client/domain/onboarding_device_key.dart';
+import 'package:agent_talk_client/domain/onboarding_credential.dart';
 import 'package:agent_talk_client/domain/onboarding_pairing.dart';
 import 'package:agent_talk_client/presentation/onboarding_pairing_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('shows device name and host confirmation code after scanning', (
+  testWidgets('shows device name and waiting state after scanning', (
     tester,
   ) async {
     final now = DateTime.utc(2026, 8, 17, 12);
@@ -18,8 +19,12 @@ void main() {
       keyReferenceStore: _FakeKeyReferenceStore(),
       exchangePort: _FakeExchange(
         OnboardingPairingExchangeResult(
-          pairingId: 'pairing-1',
-          confirmationCode: '482731',
+          pairingRequestId: 'pairing-1',
+          deviceId: 'device-1',
+          deviceName: 'vivo V2359A',
+          deviceFingerprint: _FakeDeviceKeyPort().identity.fingerprint,
+          challenge: 'challenge-1',
+          status: OnboardingPairingRemoteStatus.awaitingConfirmation,
           expiresAt: expiry,
         ),
       ),
@@ -49,12 +54,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('请在主机上确认这台设备'), findsOneWidget);
+    expect(find.text('等待主机确认'), findsOneWidget);
     expect(find.text('vivo V2359A'), findsOneWidget);
-    expect(
-      find.byKey(const Key('onboarding-confirmation-code')),
-      findsOneWidget,
-    );
-    expect(find.text('482731'), findsOneWidget);
+    expect(find.byKey(const Key('onboarding-confirmation-code')), findsNothing);
   });
 }
 
@@ -113,22 +115,41 @@ class _FakeExchange implements OnboardingPairingExchangePort {
     required payload,
     required deviceName,
     required deviceKey,
-    required List<int> proofSignature,
   }) async => result;
 
   @override
   Future<OnboardingPairingStatusResult> status({
     required payload,
-    required pairingId,
+    required pairingRequestId,
     required backupSpkiPin,
-  }) async => const OnboardingPairingStatusResult(
-    OnboardingPairingRemoteStatus.waitingHostConfirmation,
+  }) async => OnboardingPairingStatusResult(
+    pairingRequestId: pairingRequestId,
+    status: OnboardingPairingRemoteStatus.awaitingConfirmation,
+    expiresAt: DateTime.utc(2026, 8, 17, 12, 3),
+  );
+
+  @override
+  Future<OnboardingCredentialMaterial> complete({
+    required payload,
+    required pairingRequestId,
+    required deviceId,
+    required deviceKey,
+    required deviceSignature,
+    required backupSpkiPin,
+  }) async => OnboardingCredentialMaterial(
+    credentialId: 'credential-synthetic-1',
+    credential: 'synthetic-device-credential-only',
+    bridgeEndpoint: payload.bridgeEndpoint,
+    serverId: payload.serverId,
+    deviceKeyReference: deviceKey.keyReference,
+    spkiPin: payload.spkiPin,
+    issuedAt: DateTime.utc(2026, 8, 17, 12),
   );
 
   @override
   Future<void> cancel({
     required payload,
-    required pairingId,
+    required pairingRequestId,
     required backupSpkiPin,
   }) async {}
 }

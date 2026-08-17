@@ -21,8 +21,10 @@ class OnboardingPairingState {
     this.payload,
     this.deviceKey,
     this.deviceName,
-    this.pairingId,
-    this.confirmationCode,
+    this.deviceId,
+    this.deviceFingerprint,
+    this.pairingRequestId,
+    this.challenge,
     this.expiresAt,
     this.backupSpkiPin,
     this.credentialReference,
@@ -34,8 +36,10 @@ class OnboardingPairingState {
   final QrPairingPayload? payload;
   final OnboardingDeviceKeyIdentity? deviceKey;
   final String? deviceName;
-  final String? pairingId;
-  final String? confirmationCode;
+  final String? deviceId;
+  final String? deviceFingerprint;
+  final String? pairingRequestId;
+  final String? challenge;
   final DateTime? expiresAt;
   final String? backupSpkiPin;
   final OnboardingCredentialReference? credentialReference;
@@ -56,8 +60,10 @@ class OnboardingPairingState {
     Object? payload = _unset,
     Object? deviceKey = _unset,
     Object? deviceName = _unset,
-    Object? pairingId = _unset,
-    Object? confirmationCode = _unset,
+    Object? deviceId = _unset,
+    Object? deviceFingerprint = _unset,
+    Object? pairingRequestId = _unset,
+    Object? challenge = _unset,
     Object? expiresAt = _unset,
     Object? backupSpkiPin = _unset,
     Object? credentialReference = _unset,
@@ -74,12 +80,18 @@ class OnboardingPairingState {
     deviceName: identical(deviceName, _unset)
         ? this.deviceName
         : deviceName as String?,
-    pairingId: identical(pairingId, _unset)
-        ? this.pairingId
-        : pairingId as String?,
-    confirmationCode: identical(confirmationCode, _unset)
-        ? this.confirmationCode
-        : confirmationCode as String?,
+    deviceId: identical(deviceId, _unset)
+        ? this.deviceId
+        : deviceId as String?,
+    deviceFingerprint: identical(deviceFingerprint, _unset)
+        ? this.deviceFingerprint
+        : deviceFingerprint as String?,
+    pairingRequestId: identical(pairingRequestId, _unset)
+        ? this.pairingRequestId
+        : pairingRequestId as String?,
+    challenge: identical(challenge, _unset)
+        ? this.challenge
+        : challenge as String?,
     expiresAt: identical(expiresAt, _unset)
         ? this.expiresAt
         : expiresAt as DateTime?,
@@ -100,8 +112,8 @@ class OnboardingPairingState {
   @override
   String toString() =>
       'OnboardingPairingState(phase: ${phase.name}, '
-      'pairingId: ${pairingId == null ? 'none' : 'present'}, '
-      'confirmationCode: ${confirmationCode == null ? 'none' : 'present'}, '
+      'pairingRequestId: ${pairingRequestId == null ? 'none' : 'present'}, '
+      'challenge: ${challenge == null ? 'none' : 'present'}, '
       'redacted: true)';
 }
 
@@ -116,61 +128,104 @@ abstract interface class OnboardingPairingExchangePort {
     required QrPairingPayload payload,
     required String deviceName,
     required OnboardingDeviceKeyIdentity deviceKey,
-    required List<int> proofSignature,
   });
 
   Future<OnboardingPairingStatusResult> status({
     required QrPairingPayload payload,
-    required String pairingId,
+    required String pairingRequestId,
+    required String? backupSpkiPin,
+  });
+
+  Future<OnboardingCredentialMaterial> complete({
+    required QrPairingPayload payload,
+    required String pairingRequestId,
+    required String deviceId,
+    required OnboardingDeviceKeyIdentity deviceKey,
+    required List<int> deviceSignature,
     required String? backupSpkiPin,
   });
 
   Future<void> cancel({
     required QrPairingPayload payload,
-    required String pairingId,
+    required String pairingRequestId,
     required String? backupSpkiPin,
   });
 }
 
 class OnboardingPairingExchangeResult {
   OnboardingPairingExchangeResult({
-    required this.pairingId,
-    required this.confirmationCode,
+    required this.pairingRequestId,
+    required this.deviceId,
+    required this.deviceName,
+    required this.deviceFingerprint,
+    required this.challenge,
+    required this.status,
     required this.expiresAt,
-    this.backupSpkiPin,
   }) {
-    if (pairingId.isEmpty || pairingId.length > 256) {
+    if (pairingRequestId.isEmpty || pairingRequestId.length > 256) {
       throw const OnboardingPairingException(
-        'invalid_pairing_id',
+        'invalid_pairing_request_id',
         'The Bridge returned an invalid pairing identifier.',
       );
     }
-    if (!RegExp(r'^[0-9]{6}$').hasMatch(confirmationCode)) {
+    if (deviceId.isEmpty || deviceId.length > 256) {
       throw const OnboardingPairingException(
-        'invalid_confirmation_code',
-        'The Bridge returned an invalid host confirmation code.',
+        'invalid_device_id',
+        'The Bridge returned an invalid device identifier.',
+      );
+    }
+    if (deviceName.isEmpty || deviceName.length > 120) {
+      throw const OnboardingPairingException(
+        'invalid_device_name',
+        'The Bridge returned an invalid device name.',
+      );
+    }
+    if (!RegExp(r'^sha256:[0-9a-f]{64}$').hasMatch(deviceFingerprint)) {
+      throw const OnboardingPairingException(
+        'invalid_device_fingerprint',
+        'The Bridge returned an invalid device fingerprint.',
+      );
+    }
+    if (challenge.isEmpty || challenge.length > 256) {
+      throw const OnboardingPairingException(
+        'invalid_pairing_challenge',
+        'The Bridge returned an invalid pairing challenge.',
+      );
+    }
+    if (status != OnboardingPairingRemoteStatus.awaitingConfirmation) {
+      throw const OnboardingPairingException(
+        'unexpected_exchange_status',
+        '主机没有进入等待确认状态。',
       );
     }
   }
 
-  final String pairingId;
-  final String confirmationCode;
+  final String pairingRequestId;
+  final String deviceId;
+  final String deviceName;
+  final String deviceFingerprint;
+  final String challenge;
+  final OnboardingPairingRemoteStatus status;
   final DateTime expiresAt;
-  final String? backupSpkiPin;
 }
 
 enum OnboardingPairingRemoteStatus {
-  waitingHostConfirmation,
+  awaitingConfirmation,
   confirmed,
   expired,
   cancelled,
 }
 
 class OnboardingPairingStatusResult {
-  const OnboardingPairingStatusResult(this.status, {this.credential});
+  const OnboardingPairingStatusResult({
+    required this.pairingRequestId,
+    required this.status,
+    required this.expiresAt,
+  });
 
+  final String pairingRequestId;
   final OnboardingPairingRemoteStatus status;
-  final OnboardingCredentialMaterial? credential;
+  final DateTime expiresAt;
 }
 
 class OnboardingPairingException implements Exception {

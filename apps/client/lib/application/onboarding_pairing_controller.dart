@@ -90,8 +90,10 @@ class OnboardingPairingController extends ChangeNotifier {
           phase: OnboardingPairingPhase.pending,
           payload: null,
           deviceKey: null,
-          pairingId: null,
-          confirmationCode: null,
+          deviceId: null,
+          deviceFingerprint: null,
+          pairingRequestId: null,
+          challenge: null,
           backupSpkiPin: null,
           errorCode: error.code,
           safeErrorMessage: error.message,
@@ -128,21 +130,24 @@ class OnboardingPairingController extends ChangeNotifier {
       }
 
       _publish(_state.copyWith(phase: OnboardingPairingPhase.exchange));
-      final proof = await _deviceKeyPort.sign(
-        deviceKey.keyReference,
-        _proofBytes(payload, normalizedDeviceName, deviceKey),
-      );
       exchangeStarted = true;
       final result = await _exchangePort.exchange(
         payload: payload,
         deviceName: normalizedDeviceName,
         deviceKey: deviceKey,
-        proofSignature: proof,
       );
+      if (result.deviceName != normalizedDeviceName ||
+          result.deviceFingerprint != deviceKey.fingerprint) {
+        throw const OnboardingPairingException(
+          'device_identity_mismatch',
+          '主机返回的设备身份与本机不一致。',
+          acceptanceUncertain: true,
+        );
+      }
       try {
         SpkiPinSet(
           currentPin: payload.spkiPin,
-          backupPin: result.backupSpkiPin,
+          backupPin: null,
         );
       } on SpkiPinConfigurationException catch (error) {
         throw OnboardingPairingException(
@@ -157,9 +162,11 @@ class OnboardingPairingController extends ChangeNotifier {
           _state.copyWith(
             phase: OnboardingPairingPhase.expired,
             deviceKey: null,
-            pairingId: result.pairingId,
-            confirmationCode: result.confirmationCode,
-            backupSpkiPin: result.backupSpkiPin,
+            deviceId: result.deviceId,
+            deviceFingerprint: result.deviceFingerprint,
+            pairingRequestId: result.pairingRequestId,
+            challenge: result.challenge,
+            backupSpkiPin: null,
             expiresAt: result.expiresAt,
             errorCode: null,
             safeErrorMessage: null,
@@ -170,9 +177,11 @@ class OnboardingPairingController extends ChangeNotifier {
       _publish(
         _state.copyWith(
           phase: OnboardingPairingPhase.waitingHostConfirmation,
-          pairingId: result.pairingId,
-          confirmationCode: result.confirmationCode,
-          backupSpkiPin: result.backupSpkiPin,
+          deviceId: result.deviceId,
+          deviceFingerprint: result.deviceFingerprint,
+          pairingRequestId: result.pairingRequestId,
+          challenge: result.challenge,
+          backupSpkiPin: null,
           expiresAt: result.expiresAt,
           errorCode: null,
           safeErrorMessage: null,
@@ -227,7 +236,10 @@ class OnboardingPairingController extends ChangeNotifier {
     final current = _state;
     if (current.phase != OnboardingPairingPhase.waitingHostConfirmation ||
         current.payload == null ||
-        current.pairingId == null) {
+        current.pairingRequestId == null ||
+        current.deviceId == null ||
+        current.challenge == null ||
+        current.deviceKey == null) {
       throw const OnboardingPairingException(
         'invalid_transition',
         'The pairing workflow is not waiting for host confirmation.',
@@ -241,27 +253,88 @@ class OnboardingPairingController extends ChangeNotifier {
     try {
       final result = await _exchangePort.status(
         payload: current.payload!,
-        pairingId: current.pairingId!,
+        pairingRequestId: current.pairingRequestId!,
         backupSpkiPin: current.backupSpkiPin,
       );
+      if (result.pairingRequestId != current.pairingRequestId) {
+        _publish(
+          _state.copyWith(
+            phase: OnboardingPairingPhase.uncertain,
+            errorCode: 'pairing_request_mismatch',
+            safeErrorMessage: '主机返回的配对请求与本机不一致，请勿重复提交。',
+          ),
+        );
+        return;
+      }
       switch (result.status) {
-        case OnboardingPairingRemoteStatus.waitingHostConfirmation:
+        case OnboardingPairingRemoteStatus.awaitingConfirmation:
+          if (_isExpired(result.expiresAt)) {
+            await _expireLocalKey();
+            return;
+          }
+          _publish(_state.copyWith(expiresAt: result.expiresAt));
           return;
         case OnboardingPairingRemoteStatus.confirmed:
+          late final List<int> signature;
+          try {
+            signature = await _deviceKeyPort.sign(
+              current.deviceKey!.keyReference,
+              _completionBytes(
+                current.pairingRequestId!,
+                current.challenge!,
+              ),
+            );
+          } on OnboardingDeviceKeyException catch (error) {
+            _publish(
+              _state.copyWith(
+                phase: OnboardingPairingPhase.failed,
+                errorCode: error.code,
+                safeErrorMessage: error.message,
+              ),
+            );
+            return;
+          } on Object {
+            _publish(
+              _state.copyWith(
+                phase: OnboardingPairingPhase.failed,
+                errorCode: 'device_signature_failed',
+                safeErrorMessage: '设备密钥签名失败，请检查本机安全硬件。',
+              ),
+            );
+            return;
+          }
+          late final OnboardingCredentialMaterial credential;
+          try {
+            credential = await _exchangePort.complete(
+              payload: current.payload!,
+              pairingRequestId: current.pairingRequestId!,
+              deviceId: current.deviceId!,
+              deviceKey: current.deviceKey!,
+              deviceSignature: signature,
+              backupSpkiPin: current.backupSpkiPin,
+            );
+          } on OnboardingPairingException catch (error) {
+            _publish(
+              _state.copyWith(
+                phase: OnboardingPairingPhase.uncertain,
+                errorCode: error.code,
+                safeErrorMessage: error.message,
+              ),
+            );
+            return;
+          } on Object {
+            _publish(
+              _state.copyWith(
+                phase: OnboardingPairingPhase.uncertain,
+                errorCode: 'complete_uncertain',
+                safeErrorMessage: '凭据签发结果不确定，请勿重复提交配对请求。',
+              ),
+            );
+            return;
+          }
           OnboardingCredentialReference? credentialReference;
           final credentialVault = _credentialVault;
           if (credentialVault != null) {
-            final credential = result.credential;
-            if (credential == null) {
-              _publish(
-                _state.copyWith(
-                  phase: OnboardingPairingPhase.uncertain,
-                  errorCode: 'credential_missing',
-                  safeErrorMessage: '主机已确认，但没有返回手机凭据。',
-                ),
-              );
-              return;
-            }
             try {
               credentialReference = await credentialVault.save(credential);
             } on OnboardingCredentialException catch (error) {
@@ -287,6 +360,7 @@ class OnboardingPairingController extends ChangeNotifier {
           _publish(
             _state.copyWith(
               phase: OnboardingPairingPhase.confirmed,
+              expiresAt: result.expiresAt,
               credentialReference: credentialReference,
               errorCode: null,
               safeErrorMessage: null,
@@ -328,11 +402,11 @@ class OnboardingPairingController extends ChangeNotifier {
         'The completed pairing cannot be cancelled here.',
       );
     }
-    if (current.payload != null && current.pairingId != null) {
+    if (current.payload != null && current.pairingRequestId != null) {
       try {
         await _exchangePort.cancel(
           payload: current.payload!,
-          pairingId: current.pairingId!,
+          pairingRequestId: current.pairingRequestId!,
           backupSpkiPin: current.backupSpkiPin,
         );
       } on OnboardingPairingException catch (error) {
@@ -393,20 +467,11 @@ class OnboardingPairingController extends ChangeNotifier {
     return normalized;
   }
 
-  List<int> _proofBytes(
-    QrPairingPayload payload,
-    String deviceName,
-    OnboardingDeviceKeyIdentity deviceKey,
-  ) => utf8.encode(
-    jsonEncode({
-      'protocol_version': payload.protocolVersion,
-      'server_id': payload.serverId,
-      'pairing_session_id': payload.pairingSessionId,
-      'pairing_token': payload.pairingToken,
-      'device_name': deviceName,
-      'device_public_key_spki_der': base64Encode(deviceKey.publicKeySpkiDer),
-    }),
-  );
+  List<int> _completionBytes(String pairingRequestId, String challenge) =>
+      utf8.encode(
+        'voxhandoff/companion-bridge/pairing-complete/v1\u0000'
+        '$pairingRequestId\u0000$challenge',
+      );
 
   bool _isExpired(DateTime? expiresAt) =>
       expiresAt == null || !expiresAt.isAfter(_now().toUtc());
