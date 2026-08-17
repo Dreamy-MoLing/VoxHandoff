@@ -6,6 +6,7 @@ import 'dart:math';
 import '../../domain/direct_chat.dart';
 import '../../domain/hermes_conversation.dart';
 import 'openai_compatible_chat_client.dart';
+import '../security/spki_pin_validator.dart';
 
 enum HermesChatFailureStage {
   configuration,
@@ -309,10 +310,14 @@ abstract interface class HermesChatTransport {
 class HermesChatHttpTransport implements HermesChatTransport {
   HermesChatHttpTransport({
     HttpClient? client,
+    SpkiPinValidator? pinValidator,
     this.timeout = const Duration(seconds: 45),
-  }) : _client = client ?? HttpClient();
+  }) : _client = client ?? HttpClient() {
+    _pinValidator = pinValidator;
+  }
 
   final HttpClient _client;
+  late final SpkiPinValidator? _pinValidator;
   final Duration timeout;
   HttpClientRequest? _activeChatRequest;
   HttpClientRequest? _activeProbeRequest;
@@ -432,6 +437,7 @@ class HermesChatHttpTransport implements HermesChatTransport {
       request.headers.set('X-Hermes-Session-Key', sessionKey);
       request.add(body);
       final response = await request.close().timeout(timeout);
+      _validatePeerCertificate(response);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         await _discardResponse(response);
         throw _classifyStatus(
@@ -493,6 +499,7 @@ class HermesChatHttpTransport implements HermesChatTransport {
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $apiKey');
       final response = await request.close().timeout(timeout);
+      _validatePeerCertificate(response);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         await _discardResponse(response);
         throw _classifyStatus(
@@ -603,6 +610,20 @@ class HermesChatHttpTransport implements HermesChatTransport {
     stage: HermesChatFailureStage.protocol,
     statusCode: statusCode ?? error.statusCode,
   );
+
+  void _validatePeerCertificate(HttpClientResponse response) {
+    final validator = _pinValidator;
+    if (validator == null) return;
+    try {
+      validator.validateCertificate(response.certificate);
+    } on SpkiPinValidationException catch (error) {
+      throw HermesChatTransportException(
+        'hermes_spki_${error.code}',
+        error.safeMessage,
+        stage: HermesChatFailureStage.connection,
+      );
+    }
+  }
 
   void _validate(
     HermesConversationConfiguration configuration,

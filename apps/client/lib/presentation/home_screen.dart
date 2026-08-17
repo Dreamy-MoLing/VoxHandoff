@@ -13,6 +13,8 @@ import '../application/direct_chat_controller.dart';
 import '../application/device_pairing_controller.dart';
 import '../application/gateway_workspace_controller.dart';
 import '../application/hermes_conversation_controller.dart';
+import '../application/onboarding_pairing_controller.dart';
+import '../application/onboarding_credential_controller.dart';
 import '../application/speech_playback_controller.dart';
 import '../application/voice_session_controller.dart';
 import '../application/voice_provider_settings_controller.dart';
@@ -35,7 +37,14 @@ import 'hermes_conversation_view.dart';
 import 'message_composer.dart';
 import 'mobile_home_screen.dart';
 import 'mobile_visual_preferences.dart';
+import 'onboarding_pairing_page.dart';
 import 'pairing_dialog.dart';
+import '../infrastructure/pairing/bridge_pairing_http_exchange.dart';
+import '../infrastructure/pairing/bridge_credential_revoker.dart';
+import '../infrastructure/security/android_keystore_device_key.dart';
+import '../infrastructure/security/flutter_secure_value_store.dart';
+import '../infrastructure/security/onboarding_credential_store.dart';
+import '../infrastructure/security/onboarding_device_key_store.dart';
 import 'voice_settings_sheet.dart';
 import 'signal_core_view.dart';
 
@@ -192,6 +201,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _openPairing() => showDevicePairingDialog(context);
 
+  Future<void> _openOnboardingPairing() async {
+    final secureStore = FlutterSecureValueStore();
+    final exchange = BridgePairingHttpExchange();
+    final credentialStore = SecureOnboardingCredentialStore(secureStore);
+    final revoker = BridgeCredentialRevoker();
+    final credentialController = OnboardingCredentialController(
+      vault: credentialStore,
+      revocationPort: revoker,
+    );
+    final controller = OnboardingPairingController(
+      deviceKeyPort: AndroidKeystoreDeviceKeyPort(),
+      keyReferenceStore: SecureOnboardingDeviceKeyReferenceStore(secureStore),
+      exchangePort: exchange,
+      credentialVault: credentialStore,
+    );
+    try {
+      await showOnboardingPairingPage(
+        context,
+        controller: controller,
+        onRevokeCredential: credentialController.revokeActive,
+      );
+    } finally {
+      exchange.close();
+      revoker.close();
+      controller.dispose();
+    }
+  }
+
   Future<void> _send() async {
     final draft = ref.read(clientSessionProvider).confirmedDraft;
     if (draft == null) return;
@@ -327,7 +364,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: MobileHomeScreen(
                 preferences: _visualPreferences,
                 composer: _composer,
-                onOpenPairing: _openPairing,
+                onOpenPairing: _openOnboardingPairing,
                 onConnect: workspaceController.connect,
                 onDisconnect: workspaceController.disconnect,
                 onConfirm: _confirmDraft,
