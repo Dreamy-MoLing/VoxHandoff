@@ -26,6 +26,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>VoxHandoff uses the camera only while you scan a host pairing QR code.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>VoxHandoff records only while you explicitly hold or start voice input.</string>
 	<key>UIApplicationSceneManifest</key>

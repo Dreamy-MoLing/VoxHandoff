@@ -9,6 +9,7 @@ void main() {
 
     final source = manifest.readAsStringSync();
     expect(source, contains('android.permission.INTERNET'));
+    expect(source, contains('android.permission.CAMERA'));
     expect(source, contains('android.permission.RECORD_AUDIO'));
     expect(source, contains('android:allowBackup="false"'));
   });
