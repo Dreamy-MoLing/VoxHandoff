@@ -49,7 +49,16 @@
 | M2 语音输入 | 录音→STT→草稿→确认（复用已打通资产） | 真机 readiness + 真实录音 200 |
 | M3 TTS/降级与 Call Mode | 明确 TTS provider、稳定句播报、barge-in | 播放成功、打断生效、TTS 失败不阻塞文字 |
 | M4 实体验收 | 权限/重启/断网/重连/连续交互/脱敏/签名 | 发布构建 + 真机矩阵 |
+| M5-SIG | 视觉状态机对齐 Hermes 主链路（SignalCore 四态/工作态语义对齐） | 桌面 golden 零变化 + 视觉状态机接线 |
+| M6 onboarding | 配对式首次配置（QR + certificate pin + Companion Bridge），见 `design/onboarding-qr-pairing.md` | 待实施项 1-8 完成 + 安全测试 |
 | H1（冻结） | Hermes 深度 Agent 集成（旧控制面） | 等 Hermes 上游补齐 run 幂等 + approval ID |
+
+## 1.5 当前进度（2026-08-17 更新，依据 git log / 合并状态）
+
+- **已完成并合并 main**：M0、S0（契约定案已回写 PRODUCT 5.2 / ARCHITECTURE 2）、M1（Hermes 对话主链路界面与流式传输）、M2（语音双模式 Call/Command 接入，`agent/m2-complete` 已合并）、M3（稳定句播报 + barge-in，`agent/m3-tts-stream`/`agent/m3-voice-loop` 已合并）、M5-SIG（视觉状态机对齐 Hermes 主链路）。
+- **部分就绪**：M4 相关资产（release 签名配置 154f1e9、密钥回退 debug）已提交；实体验收矩阵与 50 次端到端证据待 M6 落地后统一收口。
+- **实施中**：M6 onboarding（design 定稿 2026-08-17 00:02；任务已按 8 项待实施拆包，2026-08-17 启动）。
+- 说明：上表 M0-M4/H1 为 2026-08-16 定稿基线；M5-SIG、M6 为本轮按实际开发状态补录的里程碑定义。
 
 ## 3. 开发规则（沿用 + 调整）
 
