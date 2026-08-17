@@ -11,6 +11,7 @@ import { PairingError, PairingService } from "./pairing.js";
 import { CredentialError, DeviceCredentialService } from "./credentials.js";
 import { CapabilityDiscovery } from "./manifest.js";
 import { ReverseProxy } from "./proxy.js";
+import { PinningError, PinManager, spkiPinFromCertificate } from "./pinning.js";
 
 export interface BridgeApplicationOptions {
   readinessChecks?: readonly BridgeReadinessCheck[];
@@ -18,6 +19,7 @@ export interface BridgeApplicationOptions {
   credentials?: DeviceCredentialService;
   manifest?: CapabilityDiscovery;
   proxy?: ReverseProxy;
+  pinning?: PinManager;
 }
 
 export class CompanionBridgeApplication {
@@ -27,6 +29,7 @@ export class CompanionBridgeApplication {
   readonly #credentials: DeviceCredentialService | undefined;
   readonly #manifest: CapabilityDiscovery | undefined;
   readonly #proxy: ReverseProxy | undefined;
+  readonly #pinning: PinManager | undefined;
 
   constructor(config: BridgeConfig, options: BridgeApplicationOptions = {}) {
     this.#config = config;
@@ -35,6 +38,7 @@ export class CompanionBridgeApplication {
     this.#credentials = options.credentials;
     this.#manifest = options.manifest;
     this.#proxy = options.proxy;
+    this.#pinning = options.pinning;
   }
 
   async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -119,6 +123,22 @@ export class CompanionBridgeApplication {
         writeJson(response, 200, await this.#manifest.manifest());
         return;
       }
+      if (this.#pinning !== undefined && method === "GET" && path === "/v1/pinning") {
+        if (this.#credentials === undefined) throw new HttpRequestError(503, "pinning_not_ready", "Device authentication is not configured.");
+        await this.#credentials.authenticateAuthorization(request.headers.authorization);
+        writeJson(response, 200, this.#pinning.snapshot());
+        return;
+      }
+      if (this.#pinning !== undefined && method === "POST" && path === "/v1/pinning/rotate") {
+        authorizeHost(request, this.#config);
+        const body = await readJsonBody(request, this.#config.maxRequestBytes);
+        if (!isRecord(body)) throw new HttpRequestError(400, "request_invalid", "The request body is invalid.");
+        writeJson(response, 200, await this.#pinning.rotate({
+          presentedPin: stringField(body, "presented_pin") ?? "",
+          nextBackupPin: stringField(body, "next_backup_pin") ?? "",
+        }));
+        return;
+      }
       if (this.#proxy !== undefined) {
         const route = this.#proxy.route(method, path);
         if (route !== undefined) {
@@ -147,6 +167,10 @@ export class CompanionBridgeApplication {
         return;
       }
       if (error instanceof CredentialError) {
+        writeError(response, error.status, error.code, error.message);
+        return;
+      }
+      if (error instanceof PinningError) {
         writeError(response, error.status, error.code, error.message);
         return;
       }
@@ -190,10 +214,14 @@ function decodePathPart(value: string): string {
 }
 
 export function createBridgeServer(config: BridgeConfig, application = new CompanionBridgeApplication(config)): Server {
+  const certificate = readFileSync(config.tlsCertFile);
+  if (config.currentSpkiPin !== undefined && spkiPinFromCertificate(certificate) !== config.currentSpkiPin) {
+    throw new Error("The configured current SPKI pin does not match the TLS certificate.");
+  }
   const server = createServer(
     {
       key: readFileSync(config.tlsKeyFile),
-      cert: readFileSync(config.tlsCertFile),
+      cert: certificate,
       minVersion: "TLSv1.2",
       maxVersion: "TLSv1.3",
     },

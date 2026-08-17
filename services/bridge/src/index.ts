@@ -7,4 +7,5 @@ export * from "./pairing.js";
 export * from "./credentials.js";
 export * from "./manifest.js";
 export * from "./proxy.js";
+export * from "./pinning.js";
 export * from "./server.js";

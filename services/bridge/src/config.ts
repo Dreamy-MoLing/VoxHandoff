@@ -41,6 +41,9 @@ export function readBridgeConfig(environment: NodeJS.ProcessEnv = process.env): 
   const allowInsecureLoopback = environment.VOXHANDOFF_BRIDGE_ALLOW_INSECURE_LOOPBACK === "1";
   const endpoint = required(environment, "VOXHANDOFF_BRIDGE_ENDPOINT");
   validateEndpoint(endpoint, "VOXHANDOFF_BRIDGE_ENDPOINT", false);
+  const currentSpkiPin = validateSpkiPin(required(environment, "VOXHANDOFF_BRIDGE_SPKI_PIN"), "VOXHANDOFF_BRIDGE_SPKI_PIN");
+  const backupSpkiPin = validateSpkiPin(required(environment, "VOXHANDOFF_BRIDGE_BACKUP_SPKI_PIN"), "VOXHANDOFF_BRIDGE_BACKUP_SPKI_PIN");
+  if (currentSpkiPin === backupSpkiPin) throw new Error("VOXHANDOFF_BRIDGE_SPKI_PIN and VOXHANDOFF_BRIDGE_BACKUP_SPKI_PIN must differ");
   const stateFile = path.resolve(
     environment.VOXHANDOFF_BRIDGE_STATE_FILE ?? path.join(process.cwd(), ".voxhandoff", "bridge-state.json"),
   );
@@ -99,12 +102,8 @@ export function readBridgeConfig(environment: NodeJS.ProcessEnv = process.env): 
       60 * 60 * 1000,
       10 * 365 * 24 * 60 * 60 * 1000,
     ),
-    ...(environment.VOXHANDOFF_BRIDGE_SPKI_PIN === undefined
-      ? {}
-      : { currentSpkiPin: validateSpkiPin(environment.VOXHANDOFF_BRIDGE_SPKI_PIN, "VOXHANDOFF_BRIDGE_SPKI_PIN") }),
-    ...(environment.VOXHANDOFF_BRIDGE_BACKUP_SPKI_PIN === undefined
-      ? {}
-      : { backupSpkiPin: validateSpkiPin(environment.VOXHANDOFF_BRIDGE_BACKUP_SPKI_PIN, "VOXHANDOFF_BRIDGE_BACKUP_SPKI_PIN") }),
+    currentSpkiPin,
+    backupSpkiPin,
   };
 }
 

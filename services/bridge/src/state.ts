@@ -60,12 +60,19 @@ export interface CredentialRecord {
   expiresAt: string;
 }
 
+export interface PinStateRecord {
+  currentSpkiPin: string;
+  backupSpkiPin: string;
+  generation: number;
+}
+
 export interface BridgeStateDocument {
   version: 1;
   pairings: PairingSessionRecord[];
   pairingRequests: PairingRequestRecord[];
   devices: DeviceRecord[];
   credentials: CredentialRecord[];
+  pinState?: PinStateRecord;
 }
 
 export type StateMutation<T> = (state: BridgeStateDocument) => T;

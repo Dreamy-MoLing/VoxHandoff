@@ -5,12 +5,17 @@ import { DeviceCredentialService } from "./credentials.js";
 import { PairingService } from "./pairing.js";
 import { CapabilityDiscovery } from "./manifest.js";
 import { ReverseProxy } from "./proxy.js";
+import { PinManager } from "./pinning.js";
 import { createBridgeServer, CompanionBridgeApplication, listenBridgeServer } from "./server.js";
 import { loadBridgeStateStore } from "./state.js";
 
 async function main(): Promise<void> {
   const config = readBridgeConfig();
   const stateStore = await loadBridgeStateStore(config.stateFile);
+  const pinning = await PinManager.load(config, stateStore, (pins) => {
+    config.currentSpkiPin = pins.currentSpkiPin;
+    config.backupSpkiPin = pins.backupSpkiPin;
+  });
   const pairing = new PairingService(config, stateStore);
   const credentials = new DeviceCredentialService(stateStore);
   const application = new CompanionBridgeApplication(config, {
@@ -18,6 +23,7 @@ async function main(): Promise<void> {
     credentials,
     manifest: new CapabilityDiscovery(config),
     proxy: new ReverseProxy(config),
+    pinning,
     readinessChecks: [
       { name: "tls", ready: () => true },
       { name: "state", ready: () => true },
