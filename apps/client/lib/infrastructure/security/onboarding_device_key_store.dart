@@ -1,14 +1,17 @@
 import 'dart:convert';
 
+import '../../domain/onboarding_pairing.dart';
 import 'device_key_vault.dart';
 
 /// Stores only the Android Keystore alias reference, never private key bytes.
-class SecureOnboardingDeviceKeyReferenceStore {
+class SecureOnboardingDeviceKeyReferenceStore
+    implements OnboardingDeviceKeyReferenceStore {
   const SecureOnboardingDeviceKeyReferenceStore(this._store);
 
   static const _key = 'voxhandoff.m6.onboarding-device-key-reference';
   final SecureValueStore _store;
 
+  @override
   Future<void> save(String keyReference) async {
     _validateReference(keyReference);
     await _store.write(
@@ -54,6 +57,7 @@ class SecureOnboardingDeviceKeyReferenceStore {
     return reference;
   }
 
+  @override
   Future<void> delete() => _store.delete(_key);
 
   static void _validateReference(String value) {
