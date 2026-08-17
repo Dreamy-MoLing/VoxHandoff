@@ -145,10 +145,7 @@ class OnboardingPairingController extends ChangeNotifier {
         );
       }
       try {
-        SpkiPinSet(
-          currentPin: payload.spkiPin,
-          backupPin: null,
-        );
+        SpkiPinSet(currentPin: payload.spkiPin, backupPin: null);
       } on SpkiPinConfigurationException catch (error) {
         throw OnboardingPairingException(
           error.code,
@@ -279,10 +276,7 @@ class OnboardingPairingController extends ChangeNotifier {
           try {
             signature = await _deviceKeyPort.sign(
               current.deviceKey!.keyReference,
-              _completionBytes(
-                current.pairingRequestId!,
-                current.challenge!,
-              ),
+              _completionBytes(current.pairingRequestId!, current.challenge!),
             );
           } on OnboardingDeviceKeyException catch (error) {
             _publish(

@@ -80,9 +80,7 @@ class OnboardingPairingState {
     deviceName: identical(deviceName, _unset)
         ? this.deviceName
         : deviceName as String?,
-    deviceId: identical(deviceId, _unset)
-        ? this.deviceId
-        : deviceId as String?,
+    deviceId: identical(deviceId, _unset) ? this.deviceId : deviceId as String?,
     deviceFingerprint: identical(deviceFingerprint, _unset)
         ? this.deviceFingerprint
         : deviceFingerprint as String?,

@@ -15,14 +15,15 @@ void main() {
     () async {
       final keyPort = _FakeDeviceKeyPort();
       final keyStore = _FakeKeyReferenceStore();
-      final exchange = _FakeExchange(
-        _exchangeResult(keyPort.identity, deviceName: 'vivo V2359A'),
-      )
-        ..statusResult = OnboardingPairingStatusResult(
-          pairingRequestId: 'pairing-1',
-          status: OnboardingPairingRemoteStatus.confirmed,
-          expiresAt: expiry,
-        );
+      final exchange =
+          _FakeExchange(
+              _exchangeResult(keyPort.identity, deviceName: 'vivo V2359A'),
+            )
+            ..statusResult = OnboardingPairingStatusResult(
+              pairingRequestId: 'pairing-1',
+              status: OnboardingPairingRemoteStatus.confirmed,
+              expiresAt: expiry,
+            );
       final controller = OnboardingPairingController(
         deviceKeyPort: keyPort,
         keyReferenceStore: keyStore,
@@ -45,10 +46,7 @@ void main() {
       expect(controller.state.challenge, 'challenge-1');
       expect(controller.state.backupSpkiPin, isNull);
       expect(keyStore.savedReference, keyPort.identity.keyReference);
-      expect(
-        keyPort.signedPayload,
-        isNull,
-      );
+      expect(keyPort.signedPayload, isNull);
       expect(
         phases,
         containsAllInOrder([
@@ -94,8 +92,7 @@ void main() {
   test('keeps an uncertain exchange from being retried silently', () async {
     final keyPort = _FakeDeviceKeyPort();
     final keyStore = _FakeKeyReferenceStore();
-    final exchange = _FakeExchange()
-      ..exchangeError = const _ExchangeFailure();
+    final exchange = _FakeExchange()..exchangeError = const _ExchangeFailure();
     final controller = OnboardingPairingController(
       deviceKeyPort: keyPort,
       keyReferenceStore: keyStore,
@@ -137,24 +134,27 @@ void main() {
     expect(keyPort.deletedReferences, isEmpty);
   });
 
-  test('cancelling waiting confirmation revokes the pending local key', () async {
-    final keyPort = _FakeDeviceKeyPort();
-    final keyStore = _FakeKeyReferenceStore();
-    final controller = OnboardingPairingController(
-      deviceKeyPort: keyPort,
-      keyReferenceStore: keyStore,
-      exchangePort: _FakeExchange(_exchangeResult(keyPort.identity)),
-      now: () => now,
-    );
-    addTearDown(controller.dispose);
+  test(
+    'cancelling waiting confirmation revokes the pending local key',
+    () async {
+      final keyPort = _FakeDeviceKeyPort();
+      final keyStore = _FakeKeyReferenceStore();
+      final controller = OnboardingPairingController(
+        deviceKeyPort: keyPort,
+        keyReferenceStore: keyStore,
+        exchangePort: _FakeExchange(_exchangeResult(keyPort.identity)),
+        now: () => now,
+      );
+      addTearDown(controller.dispose);
 
-    await controller.acceptQrCode(_qr(expiry));
-    await controller.cancel();
+      await controller.acceptQrCode(_qr(expiry));
+      await controller.cancel();
 
-    expect(controller.state.phase, OnboardingPairingPhase.cancelled);
-    expect(keyPort.deletedReferences, [keyPort.identity.keyReference]);
-    expect(keyStore.deleted, isTrue);
-  });
+      expect(controller.state.phase, OnboardingPairingPhase.cancelled);
+      expect(keyPort.deletedReferences, [keyPort.identity.keyReference]);
+      expect(keyStore.deleted, isTrue);
+    },
+  );
 
   test('persists the per-device credential only after complete', () async {
     final keyPort = _FakeDeviceKeyPort();
@@ -329,11 +329,13 @@ class _FakeExchange implements OnboardingPairingExchangePort {
 }
 
 class _ExchangeFailure extends OnboardingPairingException {
-  const _ExchangeFailure() : super('exchange_failed', 'synthetic exchange failure');
+  const _ExchangeFailure()
+    : super('exchange_failed', 'synthetic exchange failure');
 }
 
 class _CompleteFailure extends OnboardingPairingException {
-  const _CompleteFailure() : super('complete_failed', 'synthetic complete failure');
+  const _CompleteFailure()
+    : super('complete_failed', 'synthetic complete failure');
 }
 
 class _FakeCredentialVault implements OnboardingCredentialVault {

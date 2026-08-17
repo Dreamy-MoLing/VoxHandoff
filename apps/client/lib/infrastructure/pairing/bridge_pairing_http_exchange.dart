@@ -18,8 +18,8 @@ class BridgePairingHttpExchange implements OnboardingPairingExchangePort {
     HttpClient? client,
     this.timeout = const Duration(seconds: 15),
     DateTime Function()? now,
-  })  : _client = client ?? HttpClient(),
-        _now = now ?? DateTime.now;
+  }) : _client = client ?? HttpClient(),
+       _now = now ?? DateTime.now;
 
   final HttpClient _client;
   final Duration timeout;
@@ -51,15 +51,8 @@ class BridgePairingHttpExchange implements OnboardingPairingExchangePort {
       result = OnboardingPairingExchangeResult(
         pairingRequestId: _requiredString(response, 'pairingRequestId'),
         deviceId: _requiredString(response, 'deviceId'),
-        deviceName: _requiredString(
-          response,
-          'deviceName',
-          maximumLength: 120,
-        ),
-        deviceFingerprint: _requiredFingerprint(
-          response,
-          'deviceFingerprint',
-        ),
+        deviceName: _requiredString(response, 'deviceName', maximumLength: 120),
+        deviceFingerprint: _requiredFingerprint(response, 'deviceFingerprint'),
         challenge: _requiredString(response, 'challenge'),
         status: _status(_requiredString(response, 'status')),
         expiresAt: _requiredExpiry(response['expiresAt']),
@@ -415,8 +408,7 @@ OnboardingPairingRemoteStatus _status(
   String value, {
   bool acceptanceUncertain = true,
 }) => switch (value) {
-  'awaiting_confirmation' =>
-    OnboardingPairingRemoteStatus.awaitingConfirmation,
+  'awaiting_confirmation' => OnboardingPairingRemoteStatus.awaitingConfirmation,
   'confirmed' => OnboardingPairingRemoteStatus.confirmed,
   'expired' => OnboardingPairingRemoteStatus.expired,
   'cancelled' => OnboardingPairingRemoteStatus.cancelled,
