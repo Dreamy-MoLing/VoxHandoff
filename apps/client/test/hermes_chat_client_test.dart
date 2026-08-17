@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_talk_client/domain/direct_chat.dart';
 import 'package:agent_talk_client/domain/hermes_conversation.dart';
 import 'package:agent_talk_client/infrastructure/chat/hermes_chat_client.dart';
+import 'package:agent_talk_client/infrastructure/security/spki_pin_validator.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -101,6 +103,41 @@ void main() {
       }
     },
   );
+
+  test('injected SPKI validation rejects a response without TLS', () async {
+    final fixture = _StatusFixture();
+    await fixture.start();
+    addTearDown(fixture.close);
+    final transport = HermesChatHttpTransport(
+      client: HttpClient(),
+      pinValidator: SpkiPinValidator(currentPin: _syntheticPin(0x22)),
+      timeout: const Duration(seconds: 2),
+    );
+    addTearDown(transport.close);
+
+    await expectLater(
+      transport
+          .streamCompletion(
+            configuration: _loopbackConfiguration(fixture),
+            apiKey: 'fixture-key',
+            userText: 'hello',
+          )
+          .toList(),
+      throwsA(
+        isA<HermesChatTransportException>()
+            .having(
+              (error) => error.code,
+              'code',
+              'hermes_spki_certificate_missing',
+            )
+            .having(
+              (error) => error.safeMessage,
+              'safeMessage',
+              '服务器身份发生变化，需要重新配对',
+            ),
+      ),
+    );
+  });
 }
 
 HermesConversationConfiguration _loopbackConfiguration(
@@ -139,3 +176,6 @@ class _StatusFixture {
 
   Future<void> close() => _server.close(force: true);
 }
+
+String _syntheticPin(int byte) =>
+    'sha256/${base64Encode(List<int>.filled(32, byte))}';
