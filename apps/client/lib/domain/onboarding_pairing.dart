@@ -1,4 +1,5 @@
 import 'onboarding_device_key.dart';
+import 'onboarding_credential.dart';
 import 'qr_pairing.dart';
 
 enum OnboardingPairingPhase {
@@ -24,6 +25,7 @@ class OnboardingPairingState {
     this.confirmationCode,
     this.expiresAt,
     this.backupSpkiPin,
+    this.credentialReference,
     this.errorCode,
     this.safeErrorMessage,
   });
@@ -36,6 +38,7 @@ class OnboardingPairingState {
   final String? confirmationCode;
   final DateTime? expiresAt;
   final String? backupSpkiPin;
+  final OnboardingCredentialReference? credentialReference;
   final String? errorCode;
   final String? safeErrorMessage;
 
@@ -57,6 +60,7 @@ class OnboardingPairingState {
     Object? confirmationCode = _unset,
     Object? expiresAt = _unset,
     Object? backupSpkiPin = _unset,
+    Object? credentialReference = _unset,
     Object? errorCode = _unset,
     Object? safeErrorMessage = _unset,
   }) => OnboardingPairingState(
@@ -82,6 +86,9 @@ class OnboardingPairingState {
     backupSpkiPin: identical(backupSpkiPin, _unset)
         ? this.backupSpkiPin
         : backupSpkiPin as String?,
+    credentialReference: identical(credentialReference, _unset)
+        ? this.credentialReference
+        : credentialReference as OnboardingCredentialReference?,
     errorCode: identical(errorCode, _unset)
         ? this.errorCode
         : errorCode as String?,
@@ -160,9 +167,10 @@ enum OnboardingPairingRemoteStatus {
 }
 
 class OnboardingPairingStatusResult {
-  const OnboardingPairingStatusResult(this.status);
+  const OnboardingPairingStatusResult(this.status, {this.credential});
 
   final OnboardingPairingRemoteStatus status;
+  final OnboardingCredentialMaterial? credential;
 }
 
 class OnboardingPairingException implements Exception {

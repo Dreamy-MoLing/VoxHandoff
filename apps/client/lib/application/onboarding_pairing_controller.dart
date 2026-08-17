@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../domain/onboarding_device_key.dart';
+import '../domain/onboarding_credential.dart';
 import '../domain/onboarding_pairing.dart';
 import '../domain/qr_pairing.dart';
 import '../infrastructure/security/spki_pin_validator.dart';
@@ -12,16 +13,19 @@ class OnboardingPairingController extends ChangeNotifier {
     required OnboardingDeviceKeyPort deviceKeyPort,
     required OnboardingDeviceKeyReferenceStore keyReferenceStore,
     required OnboardingPairingExchangePort exchangePort,
+    OnboardingCredentialVault? credentialVault,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now {
     _deviceKeyPort = deviceKeyPort;
     _keyReferenceStore = keyReferenceStore;
     _exchangePort = exchangePort;
+    _credentialVault = credentialVault;
   }
 
   late final OnboardingDeviceKeyPort _deviceKeyPort;
   late final OnboardingDeviceKeyReferenceStore _keyReferenceStore;
   late final OnboardingPairingExchangePort _exchangePort;
+  late final OnboardingCredentialVault? _credentialVault;
   final DateTime Function() _now;
   OnboardingPairingState _state = const OnboardingPairingState();
   bool _disposed = false;
@@ -244,9 +248,46 @@ class OnboardingPairingController extends ChangeNotifier {
         case OnboardingPairingRemoteStatus.waitingHostConfirmation:
           return;
         case OnboardingPairingRemoteStatus.confirmed:
+          OnboardingCredentialReference? credentialReference;
+          final credentialVault = _credentialVault;
+          if (credentialVault != null) {
+            final credential = result.credential;
+            if (credential == null) {
+              _publish(
+                _state.copyWith(
+                  phase: OnboardingPairingPhase.uncertain,
+                  errorCode: 'credential_missing',
+                  safeErrorMessage: '主机已确认，但没有返回手机凭据。',
+                ),
+              );
+              return;
+            }
+            try {
+              credentialReference = await credentialVault.save(credential);
+            } on OnboardingCredentialException catch (error) {
+              _publish(
+                _state.copyWith(
+                  phase: OnboardingPairingPhase.uncertain,
+                  errorCode: 'credential_storage_failed',
+                  safeErrorMessage: error.message,
+                ),
+              );
+              return;
+            } on Object {
+              _publish(
+                _state.copyWith(
+                  phase: OnboardingPairingPhase.uncertain,
+                  errorCode: 'credential_storage_failed',
+                  safeErrorMessage: '手机凭据未能安全保存，请勿重复提交配对请求。',
+                ),
+              );
+              return;
+            }
+          }
           _publish(
             _state.copyWith(
               phase: OnboardingPairingPhase.confirmed,
+              credentialReference: credentialReference,
               errorCode: null,
               safeErrorMessage: null,
             ),

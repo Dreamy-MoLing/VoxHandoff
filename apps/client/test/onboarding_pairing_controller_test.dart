@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:agent_talk_client/application/onboarding_pairing_controller.dart';
 import 'package:agent_talk_client/domain/onboarding_device_key.dart';
+import 'package:agent_talk_client/domain/onboarding_credential.dart';
 import 'package:agent_talk_client/domain/onboarding_pairing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -129,6 +130,51 @@ void main() {
       expect(keyStore.deleted, isTrue);
     },
   );
+
+  test(
+    'persists the per-device credential only after host confirmation',
+    () async {
+      final credentialVault = _FakeCredentialVault();
+      final exchange =
+          _FakeExchange(
+              OnboardingPairingExchangeResult(
+                pairingId: 'pairing-1',
+                confirmationCode: '482731',
+                expiresAt: expiry,
+              ),
+            )
+            ..statusResult = OnboardingPairingStatusResult(
+              OnboardingPairingRemoteStatus.confirmed,
+              credential: OnboardingCredentialMaterial(
+                credentialId: 'credential-synthetic-1',
+                credential: 'synthetic-device-credential-only',
+                bridgeEndpoint: Uri.parse('https://bridge.example/companion'),
+                serverId: 'synthetic-server',
+                deviceKeyReference: '0123456789abcdef0123456789abcdef',
+                spkiPin: _pin(0x07),
+                issuedAt: now,
+              ),
+            );
+      final controller = OnboardingPairingController(
+        deviceKeyPort: _FakeDeviceKeyPort(),
+        keyReferenceStore: _FakeKeyReferenceStore(),
+        exchangePort: exchange,
+        credentialVault: credentialVault,
+        now: () => now,
+      );
+      addTearDown(controller.dispose);
+
+      await controller.acceptQrCode(_qr(expiry));
+      await controller.refreshHostStatus();
+
+      expect(controller.state.phase, OnboardingPairingPhase.confirmed);
+      expect(
+        controller.state.credentialReference?.credentialId,
+        'credential-synthetic-1',
+      );
+      expect(credentialVault.saved, isTrue);
+    },
+  );
 }
 
 String _qr(DateTime expiresAt) => jsonEncode({
@@ -232,4 +278,35 @@ class _FakeExchange implements OnboardingPairingExchangePort {
 class _ExchangeFailure extends OnboardingPairingException {
   const _ExchangeFailure()
     : super('exchange_failed', 'synthetic exchange failure');
+}
+
+class _FakeCredentialVault implements OnboardingCredentialVault {
+  var saved = false;
+
+  @override
+  Future<OnboardingCredentialReference> save(
+    OnboardingCredentialMaterial material,
+  ) async {
+    saved = true;
+    return OnboardingCredentialReference(
+      credentialId: material.credentialId,
+      bridgeEndpoint: material.bridgeEndpoint,
+      serverId: material.serverId,
+      deviceKeyReference: material.deviceKeyReference,
+      spkiPin: material.spkiPin,
+      backupSpkiPin: material.backupSpkiPin,
+      issuedAt: material.issuedAt,
+    );
+  }
+
+  @override
+  Future<OnboardingCredentialReference?> loadReference() async => null;
+
+  @override
+  Future<OnboardingCredentialMaterial?> readMaterial(
+    String credentialId,
+  ) async => null;
+
+  @override
+  Future<void> revoke(String credentialId) async {}
 }

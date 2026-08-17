@@ -9,9 +9,13 @@ typedef OnboardingQrScanner = Future<String?> Function(BuildContext context);
 Future<void> showOnboardingPairingPage(
   BuildContext context, {
   required OnboardingPairingController controller,
+  Future<void> Function()? onRevokeCredential,
 }) => Navigator.of(context).push<void>(
   MaterialPageRoute<void>(
-    builder: (_) => OnboardingPairingPage(controller: controller),
+    builder: (_) => OnboardingPairingPage(
+      controller: controller,
+      onRevokeCredential: onRevokeCredential,
+    ),
   ),
 );
 
@@ -19,11 +23,13 @@ class OnboardingPairingPage extends StatefulWidget {
   const OnboardingPairingPage({
     required this.controller,
     this.scanQr = showQrPairingScanner,
+    this.onRevokeCredential,
     super.key,
   });
 
   final OnboardingPairingController controller;
   final OnboardingQrScanner scanQr;
+  final Future<void> Function()? onRevokeCredential;
 
   @override
   State<OnboardingPairingPage> createState() => _OnboardingPairingPageState();
@@ -83,6 +89,33 @@ class _OnboardingPairingPageState extends State<OnboardingPairingPage> {
 
   Future<void> _reset() async {
     await _run(widget.controller.reset);
+  }
+
+  Future<void> _revokeCredential() async {
+    final revoke = widget.onRevokeCredential;
+    if (revoke == null || _actionPending) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('撤销本机凭据？'),
+        content: const Text('主机将撤销这台手机的长期配对凭据，文字聊天会立即停止。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('返回'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认撤销'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _run(() async {
+      await revoke();
+      if (mounted) setState(() => _localError = '本机凭据已撤销。');
+    });
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -151,7 +184,9 @@ class _OnboardingPairingPageState extends State<OnboardingPairingPage> {
             Icons.verified_outlined,
             '主机已确认这台设备',
             '设备身份已绑定。后续长期凭据将保持每台手机独立、可撤销。',
-            null,
+            widget.onRevokeCredential == null
+                ? null
+                : _resetButton('撤销本机凭据', _revokeCredential),
           ),
           OnboardingPairingPhase.expired => _buildTerminal(
             context,

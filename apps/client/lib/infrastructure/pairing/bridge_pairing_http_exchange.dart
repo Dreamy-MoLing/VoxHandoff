@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../domain/onboarding_device_key.dart';
+import '../../domain/onboarding_credential.dart';
 import '../../domain/onboarding_pairing.dart';
 import '../../domain/qr_pairing.dart';
 import '../security/spki_pin_validator.dart';
@@ -111,9 +112,11 @@ class BridgePairingHttpExchange implements OnboardingPairingExchangePort {
       backupSpkiPin: backupSpkiPin,
       acceptanceUncertainOnFailure: false,
     );
-    return OnboardingPairingStatusResult(
-      _status(_requiredString(response, 'status')),
-    );
+    final status = _status(_requiredString(response, 'status'));
+    final credential = status == OnboardingPairingRemoteStatus.confirmed
+        ? _parseCredential(response['credential'])
+        : null;
+    return OnboardingPairingStatusResult(status, credential: credential);
   }
 
   @override
@@ -236,9 +239,13 @@ Uri _appendPath(Uri base, String path) {
   return base.replace(path: '$basePath/$path');
 }
 
-String _requiredString(Map<String, Object?> value, String key) {
+String _requiredString(
+  Map<String, Object?> value,
+  String key, {
+  int maximumLength = 256,
+}) {
   final result = value[key];
-  if (result is! String || result.isEmpty || result.length > 256) {
+  if (result is! String || result.isEmpty || result.length > maximumLength) {
     throw OnboardingPairingException(
       'invalid_bridge_response',
       '主机返回的配对响应缺少有效字段。',
@@ -246,6 +253,72 @@ String _requiredString(Map<String, Object?> value, String key) {
     );
   }
   return result;
+}
+
+String? _optionalString(Map<String, Object?> value, String key) {
+  final result = value[key];
+  if (result == null) return null;
+  if (result is! String || result.isEmpty || result.length > 256) {
+    throw const OnboardingPairingException(
+      'invalid_credential',
+      '主机返回的手机凭据字段无效。',
+      acceptanceUncertain: true,
+    );
+  }
+  return result;
+}
+
+OnboardingCredentialMaterial _parseCredential(Object? raw) {
+  if (raw is! Map) {
+    throw const OnboardingPairingException(
+      'credential_missing',
+      '主机已确认，但没有返回手机凭据。',
+      acceptanceUncertain: true,
+    );
+  }
+  final value = <String, Object?>{
+    for (final entry in raw.entries)
+      if (entry.key is String) entry.key! as String: entry.value,
+  };
+  try {
+    return OnboardingCredentialMaterial(
+      credentialId: _requiredString(value, 'credential_id'),
+      credential: _requiredString(value, 'credential', maximumLength: 4096),
+      bridgeEndpoint: _requiredUri(value['bridge_endpoint']),
+      serverId: _requiredString(value, 'server_id'),
+      deviceKeyReference: _requiredString(value, 'device_key_reference'),
+      spkiPin: _requiredString(value, 'spki_pin'),
+      backupSpkiPin: _optionalString(value, 'backup_spki_pin'),
+      issuedAt: _requiredExpiry(value['issued_at']),
+    );
+  } on OnboardingPairingException {
+    rethrow;
+  } on OnboardingCredentialException catch (error) {
+    throw OnboardingPairingException(
+      'invalid_credential',
+      error.message,
+      acceptanceUncertain: true,
+    );
+  }
+}
+
+Uri _requiredUri(Object? raw) {
+  if (raw is! String) {
+    throw const OnboardingPairingException(
+      'invalid_credential',
+      '主机返回的手机凭据端点无效。',
+      acceptanceUncertain: true,
+    );
+  }
+  final endpoint = Uri.tryParse(raw);
+  if (endpoint == null) {
+    throw const OnboardingPairingException(
+      'invalid_credential',
+      '主机返回的手机凭据端点无效。',
+      acceptanceUncertain: true,
+    );
+  }
+  return endpoint;
 }
 
 DateTime _requiredExpiry(Object? raw) {
