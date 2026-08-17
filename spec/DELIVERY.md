@@ -58,6 +58,8 @@
 - **已完成并合并 main**：M0、S0（契约定案已回写 PRODUCT 5.2 / ARCHITECTURE 2）、M1（Hermes 对话主链路界面与流式传输）、M2（语音双模式 Call/Command 接入，`agent/m2-complete` 已合并）、M3（稳定句播报 + barge-in，`agent/m3-tts-stream`/`agent/m3-voice-loop` 已合并）、M5-SIG（视觉状态机对齐 Hermes 主链路）。
 - **部分就绪**：M4 相关资产（release 签名配置 154f1e9、密钥回退 debug）已提交；实体验收矩阵与 50 次端到端证据待 M6 落地后统一收口。
 - **实施中**：M6 onboarding（design 定稿 2026-08-17 00:02；任务已按 8 项待实施拆包，2026-08-17 启动）。
+- **M6 第一/二波完成并合并 main（2026-08-17）**：T1 Companion Bridge 主机侧组件（services/bridge，pairing/凭据/pin/manifest/proxy，23+26 tests）；T2 手机端安全配对（QR 扫描 + Android Keystore P-256 + SPKI pin + 状态机 + 凭据 vault，323+ tests）；T3 Capability Manifest 模型/UI + 裸 TOFU 手动连接（347+ tests）；T4 文档同步（DECISIONS 重建 D-039）；T5 配对契约对齐（Bridge 补手机 status/cancel/自撤销端点，Ed25519 + ECDSA P-256 双算法签名，26/26 bridge tests）。整体 `npm run check` 与 `flutter:check` 全绿（368+ tests）。
+- **M6 剩余**：① 接线真实 `BridgeCapabilityManifestRepository`（当前为占位）；② 真机联调验收（扫码→Keystore→pin→配对→凭据→撤销，需 vivo V2359A）；③ 待实施项 7（PRODUCT.md 4.1 重写为配对流程，联调通过后）；④ 待实施项 8 安全测试收口。
 - 说明：上表 M0-M4/H1 为 2026-08-16 定稿基线；M5-SIG、M6 为本轮按实际开发状态补录的里程碑定义。
 
 ## 3. 开发规则（沿用 + 调整）
