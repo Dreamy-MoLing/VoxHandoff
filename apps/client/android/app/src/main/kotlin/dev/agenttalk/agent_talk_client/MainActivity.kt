@@ -16,10 +16,14 @@ class MainActivity : FlutterActivity() {
 
     private var pendingCertificateResult: MethodChannel.Result? = null
     private var audioCapture: AndroidAudioCapture? = null
+    private var deviceKey: AndroidKeystoreDeviceKey? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         audioCapture = AndroidAudioCapture(this, flutterEngine.dartExecutor.binaryMessenger)
+        deviceKey = AndroidKeystoreDeviceKey()
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AndroidKeystoreDeviceKey.CHANNEL)
+            .setMethodCallHandler(deviceKey)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -103,6 +107,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         audioCapture?.dispose()
         audioCapture = null
+        deviceKey = null
         pendingCertificateResult?.error(
             "activity_destroyed",
             "Certificate file import was cancelled.",
