@@ -10,12 +10,13 @@ invariants remain binding; this file only narrows the rules for
   directories may contain host integration only; product behavior belongs in
   `lib/` and must not fork by platform without an explicit capability boundary.
 - Keep domain models independent from Flutter and generated protobuf types.
-  Translate protocol frames in `lib/infrastructure/gateway`, coordinate them in
-  `lib/application`, and expose only client-domain state to `lib/presentation`.
-- One production owner reads `GatewayLiveConnection.frames`. Route all frames
-  through one application frame router, then give its event branch to the
-  synchronizer; do not add a second `listen`, `first`, or `drain` consumer that
-  can steal or reorder command results, status facts, or events.
+  Protocols related to the legacy Gateway/Node infrastructure are now frozen 
+  and archived. Current communication follows the Hermes conversation adapter loop: 
+  translate messages via Hermes adapters, coordinate them in `lib/application`, 
+  and expose only client-domain state to `lib/presentation`.
+- Route all incoming Hermes frames through one application frame router; do not 
+  add a second `listen`, `first`, or `drain` consumer that can steal or reorder 
+  command results, status facts, or events.
 - Persist the complete mapped event and its conversation cursor atomically in
   Drift before publishing view state or acknowledging it. Exact duplicates may
   converge; identity, payload, route, or sequence conflicts fail closed.
