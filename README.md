@@ -62,9 +62,10 @@ Gateway/Node/PostgreSQL 控制面已冻结，保留在代码库和
 
 ## 分支收敛
 
-`agent/m2-complete`、`agent/m3-voice-loop` 和 `agent/m4-fairy-desktop`
-的提交均已合入 `main`。维护分支 `agent/acceptance-repair` 用于保存本次
-验收修复和复验；合入后可删除已合并的历史 topic branch，不应重复合并其历史。
+历史 topic 分支（`agent/m2-complete`、`agent/m3-voice-loop`、
+`agent/m4-fairy-desktop` 等）均已合入 `main` 并已清理删除。当前仅保留
+`main` 与进行中的 milestone 分支（M6 onboarding：`agent/m6-*`），
+合入后可删除已合并的历史 topic branch，不应重复合并其历史。
 
 ## 本地验证
 
