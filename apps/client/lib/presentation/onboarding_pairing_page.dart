@@ -287,15 +287,12 @@ class _OnboardingPairingPageState extends State<OnboardingPairingPage> {
           padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 18),
           child: Column(
             children: [
-              const Text('主机确认码'),
+              const Text('等待主机确认'),
               const SizedBox(height: 8),
-              SelectableText(
-                state.confirmationCode ?? '------',
-                key: const Key('onboarding-confirmation-code'),
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                  letterSpacing: 8,
-                  fontWeight: FontWeight.w700,
-                ),
+              Text(
+                '请在主机的配对请求列表中确认这台设备，确认后刷新主机状态。',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
             ],
           ),

@@ -11,22 +11,18 @@ void main() {
   final expiry = now.add(const Duration(minutes: 3));
 
   test(
-    'follows scan, keygen, exchange, host confirmation and confirmed',
+    'follows scan, keygen, exchange, host confirmation, complete and confirmed',
     () async {
       final keyPort = _FakeDeviceKeyPort();
       final keyStore = _FakeKeyReferenceStore();
-      final exchange =
-          _FakeExchange(
-              OnboardingPairingExchangeResult(
-                pairingId: 'pairing-1',
-                confirmationCode: '482731',
-                expiresAt: expiry,
-                backupSpkiPin: _pin(0x11),
-              ),
-            )
-            ..statusResult = const OnboardingPairingStatusResult(
-              OnboardingPairingRemoteStatus.confirmed,
-            );
+      final exchange = _FakeExchange(
+        _exchangeResult(keyPort.identity, deviceName: 'vivo V2359A'),
+      )
+        ..statusResult = OnboardingPairingStatusResult(
+          pairingRequestId: 'pairing-1',
+          status: OnboardingPairingRemoteStatus.confirmed,
+          expiresAt: expiry,
+        );
       final controller = OnboardingPairingController(
         deviceKeyPort: keyPort,
         keyReferenceStore: keyStore,
@@ -45,10 +41,14 @@ void main() {
         OnboardingPairingPhase.waitingHostConfirmation,
       );
       expect(controller.state.deviceName, 'vivo V2359A');
-      expect(controller.state.confirmationCode, '482731');
-      expect(controller.state.backupSpkiPin, _pin(0x11));
+      expect(controller.state.pairingRequestId, 'pairing-1');
+      expect(controller.state.challenge, 'challenge-1');
+      expect(controller.state.backupSpkiPin, isNull);
       expect(keyStore.savedReference, keyPort.identity.keyReference);
-      expect(exchange.proofSignature, [1, 2, 3]);
+      expect(
+        keyPort.signedPayload,
+        isNull,
+      );
       expect(
         phases,
         containsAllInOrder([
@@ -61,6 +61,14 @@ void main() {
 
       await controller.refreshHostStatus();
       expect(controller.state.phase, OnboardingPairingPhase.confirmed);
+      expect(exchange.completeCalls, 1);
+      expect(
+        keyPort.signedPayload,
+        utf8.encode(
+          'voxhandoff/companion-bridge/pairing-complete/v1\u0000'
+          'pairing-1\u0000challenge-1',
+        ),
+      );
       expect(keyPort.deletedReferences, isEmpty);
     },
   );
@@ -86,7 +94,8 @@ void main() {
   test('keeps an uncertain exchange from being retried silently', () async {
     final keyPort = _FakeDeviceKeyPort();
     final keyStore = _FakeKeyReferenceStore();
-    final exchange = _FakeExchange()..exchangeError = const _ExchangeFailure();
+    final exchange = _FakeExchange()
+      ..exchangeError = const _ExchangeFailure();
     final controller = OnboardingPairingController(
       deviceKeyPort: keyPort,
       keyReferenceStore: keyStore,
@@ -103,79 +112,101 @@ void main() {
     expect(keyPort.deletedReferences, isEmpty);
   });
 
-  test(
-    'cancelling waiting confirmation revokes the pending local key',
-    () async {
-      final keyPort = _FakeDeviceKeyPort();
-      final keyStore = _FakeKeyReferenceStore();
-      final controller = OnboardingPairingController(
-        deviceKeyPort: keyPort,
-        keyReferenceStore: keyStore,
-        exchangePort: _FakeExchange(
-          OnboardingPairingExchangeResult(
-            pairingId: 'pairing-1',
-            confirmationCode: '482731',
-            expiresAt: expiry,
-          ),
-        ),
-        now: () => now,
+  test('complete failure remains uncertain and keeps the device key', () async {
+    final keyPort = _FakeDeviceKeyPort();
+    final exchange = _FakeExchange(_exchangeResult(keyPort.identity))
+      ..statusResult = OnboardingPairingStatusResult(
+        pairingRequestId: 'pairing-1',
+        status: OnboardingPairingRemoteStatus.confirmed,
+        expiresAt: expiry,
+      )
+      ..completeError = const _CompleteFailure();
+    final controller = OnboardingPairingController(
+      deviceKeyPort: keyPort,
+      keyReferenceStore: _FakeKeyReferenceStore(),
+      exchangePort: exchange,
+      now: () => now,
+    );
+    addTearDown(controller.dispose);
+
+    await controller.acceptQrCode(_qr(expiry));
+    await controller.refreshHostStatus();
+
+    expect(controller.state.phase, OnboardingPairingPhase.uncertain);
+    expect(controller.state.errorCode, 'complete_failed');
+    expect(keyPort.deletedReferences, isEmpty);
+  });
+
+  test('cancelling waiting confirmation revokes the pending local key', () async {
+    final keyPort = _FakeDeviceKeyPort();
+    final keyStore = _FakeKeyReferenceStore();
+    final controller = OnboardingPairingController(
+      deviceKeyPort: keyPort,
+      keyReferenceStore: keyStore,
+      exchangePort: _FakeExchange(_exchangeResult(keyPort.identity)),
+      now: () => now,
+    );
+    addTearDown(controller.dispose);
+
+    await controller.acceptQrCode(_qr(expiry));
+    await controller.cancel();
+
+    expect(controller.state.phase, OnboardingPairingPhase.cancelled);
+    expect(keyPort.deletedReferences, [keyPort.identity.keyReference]);
+    expect(keyStore.deleted, isTrue);
+  });
+
+  test('persists the per-device credential only after complete', () async {
+    final keyPort = _FakeDeviceKeyPort();
+    final credentialVault = _FakeCredentialVault();
+    final exchange = _FakeExchange(_exchangeResult(keyPort.identity))
+      ..statusResult = OnboardingPairingStatusResult(
+        pairingRequestId: 'pairing-1',
+        status: OnboardingPairingRemoteStatus.confirmed,
+        expiresAt: expiry,
+      )
+      ..completeResult = OnboardingCredentialMaterial(
+        credentialId: 'credential-synthetic-1',
+        credential: 'synthetic-device-credential-only',
+        bridgeEndpoint: Uri.parse('https://bridge.example/companion'),
+        serverId: 'synthetic-server',
+        deviceKeyReference: keyPort.identity.keyReference,
+        spkiPin: _pin(0x07),
+        issuedAt: now,
       );
-      addTearDown(controller.dispose);
+    final controller = OnboardingPairingController(
+      deviceKeyPort: keyPort,
+      keyReferenceStore: _FakeKeyReferenceStore(),
+      exchangePort: exchange,
+      credentialVault: credentialVault,
+      now: () => now,
+    );
+    addTearDown(controller.dispose);
 
-      await controller.acceptQrCode(_qr(expiry));
-      await controller.cancel();
+    await controller.acceptQrCode(_qr(expiry));
+    await controller.refreshHostStatus();
 
-      expect(controller.state.phase, OnboardingPairingPhase.cancelled);
-      expect(keyPort.deletedReferences, [keyPort.identity.keyReference]);
-      expect(keyStore.deleted, isTrue);
-    },
-  );
-
-  test(
-    'persists the per-device credential only after host confirmation',
-    () async {
-      final credentialVault = _FakeCredentialVault();
-      final exchange =
-          _FakeExchange(
-              OnboardingPairingExchangeResult(
-                pairingId: 'pairing-1',
-                confirmationCode: '482731',
-                expiresAt: expiry,
-              ),
-            )
-            ..statusResult = OnboardingPairingStatusResult(
-              OnboardingPairingRemoteStatus.confirmed,
-              credential: OnboardingCredentialMaterial(
-                credentialId: 'credential-synthetic-1',
-                credential: 'synthetic-device-credential-only',
-                bridgeEndpoint: Uri.parse('https://bridge.example/companion'),
-                serverId: 'synthetic-server',
-                deviceKeyReference: '0123456789abcdef0123456789abcdef',
-                spkiPin: _pin(0x07),
-                issuedAt: now,
-              ),
-            );
-      final controller = OnboardingPairingController(
-        deviceKeyPort: _FakeDeviceKeyPort(),
-        keyReferenceStore: _FakeKeyReferenceStore(),
-        exchangePort: exchange,
-        credentialVault: credentialVault,
-        now: () => now,
-      );
-      addTearDown(controller.dispose);
-
-      await controller.acceptQrCode(_qr(expiry));
-      await controller.refreshHostStatus();
-
-      expect(controller.state.phase, OnboardingPairingPhase.confirmed);
-      expect(
-        controller.state.credentialReference?.credentialId,
-        'credential-synthetic-1',
-      );
-      expect(credentialVault.saved, isTrue);
-    },
-  );
+    expect(controller.state.phase, OnboardingPairingPhase.confirmed);
+    expect(
+      controller.state.credentialReference?.credentialId,
+      'credential-synthetic-1',
+    );
+    expect(credentialVault.saved, isTrue);
+  });
 }
+
+OnboardingPairingExchangeResult _exchangeResult(
+  OnboardingDeviceKeyIdentity identity, {
+  String deviceName = '此设备',
+}) => OnboardingPairingExchangeResult(
+  pairingRequestId: 'pairing-1',
+  deviceId: 'device-1',
+  deviceName: deviceName,
+  deviceFingerprint: identity.fingerprint,
+  challenge: 'challenge-1',
+  status: OnboardingPairingRemoteStatus.awaitingConfirmation,
+  expiresAt: DateTime.utc(2026, 8, 17, 12, 3),
+);
 
 String _qr(DateTime expiresAt) => jsonEncode({
   'protocol_version': 1,
@@ -199,6 +230,7 @@ class _FakeDeviceKeyPort implements OnboardingDeviceKeyPort {
   );
   var createCalls = 0;
   final deletedReferences = <String>[];
+  List<int>? signedPayload;
 
   @override
   Future<OnboardingDeviceKeyIdentity> create() async {
@@ -211,11 +243,10 @@ class _FakeDeviceKeyPort implements OnboardingDeviceKeyPort {
       identity;
 
   @override
-  Future<List<int>> sign(String keyReference, List<int> payload) async => [
-    1,
-    2,
-    3,
-  ];
+  Future<List<int>> sign(String keyReference, List<int> payload) async {
+    signedPayload = payload;
+    return [1, 2, 3];
+  }
 
   @override
   Future<void> delete(String keyReference) async =>
@@ -237,22 +268,22 @@ class _FakeExchange implements OnboardingPairingExchangePort {
   _FakeExchange([this.exchangeResult]);
 
   final OnboardingPairingExchangeResult? exchangeResult;
-  OnboardingPairingStatusResult statusResult =
-      const OnboardingPairingStatusResult(
-        OnboardingPairingRemoteStatus.waitingHostConfirmation,
-      );
+  OnboardingPairingStatusResult statusResult = OnboardingPairingStatusResult(
+    pairingRequestId: 'pairing-1',
+    status: OnboardingPairingRemoteStatus.awaitingConfirmation,
+    expiresAt: DateTime.utc(2026, 8, 17, 12, 3),
+  );
+  OnboardingCredentialMaterial? completeResult;
   OnboardingPairingException? exchangeError;
-  List<int>? proofSignature;
-  var cancelCalls = 0;
+  OnboardingPairingException? completeError;
+  var completeCalls = 0;
 
   @override
   Future<OnboardingPairingExchangeResult> exchange({
     required payload,
     required deviceName,
     required deviceKey,
-    required List<int> proofSignature,
   }) async {
-    this.proofSignature = proofSignature;
     final error = exchangeError;
     if (error != null) throw error;
     return exchangeResult!;
@@ -261,23 +292,48 @@ class _FakeExchange implements OnboardingPairingExchangePort {
   @override
   Future<OnboardingPairingStatusResult> status({
     required payload,
-    required pairingId,
+    required pairingRequestId,
     required backupSpkiPin,
   }) async => statusResult;
 
   @override
-  Future<void> cancel({
+  Future<OnboardingCredentialMaterial> complete({
     required payload,
-    required pairingId,
+    required pairingRequestId,
+    required deviceId,
+    required deviceKey,
+    required deviceSignature,
     required backupSpkiPin,
   }) async {
-    cancelCalls += 1;
+    completeCalls += 1;
+    final error = completeError;
+    if (error != null) throw error;
+    return completeResult ??
+        OnboardingCredentialMaterial(
+          credentialId: 'credential-synthetic-1',
+          credential: 'synthetic-device-credential-only',
+          bridgeEndpoint: payload.bridgeEndpoint,
+          serverId: payload.serverId,
+          deviceKeyReference: deviceKey.keyReference,
+          spkiPin: payload.spkiPin,
+          issuedAt: DateTime.utc(2026, 8, 17, 12),
+        );
   }
+
+  @override
+  Future<void> cancel({
+    required payload,
+    required pairingRequestId,
+    required backupSpkiPin,
+  }) async {}
 }
 
 class _ExchangeFailure extends OnboardingPairingException {
-  const _ExchangeFailure()
-    : super('exchange_failed', 'synthetic exchange failure');
+  const _ExchangeFailure() : super('exchange_failed', 'synthetic exchange failure');
+}
+
+class _CompleteFailure extends OnboardingPairingException {
+  const _CompleteFailure() : super('complete_failed', 'synthetic complete failure');
 }
 
 class _FakeCredentialVault implements OnboardingCredentialVault {
