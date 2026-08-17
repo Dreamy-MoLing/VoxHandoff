@@ -28,6 +28,7 @@ async function main(): Promise<void> {
       { name: "tls", ready: () => true },
       { name: "state", ready: () => true },
       { name: "certificate_pins", ready: () => config.currentSpkiPin !== undefined && config.backupSpkiPin !== undefined },
+      { name: "hermes_configured", ready: () => config.hermes !== undefined },
     ],
   });
   const server = createBridgeServer(config, application);

@@ -40,3 +40,13 @@ test("pairing TTL cannot exceed the five minute security bound", () => {
     /between 1000 and 300000/u,
   );
 });
+
+test("bridge startup requires two distinct SPKI pins", () => {
+  assert.throws(
+    () => readBridgeConfig(environment({ VOXHANDOFF_BRIDGE_BACKUP_SPKI_PIN: environment().VOXHANDOFF_BRIDGE_SPKI_PIN })),
+    /must differ/u,
+  );
+  const withoutPins = environment();
+  delete withoutPins.VOXHANDOFF_BRIDGE_SPKI_PIN;
+  assert.throws(() => readBridgeConfig(withoutPins), /SPKI_PIN is required/u);
+});
