@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'capability_manifest_sheet.dart';
 import 'design/agent_talk_theme.dart';
 import 'mobile_visual_preferences.dart';
 
@@ -104,6 +105,18 @@ class _MobileVisualSettingsSheet extends StatelessWidget {
                   const SizedBox(height: 12),
                   _SettingsFontRow(preferences: preferences),
                   const SizedBox(height: 18),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        showCapabilityManifestSheet(context);
+                      },
+                      icon: const Icon(Icons.dns_outlined),
+                      label: const Text('连接与能力'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton.icon(
