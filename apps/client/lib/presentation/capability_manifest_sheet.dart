@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/capability_manifest_controller.dart';
 import '../domain/capability_manifest.dart';
 import 'design/agent_talk_theme.dart';
+import 'direct_llm_settings_sheet.dart';
+import 'hermes_conversation_settings_sheet.dart';
+import 'voice_settings_sheet.dart';
 
 Future<void> showCapabilityManifestSheet(BuildContext context) =>
     showModalBottomSheet<void>(
@@ -140,6 +143,7 @@ class _CapabilityManifestSheetState
                 _FailureBanner(message: state.failureMessage!),
               ],
               const Divider(height: 32),
+              const _AdvancedManualConfigSection(),
             ],
           ),
         ),
@@ -151,6 +155,90 @@ class _CapabilityManifestSheetState
     final local = value.toLocal();
     final two = (int v) => v.toString().padLeft(2, '0');
     return '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
+  }
+}
+
+/// 高级折叠：默认收拢；展开后保留现有手动配置表单入口
+/// （Hermes 对话 / Direct LLM / 语音与来源 STT·TTS）。
+class _AdvancedManualConfigSection extends StatelessWidget {
+  const _AdvancedManualConfigSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.visualTokens;
+    return ExpansionTile(
+      key: const Key('advanced-manual-config'),
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(top: 4),
+      initiallyExpanded: false,
+      title: const Text('高级', style: TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: const Text('手动配置与连接（专家）'),
+      iconColor: tokens.signal,
+      collapsedIconColor: tokens.textMuted,
+      children: [
+        _ManualEntry(
+          key: const Key('advanced-hermes-conversation'),
+          glyph: Icons.forum_outlined,
+          title: 'Hermes 对话设置',
+          subtitle: '主链路手动配置：HTTPS 地址、模型、API key',
+          onTap: () =>
+              _openAfterClose(context, showHermesConversationSettingsSheet),
+        ),
+        _ManualEntry(
+          key: const Key('advanced-direct-llm'),
+          glyph: Icons.key_outlined,
+          title: 'Direct LLM 设置',
+          subtitle: '延后可选能力，独立于 Hermes 主链路',
+          onTap: () => _openAfterClose(context, showDirectLlmSettingsSheet),
+        ),
+        _ManualEntry(
+          key: const Key('advanced-voice-settings'),
+          glyph: Icons.graphic_eq_outlined,
+          title: '语音与来源设置（STT / TTS）',
+          subtitle: '本地或已同意远程的语音服务手动配置',
+          onTap: () => _openAfterClose(context, showVoiceSettingsSheet),
+        ),
+      ],
+    );
+  }
+
+  void _openAfterClose(
+    BuildContext context,
+    Future<void> Function(BuildContext) opener,
+  ) {
+    final navigator = Navigator.of(context);
+    navigator.pop();
+    opener(navigator.context);
+  }
+}
+
+class _ManualEntry extends StatelessWidget {
+  const _ManualEntry({
+    super.key,
+    required this.glyph,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData glyph;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.visualTokens;
+    return ListTile(
+      contentPadding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+      leading: Icon(glyph, color: tokens.signal, size: 20),
+      title: Text(title, style: const TextStyle(fontSize: 15)),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(color: tokens.textMuted, fontSize: 12),
+      ),
+      onTap: onTap,
+    );
   }
 }
 

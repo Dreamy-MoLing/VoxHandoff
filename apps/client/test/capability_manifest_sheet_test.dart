@@ -127,6 +127,62 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('正在获取能力清单…'), findsNothing);
   });
+
+  testWidgets('高级默认收拢，展开后显示手动配置入口', (tester) async {
+    final repository = FakeManifestRepository(
+      manifest: CapabilityManifest.fromJsonString('''
+      {
+        "chat": { "available": true },
+        "stt": { "available": true },
+        "tts": { "available": true, "recommended_voice": "Bronya" }
+      }
+      '''),
+    );
+    await tester.pumpWidget(buildApp(repository: repository));
+    await tester.tap(find.text('打开总览'));
+    await tester.pumpAndSettle();
+
+    final tile = tester.widget<ExpansionTile>(
+      find.byKey(const Key('advanced-manual-config')),
+    );
+    expect(tile.initiallyExpanded, isFalse);
+    expect(find.text('Hermes 对话设置'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('advanced-manual-config')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hermes 对话设置'), findsOneWidget);
+    expect(find.text('Direct LLM 设置'), findsOneWidget);
+    expect(find.text('语音与来源设置（STT / TTS）'), findsOneWidget);
+  });
+
+  testWidgets('高级中的 Hermes 设置沿用现有表单', (tester) async {
+    final repository = FakeManifestRepository(
+      manifest: CapabilityManifest.fromJsonString('''
+      {
+        "chat": { "available": true },
+        "stt": { "available": true },
+        "tts": { "available": true, "recommended_voice": "Bronya" }
+      }
+      '''),
+    );
+    await tester.pumpWidget(buildApp(repository: repository));
+    await tester.tap(find.text('打开总览'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const Key('advanced-manual-config')));
+    await tester.tap(find.byKey(const Key('advanced-manual-config')));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(
+      find.byKey(const Key('advanced-hermes-conversation')),
+    );
+    await tester.tap(find.byKey(const Key('advanced-hermes-conversation')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hermes 对话'), findsOneWidget);
+    expect(find.text('模型'), findsOneWidget);
+  });
 }
 
 class FakeManifestRepository implements CapabilityManifestRepository {
