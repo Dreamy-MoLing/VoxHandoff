@@ -24,6 +24,11 @@ export function createPairingToken(): { token: string; tokenHash: string } {
   return { token, tokenHash: hashSecret(token) };
 }
 
+export function createDeviceCredential(): { credential: string; credentialHash: string } {
+  const credential = randomBytes(tokenBytes).toString("base64url");
+  return { credential, credentialHash: hashSecret(credential) };
+}
+
 export function hashSecret(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }

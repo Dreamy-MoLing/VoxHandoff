@@ -8,21 +8,25 @@ import type { BridgeConfig } from "./config.js";
 import { healthSnapshot, readinessSnapshot, type BridgeReadinessCheck } from "./health.js";
 import { HttpRequestError, isRecord, readJsonBody, stringField, writeError, writeJson } from "./http.js";
 import { PairingError, PairingService } from "./pairing.js";
+import { CredentialError, DeviceCredentialService } from "./credentials.js";
 
 export interface BridgeApplicationOptions {
   readinessChecks?: readonly BridgeReadinessCheck[];
   pairing?: PairingService;
+  credentials?: DeviceCredentialService;
 }
 
 export class CompanionBridgeApplication {
   readonly #config: BridgeConfig;
   readonly #readinessChecks: readonly BridgeReadinessCheck[];
   readonly #pairing: PairingService | undefined;
+  readonly #credentials: DeviceCredentialService | undefined;
 
   constructor(config: BridgeConfig, options: BridgeApplicationOptions = {}) {
     this.#config = config;
     this.#readinessChecks = options.readinessChecks ?? [{ name: "tls", ready: () => true }];
     this.#pairing = options.pairing;
+    this.#credentials = options.credentials;
   }
 
   async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -53,6 +57,16 @@ export class CompanionBridgeApplication {
           deviceName: stringField(body, "device_name") ?? "",
           devicePublicKeySpki: stringField(body, "device_public_key_spki") ?? "",
         }));
+        return;
+      }
+      const requestComplete = path.match(/^\/v1\/pairing\/requests\/([^/]+)\/complete$/u);
+      if (this.#pairing !== undefined && method === "POST" && requestComplete?.[1] !== undefined) {
+        const body = await readJsonBody(request, this.#config.maxRequestBytes);
+        if (!isRecord(body)) throw new HttpRequestError(400, "request_invalid", "The request body is invalid.");
+        writeJson(response, 201, await this.#pairing.complete(
+          decodePathPart(requestComplete[1]),
+          stringField(body, "device_signature") ?? "",
+        ));
         return;
       }
       if (this.#pairing !== undefined && method === "GET" && path === "/v1/pairing/requests") {
@@ -86,6 +100,18 @@ export class CompanionBridgeApplication {
         ));
         return;
       }
+      if (this.#credentials !== undefined && method === "GET" && path === "/v1/devices") {
+        authorizeHost(request, this.#config);
+        writeJson(response, 200, { devices: await this.#credentials.listDevices() });
+        return;
+      }
+      const deviceRevoke = path.match(/^\/v1\/devices\/([^/]+)\/revoke$/u);
+      if (this.#credentials !== undefined && method === "POST" && deviceRevoke?.[1] !== undefined) {
+        authorizeHost(request, this.#config);
+        const revoked = await this.#credentials.revokeDevice(decodePathPart(deviceRevoke[1]));
+        writeJson(response, 200, { revoked });
+        return;
+      }
       writeError(response, 404, "not_found", "The requested bridge endpoint was not found.");
     } catch (error) {
       if (error instanceof HttpRequestError) {
@@ -93,6 +119,10 @@ export class CompanionBridgeApplication {
         return;
       }
       if (error instanceof PairingError) {
+        writeError(response, error.status, error.code, error.message);
+        return;
+      }
+      if (error instanceof CredentialError) {
         writeError(response, error.status, error.code, error.message);
         return;
       }

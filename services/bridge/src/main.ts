@@ -1,11 +1,26 @@
 #!/usr/bin/env node
 
 import { readBridgeConfig } from "./config.js";
-import { createBridgeServer, listenBridgeServer } from "./server.js";
+import { DeviceCredentialService } from "./credentials.js";
+import { PairingService } from "./pairing.js";
+import { createBridgeServer, CompanionBridgeApplication, listenBridgeServer } from "./server.js";
+import { loadBridgeStateStore } from "./state.js";
 
 async function main(): Promise<void> {
   const config = readBridgeConfig();
-  const server = createBridgeServer(config);
+  const stateStore = await loadBridgeStateStore(config.stateFile);
+  const pairing = new PairingService(config, stateStore);
+  const credentials = new DeviceCredentialService(stateStore);
+  const application = new CompanionBridgeApplication(config, {
+    pairing,
+    credentials,
+    readinessChecks: [
+      { name: "tls", ready: () => true },
+      { name: "state", ready: () => true },
+      { name: "certificate_pins", ready: () => config.currentSpkiPin !== undefined && config.backupSpkiPin !== undefined },
+    ],
+  });
+  const server = createBridgeServer(config, application);
   const stop = () => server.close();
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);

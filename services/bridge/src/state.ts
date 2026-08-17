@@ -5,6 +5,8 @@ export type PairingSessionStatus = "pending" | "consumed" | "expired" | "cancell
 export type PairingRequestStatus = "awaiting_confirmation" | "confirmed" | "completed" | "expired" | "cancelled";
 export type DeviceStatus = "pending" | "active" | "revoked";
 export type CredentialStatus = "active" | "revoked";
+export const deviceScopes = ["chat", "stt", "tts"] as const;
+export type DeviceScope = (typeof deviceScopes)[number];
 
 export interface PairingSessionRecord {
   sessionId: string;
@@ -42,6 +44,7 @@ export interface DeviceRecord {
   deviceName: string;
   devicePublicKeySpki: string;
   deviceFingerprint: string;
+  scopes: DeviceScope[];
   status: DeviceStatus;
   createdAt: string;
   updatedAt: string;
@@ -52,6 +55,7 @@ export interface CredentialRecord {
   deviceId: string;
   accessTokenHash: string;
   status: CredentialStatus;
+  scopes: DeviceScope[];
   createdAt: string;
   expiresAt: string;
 }

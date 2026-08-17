@@ -1,21 +1,25 @@
 import type { BridgeConfig } from "./config.js";
 import {
   constantTimeEqual,
+  createDeviceCredential,
   createPairingToken,
   hashSecret,
   isPairingToken,
   normalizeDevicePublicKey,
+  pairingCompletionPayload,
   randomChallenge,
   randomConfirmationCode,
   randomOpaqueId,
+  verifyDeviceSignature,
 } from "./crypto.js";
 import type {
   BridgeStateDocument,
   BridgeStateStore,
   DeviceRecord,
   PairingRequestRecord,
-  PairingSessionRecord,
+  DeviceScope,
 } from "./state.js";
+import { deviceScopes } from "./state.js";
 
 export type PairingErrorCode =
   | "invalid_request"
@@ -28,6 +32,9 @@ export type PairingErrorCode =
   | "pairing_request_expired"
   | "pairing_request_cancelled"
   | "confirmation_invalid"
+  | "pairing_not_confirmed"
+  | "pairing_completed"
+  | "device_revoked"
   | "bridge_not_ready";
 
 export class PairingError extends Error {
@@ -77,6 +84,15 @@ export interface PendingPairingRequest {
 
 export interface ConfirmedPairingRequest extends PendingPairingRequest {
   status: "confirmed";
+}
+
+export interface CompletedPairing {
+  pairingRequestId: string;
+  deviceId: string;
+  credentialId: string;
+  deviceCredential: string;
+  scopes: readonly DeviceScope[];
+  expiresAt: string;
 }
 
 export class PairingService {
@@ -164,6 +180,7 @@ export class PairingService {
         deviceName,
         devicePublicKeySpki: publicKey.spki,
         deviceFingerprint: publicKey.fingerprint,
+        scopes: [...deviceScopes],
         status: "pending",
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
@@ -222,6 +239,51 @@ export class PairingService {
       request.status = "confirmed";
       request.confirmedAt = now.toISOString();
       return publicRequest(request) as ConfirmedPairingRequest;
+    });
+  }
+
+  async complete(requestId: string, deviceSignature: string): Promise<CompletedPairing> {
+    if (!opaque(requestId)) throw new PairingError("pairing_request_not_found", "The pairing request was not found.", 404);
+    if (deviceSignature.length === 0 || deviceSignature.length > 512) throw new PairingError("invalid_request", "The device proof is invalid.", 400);
+    const now = this.#now();
+    return this.#store.mutate((state) => {
+      expireState(state, now);
+      const request = state.pairingRequests.find((candidate) => candidate.requestId === requestId);
+      if (request === undefined) throw new PairingError("pairing_request_not_found", "The pairing request was not found.", 404);
+      if (request.status === "expired") throw new PairingError("pairing_request_expired", "The pairing request has expired.", 410);
+      if (request.status === "cancelled") throw new PairingError("pairing_request_cancelled", "The pairing request has been cancelled.", 410);
+      if (request.status === "completed") throw new PairingError("pairing_completed", "The pairing request has already been completed.", 409);
+      if (request.status !== "confirmed") throw new PairingError("pairing_not_confirmed", "The host has not confirmed this device.", 409);
+      if (!verifyDeviceSignature(request.devicePublicKeySpki, pairingCompletionPayload(request.requestId, request.challenge), deviceSignature)) {
+        throw new PairingError("invalid_request", "The device proof is invalid.", 401);
+      }
+      const device = state.devices.find((candidate) => candidate.deviceId === request.deviceId);
+      if (device === undefined || device.status !== "pending") throw new PairingError("device_revoked", "The device is not eligible for activation.", 403);
+      const credential = createDeviceCredential();
+      const credentialId = randomOpaqueId("credential");
+      const expiresAt = new Date(now.getTime() + this.#config.credentialTtlMs).toISOString();
+      device.status = "active";
+      device.updatedAt = now.toISOString();
+      request.status = "completed";
+      request.completedAt = now.toISOString();
+      request.credentialId = credentialId;
+      state.credentials.push({
+        credentialId,
+        deviceId: device.deviceId,
+        accessTokenHash: credential.credentialHash,
+        status: "active",
+        scopes: [...deviceScopes],
+        createdAt: now.toISOString(),
+        expiresAt,
+      });
+      return {
+        pairingRequestId: request.requestId,
+        deviceId: device.deviceId,
+        credentialId,
+        deviceCredential: credential.credential,
+        scopes: [...deviceScopes],
+        expiresAt,
+      };
     });
   }
 
