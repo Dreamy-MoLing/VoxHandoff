@@ -15,14 +15,16 @@ STT、TTS 服务。它不保存 Hermes 上游凭据的明文副本以外的任�
 | GET | `/healthz` | 无 | `200 {status, component, version}` |
 | GET | `/readyz` | 无 | `200` ready 或 `503` not_ready，只有有限状态检查 |
 | POST | `/v1/pairing/sessions` | loopback 或 `X-Bridge-Host-Authorization: Bearer ...` | `201` QR 载荷；token 仅出现在此响应/二维码 |
-| POST | `/v1/pairing/exchange` | QR token | `200` pending device identity + challenge，不签发长期凭据 |
+| POST | `/v1/pairing/exchange` | JSON QR token | `200 {pairingRequestId, deviceId, deviceName, deviceFingerprint, challenge, status:"awaiting_confirmation", expiresAt}`；不签发长期凭据 |
 | GET | `/v1/pairing/requests` | 主机授权 | `200` 待确认设备名、指纹、6 位码 |
 | POST | `/v1/pairing/requests/:id/confirm` | 主机授权 | `200` confirmed |
-| POST | `/v1/pairing/requests/:id/complete` | 设备公钥签名 | `201` 一次性返回 per-device credential |
-| POST | `/v1/pairing/sessions/:id/cancel` | 主机授权 | `200 {cancelled:true}` |
+| GET | `/v1/pairing/requests/:id/status` | `X-Bridge-Pairing-Authorization: Bearer <pairing token>` | `200 {pairingRequestId, status, expiresAt}`；status 为 `awaiting_confirmation` / `confirmed` / `expired` / `cancelled` |
+| POST | `/v1/pairing/requests/:id/complete` | `device_signature`（绑定 request id + challenge） | `201 {pairingRequestId, deviceId, credentialId, deviceCredential, scopes, expiresAt}`；credential 只返回一次 |
+| POST | `/v1/pairing/sessions/:id/cancel` | 主机授权或 `X-Bridge-Pairing-Authorization: Bearer <pairing token>` | `200 {cancelled:true}` |
 | POST | `/v1/pairing/requests/:id/cancel` | 主机授权 | `200 {cancelled:true}` |
 | GET | `/v1/devices` | 主机授权 | `200` 设备摘要，不含凭据 |
 | POST | `/v1/devices/:id/revoke` | 主机授权 | `200 {revoked:true/false}` |
+| POST | `/v1/devices/me/revoke` | `Authorization: Bearer <device credential>` | `200 {revoked:true}`；成功后该 credential 立即失效 |
 | GET | `/v1/capabilities` | per-device Bearer | `200` chat/stt/tts/hermes manifest |
 | GET | `/v1/pinning` | per-device Bearer | `200` current/backup SPKI pin + generation |
 | POST | `/v1/pinning/rotate` | 主机授权 + current pin claim | `200` 新 pin 状态 |
@@ -34,6 +36,13 @@ STT、TTS 服务。它不保存 Hermes 上游凭据的明文副本以外的任�
 
 错误响应为 `{ "error": { "code": "...", "message": "..." } }`。错误消息不含
 token、凭据、上游响应正文或内部 URL。
+
+手机配对调用约定：exchange 请求 JSON 使用 `server_id`、`pairing_session_id`、
+`pairing_token`、`device_name`、`device_public_key_spki`；status 使用 GET 路径
+中的 `pairingRequestId` 和 `X-Bridge-Pairing-Authorization`，不把 token 放进 URL；
+complete 请求 JSON 只使用 `device_signature`；手机取消使用 QR 中的
+`pairing_session_id` 调用 session cancel。Android Keystore 的 ECDSA P-256
+`SHA256withECDSA` 签名与既有 Ed25519 签名都可用于 complete。
 
 ## 配置与运行
 
@@ -63,8 +72,9 @@ npm run start -w @agent-talk/bridge
 
 ## 安全边界
 
-- pairing token 是 256-bit、3 分钟 TTL、一次性消费；过期、取消、重新生成 QR
-  和成功消费都会使它失效。
+- pairing token 是 256-bit、3 分钟 TTL；exchange 只可消费一次，消费后 token
+  仅可作为同一 session 的手机 status/cancel 身份，不能再次 exchange。过期、
+  取消和重新生成 QR 都会使它失效。
 - 手机公钥绑定在 pending device 上；只有主机确认设备名/6 位码并验证设备私钥
   签名后才签发长期凭据。
 - current/backup 是 SHA-256 SPKI pin。未知 pin fail closed；轮换只能把已有

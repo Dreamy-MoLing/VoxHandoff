@@ -5,6 +5,11 @@ import 'dart:io';
 import '../../domain/onboarding_credential.dart';
 import '../security/spki_pin_validator.dart';
 
+/// Revokes the active phone credential through the Bridge self-revoke route.
+///
+/// The credential is sent only as a device Bearer header. Local secure storage
+/// is deleted by the credential controller only after `{revoked:true}`
+/// has been received from the pinned Bridge connection.
 class BridgeCredentialRevoker implements OnboardingCredentialRevocationPort {
   BridgeCredentialRevoker({
     HttpClient? client,
