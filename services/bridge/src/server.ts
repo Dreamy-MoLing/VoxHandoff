@@ -9,11 +9,13 @@ import { healthSnapshot, readinessSnapshot, type BridgeReadinessCheck } from "./
 import { HttpRequestError, isRecord, readJsonBody, stringField, writeError, writeJson } from "./http.js";
 import { PairingError, PairingService } from "./pairing.js";
 import { CredentialError, DeviceCredentialService } from "./credentials.js";
+import { CapabilityDiscovery } from "./manifest.js";
 
 export interface BridgeApplicationOptions {
   readinessChecks?: readonly BridgeReadinessCheck[];
   pairing?: PairingService;
   credentials?: DeviceCredentialService;
+  manifest?: CapabilityDiscovery;
 }
 
 export class CompanionBridgeApplication {
@@ -21,12 +23,14 @@ export class CompanionBridgeApplication {
   readonly #readinessChecks: readonly BridgeReadinessCheck[];
   readonly #pairing: PairingService | undefined;
   readonly #credentials: DeviceCredentialService | undefined;
+  readonly #manifest: CapabilityDiscovery | undefined;
 
   constructor(config: BridgeConfig, options: BridgeApplicationOptions = {}) {
     this.#config = config;
     this.#readinessChecks = options.readinessChecks ?? [{ name: "tls", ready: () => true }];
     this.#pairing = options.pairing;
     this.#credentials = options.credentials;
+    this.#manifest = options.manifest;
   }
 
   async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -103,6 +107,12 @@ export class CompanionBridgeApplication {
       if (this.#credentials !== undefined && method === "GET" && path === "/v1/devices") {
         authorizeHost(request, this.#config);
         writeJson(response, 200, { devices: await this.#credentials.listDevices() });
+        return;
+      }
+      if (this.#manifest !== undefined && method === "GET" && path === "/v1/capabilities") {
+        if (this.#credentials === undefined) throw new HttpRequestError(503, "capabilities_not_ready", "Device authentication is not configured.");
+        await this.#credentials.authenticateAuthorization(request.headers.authorization);
+        writeJson(response, 200, await this.#manifest.manifest());
         return;
       }
       const deviceRevoke = path.match(/^\/v1\/devices\/([^/]+)\/revoke$/u);

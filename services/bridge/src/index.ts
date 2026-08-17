@@ -5,4 +5,5 @@ export * from "./crypto.js";
 export * from "./state.js";
 export * from "./pairing.js";
 export * from "./credentials.js";
+export * from "./manifest.js";
 export * from "./server.js";
