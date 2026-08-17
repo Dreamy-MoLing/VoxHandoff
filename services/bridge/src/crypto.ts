@@ -17,6 +17,7 @@ export interface NormalizedDevicePublicKey {
   spki: string;
   fingerprint: string;
   key: KeyObject;
+  algorithm: "ed25519" | "ecdsa-p256-sha256";
 }
 
 export function createPairingToken(): { token: string; tokenHash: string } {
@@ -64,12 +65,18 @@ export function normalizeDevicePublicKey(spki: string): NormalizedDevicePublicKe
   } catch {
     throw new Error("The device public key is invalid.");
   }
-  if (key.asymmetricKeyType !== "ed25519") throw new Error("The device public key algorithm is unsupported.");
+  const algorithm =
+    key.asymmetricKeyType === "ed25519"
+      ? "ed25519"
+      : key.asymmetricKeyType === "ec" && key.asymmetricKeyDetails?.namedCurve === "prime256v1"
+        ? "ecdsa-p256-sha256"
+        : undefined;
+  if (algorithm === undefined) throw new Error("The device public key algorithm is unsupported.");
   const canonical = key.export({ format: "der", type: "spki" });
   const canonicalSpki = Buffer.from(canonical).toString("base64");
   if (canonicalSpki !== spki) throw new Error("The device public key encoding is not canonical.");
   const digest = createHash("sha256").update(canonical).digest("hex");
-  return { spki: spki, fingerprint: `sha256:${digest}`, key };
+  return { spki: spki, fingerprint: `sha256:${digest}`, key, algorithm };
 }
 
 export function verifyDeviceSignature(
@@ -79,9 +86,16 @@ export function verifyDeviceSignature(
 ): boolean {
   if (!base64Pattern.test(signature)) return false;
   const signatureBytes = Buffer.from(signature, "base64");
-  if (signatureBytes.byteLength !== 64 || signatureBytes.toString("base64") !== signature) return false;
+  if (signatureBytes.byteLength === 0 || signatureBytes.byteLength > 128 || signatureBytes.toString("base64") !== signature) return false;
   try {
-    return verify(null, Buffer.from(payload), normalizeDevicePublicKey(spki).key, signatureBytes);
+    const normalized = normalizeDevicePublicKey(spki);
+    if (normalized.algorithm === "ed25519" && signatureBytes.byteLength !== 64) return false;
+    return verify(
+      normalized.algorithm === "ed25519" ? null : "sha256",
+      Buffer.from(payload),
+      normalized.key,
+      signatureBytes,
+    );
   } catch {
     return false;
   }

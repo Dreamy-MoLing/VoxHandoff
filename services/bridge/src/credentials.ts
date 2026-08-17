@@ -90,6 +90,10 @@ export class DeviceCredentialService {
       return changed;
     });
   }
+
+  async revokeAuthenticatedDevice(principal: Pick<AuthenticatedDevice, "deviceId">): Promise<boolean> {
+    return this.revokeDevice(principal.deviceId);
+  }
 }
 
 function bearerToken(authorization: string | undefined): string {

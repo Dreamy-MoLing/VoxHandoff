@@ -108,3 +108,28 @@ test("credentials authenticate and revoke one device without affecting another",
   );
   assert.equal((await credentials.authenticateAuthorization(`Bearer ${completedB.deviceCredential}`)).deviceId, completedB.deviceId);
 });
+
+test("Android Keystore P-256 signatures can complete a pairing", async () => {
+  const store = createMemoryBridgeStateStore();
+  const pairing = new PairingService(config, store);
+  const credentials = new DeviceCredentialService(store);
+  const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const qr = await pairing.createQr();
+  const exchange = await pairing.exchange({
+    serverId: qr.server_id,
+    pairingSessionId: qr.pairing_session_id,
+    pairingToken: qr.pairing_token,
+    deviceName: "Android",
+    devicePublicKeySpki: spki(keys.publicKey),
+  });
+  const pending = await pairing.pendingRequests();
+  await pairing.confirm(exchange.pairingRequestId, "Android", pending[0]?.confirmationCode ?? "000000");
+  const signature = sign(
+    "sha256",
+    pairingCompletionPayload(exchange.pairingRequestId, exchange.challenge),
+    keys.privateKey,
+  ).toString("base64");
+
+  const completed = await pairing.complete(exchange.pairingRequestId, signature);
+  assert.equal((await credentials.authenticateAuthorization(`Bearer ${completed.deviceCredential}`)).deviceId, exchange.deviceId);
+});
