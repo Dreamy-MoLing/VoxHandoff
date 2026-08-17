@@ -5,7 +5,6 @@ import 'package:agent_talk_client/domain/hermes_conversation.dart';
 import 'package:agent_talk_client/infrastructure/chat/hermes_chat_client.dart';
 import 'package:agent_talk_client/infrastructure/chat/hermes_session_client.dart';
 import 'package:agent_talk_client/infrastructure/security/device_key_vault.dart';
-import 'package:agent_talk_client/infrastructure/security/flutter_secure_value_store.dart';
 import 'package:agent_talk_client/infrastructure/security/hermes_conversation_secret_store.dart';
 import 'package:agent_talk_client/infrastructure/security/server_fingerprint_probe.dart';
 import 'package:agent_talk_client/infrastructure/security/tofu_trust_store.dart';
