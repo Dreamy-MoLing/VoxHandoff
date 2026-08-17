@@ -8,6 +8,7 @@ import '../domain/capability_manifest.dart';
 import 'design/agent_talk_theme.dart';
 import 'direct_llm_settings_sheet.dart';
 import 'hermes_conversation_settings_sheet.dart';
+import 'manual_connection_sheet.dart';
 import 'voice_settings_sheet.dart';
 
 Future<void> showCapabilityManifestSheet(BuildContext context) =>
@@ -153,7 +154,7 @@ class _CapabilityManifestSheetState
 
   String _formatTime(DateTime value) {
     final local = value.toLocal();
-    final two = (int v) => v.toString().padLeft(2, '0');
+    String two(int v) => v.toString().padLeft(2, '0');
     return '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
   }
 }
@@ -197,6 +198,13 @@ class _AdvancedManualConfigSection extends StatelessWidget {
           title: '语音与来源设置（STT / TTS）',
           subtitle: '本地或已同意远程的语音服务手动配置',
           onTap: () => _openAfterClose(context, showVoiceSettingsSheet),
+        ),
+        _ManualEntry(
+          key: const Key('advanced-manual-connection'),
+          glyph: Icons.link,
+          title: '手动连接（专家）',
+          subtitle: '手动输入地址后首次接受未知指纹需显式 TOFU 确认',
+          onTap: () => _openAfterClose(context, showManualConnectionSheet),
         ),
       ],
     );

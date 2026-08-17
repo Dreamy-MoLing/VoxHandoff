@@ -21,10 +21,10 @@ class ManifestParseException implements Exception {
 /// 缺失字段按不可用降级，任何情况下都不会因多余或未知字段失败。
 class CapabilityManifest {
   const CapabilityManifest({
-    required this.chat,
-    required this.stt,
-    required this.tts,
-    required this.hermes,
+    this.chat = const ManifestChatSection(),
+    this.stt = const ManifestSttSection(),
+    this.tts = const ManifestTtsSection(),
+    this.hermes = const ManifestHermesSection(),
     this.others = const {},
   });
 
