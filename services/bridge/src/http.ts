@@ -17,6 +17,17 @@ export function writeError(response: ServerResponse, status: number, code: strin
 }
 
 export async function readJsonBody(request: IncomingMessage, maximumBytes: number): Promise<unknown> {
+  const body = await readRequestBody(request, maximumBytes);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body.toString("utf8"));
+  } catch {
+    throw new HttpRequestError(400, "request_invalid", "The request body must be valid JSON.");
+  }
+  return parsed;
+}
+
+export async function readRequestBody(request: IncomingMessage, maximumBytes: number): Promise<Buffer> {
   const contentLength = request.headers["content-length"];
   if (contentLength !== undefined) {
     const length = Number(contentLength);
@@ -30,13 +41,7 @@ export async function readJsonBody(request: IncomingMessage, maximumBytes: numbe
     if (total > maximumBytes) throw new HttpRequestError(413, "request_too_large", "The request body is too large.");
     chunks.push(buffer);
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    throw new HttpRequestError(400, "request_invalid", "The request body must be valid JSON.");
-  }
-  return parsed;
+  return Buffer.concat(chunks);
 }
 
 export class HttpRequestError extends Error {

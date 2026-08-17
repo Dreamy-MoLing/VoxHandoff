@@ -122,12 +122,19 @@ function readUpstream(
     throw new Error(`VOXHANDOFF_BRIDGE_${name}_URL and VOXHANDOFF_BRIDGE_${name}_TOKEN must be configured together`);
   }
   validateEndpoint(rawUrl, `VOXHANDOFF_BRIDGE_${name}_URL`, allowInsecureLoopback);
+  const configuredCapabilitiesPath = environment[`VOXHANDOFF_BRIDGE_${name}_CAPABILITIES_PATH`];
+  const resolvedCapabilitiesPath = capabilitiesPath ?? configuredCapabilitiesPath;
+  if (resolvedCapabilitiesPath !== undefined) validateUpstreamPath(resolvedCapabilitiesPath, `VOXHANDOFF_BRIDGE_${name}_CAPABILITIES_PATH`);
   return {
     baseUrl: rawUrl,
     token: rawToken,
     healthPath,
-    ...(capabilitiesPath === undefined ? {} : { capabilitiesPath }),
+    ...(resolvedCapabilitiesPath === undefined ? {} : { capabilitiesPath: resolvedCapabilitiesPath }),
   };
+}
+
+function validateUpstreamPath(value: string, name: string): void {
+  if (!/^\/[A-Za-z0-9_./-]{0,127}$/u.test(value) || value.includes("..")) throw new Error(`${name} must be a relative upstream path`);
 }
 
 function required(environment: NodeJS.ProcessEnv, name: string): string {

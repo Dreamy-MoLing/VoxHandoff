@@ -10,12 +10,14 @@ import { HttpRequestError, isRecord, readJsonBody, stringField, writeError, writ
 import { PairingError, PairingService } from "./pairing.js";
 import { CredentialError, DeviceCredentialService } from "./credentials.js";
 import { CapabilityDiscovery } from "./manifest.js";
+import { ReverseProxy } from "./proxy.js";
 
 export interface BridgeApplicationOptions {
   readinessChecks?: readonly BridgeReadinessCheck[];
   pairing?: PairingService;
   credentials?: DeviceCredentialService;
   manifest?: CapabilityDiscovery;
+  proxy?: ReverseProxy;
 }
 
 export class CompanionBridgeApplication {
@@ -24,6 +26,7 @@ export class CompanionBridgeApplication {
   readonly #pairing: PairingService | undefined;
   readonly #credentials: DeviceCredentialService | undefined;
   readonly #manifest: CapabilityDiscovery | undefined;
+  readonly #proxy: ReverseProxy | undefined;
 
   constructor(config: BridgeConfig, options: BridgeApplicationOptions = {}) {
     this.#config = config;
@@ -31,6 +34,7 @@ export class CompanionBridgeApplication {
     this.#pairing = options.pairing;
     this.#credentials = options.credentials;
     this.#manifest = options.manifest;
+    this.#proxy = options.proxy;
   }
 
   async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -114,6 +118,16 @@ export class CompanionBridgeApplication {
         await this.#credentials.authenticateAuthorization(request.headers.authorization);
         writeJson(response, 200, await this.#manifest.manifest());
         return;
+      }
+      if (this.#proxy !== undefined) {
+        const route = this.#proxy.route(method, path);
+        if (route !== undefined) {
+          if (this.#credentials === undefined) throw new HttpRequestError(503, "proxy_not_ready", "Device authentication is not configured.");
+          const principal = await this.#credentials.authenticateAuthorization(request.headers.authorization);
+          if (!principal.scopes.includes(route.scope)) throw new CredentialError("authorization_denied", "The device is not allowed to use this service.", 403);
+          await this.#proxy.forward(route, request, response);
+          return;
+        }
       }
       const deviceRevoke = path.match(/^\/v1\/devices\/([^/]+)\/revoke$/u);
       if (this.#credentials !== undefined && method === "POST" && deviceRevoke?.[1] !== undefined) {

@@ -4,6 +4,7 @@ import { readBridgeConfig } from "./config.js";
 import { DeviceCredentialService } from "./credentials.js";
 import { PairingService } from "./pairing.js";
 import { CapabilityDiscovery } from "./manifest.js";
+import { ReverseProxy } from "./proxy.js";
 import { createBridgeServer, CompanionBridgeApplication, listenBridgeServer } from "./server.js";
 import { loadBridgeStateStore } from "./state.js";
 
@@ -16,6 +17,7 @@ async function main(): Promise<void> {
     pairing,
     credentials,
     manifest: new CapabilityDiscovery(config),
+    proxy: new ReverseProxy(config),
     readinessChecks: [
       { name: "tls", ready: () => true },
       { name: "state", ready: () => true },
