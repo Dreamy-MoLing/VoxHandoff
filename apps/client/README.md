@@ -1,5 +1,7 @@
 # VoxHandoff client
 
+> **文档分工：** 本文件面向使用者和开发者，说明客户端用途、支持范围与基本验证方式；`AGENTS.md` 面向 Agent，规定 `apps/client/**` 的实现边界和完成门。
+
 Flutter client shared by Windows, Linux, macOS, iOS, and Android.
 
 The application layer owns only transient view state. Confirmed text, request
