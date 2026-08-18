@@ -55,6 +55,7 @@ Gateway/Node/PostgreSQL 控制面已冻结，保留在代码库和
 - [`packages/adapters`](packages/adapters)：Hermes 对话 adapter 主链路、延后可选 Direct LLM 和历史回归 adapter。
 - [`apps/poc-cli`](apps/poc-cli)：协议与故障注入验收 harness。
 - [`apps/client`](apps/client)：Android-first Flutter 客户端。
+- [`services/bridge`](services/bridge)：M6 Companion Bridge，负责手机配对、凭据、Capability Manifest 和代理边界。
 - [`services/stt`](services/stt)：版本化 STT 适配/服务边界；手机不启动本地 sidecar。
 - [`services/gateway`](services/gateway)：冻结归档的旧控制面和 PostgreSQL ledger，不进入 v0.1.0 默认路径。
 - [`services/node`](services/node)：冻结归档的旧 Hermes Connector，不进入 v0.1.0 默认路径。
@@ -64,8 +65,13 @@ Gateway/Node/PostgreSQL 控制面已冻结，保留在代码库和
 
 历史 topic 分支（`agent/m2-complete`、`agent/m3-voice-loop`、
 `agent/m4-fairy-desktop` 等）均已合入 `main` 并已清理删除。当前仅保留
-`main` 与进行中的 milestone 分支（M6 onboarding：`agent/m6-*`），
-合入后可删除已合并的历史 topic branch，不应重复合并其历史。
+`main` 与 M6 onboarding 的五个阶段性分支（`agent/m6-align`、
+`agent/m6-bridge`、`agent/m6-docs`、`agent/m6-manifest`、
+`agent/m6-pairing`），均已合并或进行中；`main` 是唯一活跃主线。
+M6 第一/二波（T1-T5）已合并 `main`；剩余为接线真实
+`BridgeCapabilityManifestRepository`、vivo 真机联调、待实施项 7（`PRODUCT.md`
+4.1 配对流程重写）和待实施项 8 安全测试收口。合入后可删除已合并的历史
+topic branch，不应重复合并其历史。
 
 ## 本地验证
 
@@ -97,5 +103,5 @@ AGENT_TALK_FLUTTER_ROOT=/home/roco/develop/flutter-3.44.6 npm run flutter:check
 
 ## License 状态
 
-当前快照没有 `LICENSE` 文件。仓库公开可见不等于授予代码复用权；如需
-允许复用，应另行添加明确的许可证。
+当前仓库已添加 MIT License（Copyright (c) 2026 Dreamy-MoLing），详见根目录
+[`LICENSE`](LICENSE)。
