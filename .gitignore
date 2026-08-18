@@ -17,6 +17,7 @@ artifacts/live/
 apps/client/test/failures/
 packages/adapters/src/generated/
 packages/protocol/dart/pubspec.lock
+/.hermes/
 
 # Absorbed pre-development research; the active baseline lives in spec/.
 /docs/
